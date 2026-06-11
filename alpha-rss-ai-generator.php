@@ -3610,11 +3610,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $class_names = array(
                 'wp-block-image',
-                sanitize_html_class((string) $align),
                 'size-' . sanitize_html_class($size),
             );
 
-            return '<figure class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($class_names))))) . '"><img src="' . esc_url($image_url) . '" alt="' . esc_attr($alt_text) . '" /></figure>';
+            $image_class = 'wp-image-' . $attachment_id;
+
+            return '<figure class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($class_names))))) . '"><img src="' . esc_url($image_url) . '" alt="' . esc_attr($alt_text) . '" class="' . esc_attr($image_class) . '"/></figure>';
         }
 
         public static function download_and_set_featured_image_from_url($post_id, $image_url, $title, $source_label = 'source', $query = '', $credit = '')

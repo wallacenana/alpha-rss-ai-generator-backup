@@ -1255,7 +1255,7 @@ class Alpha_RSS_AI_Generator_Helper
                 $alt_text = $section_title !== '' ? $section_title : 'Imagem relacionada';
                 $attachment_id = Alpha_RSS_AI_Generator::download_image_attachment_from_url($post_id, $image_url, $alt_text, 'content');
                 if ($attachment_id > 0) {
-                    $figure_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, $alt_text, 'alignleft');
+                    $figure_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, $alt_text);
                     if ($figure_html !== '') {
                         $html_parts[] = $figure_html;
                     }
