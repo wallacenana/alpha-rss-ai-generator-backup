@@ -78,6 +78,7 @@ class Alpha_RSS_AI_Generator_Admin
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" data-open-settings-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Configurações globais</button>
                     <button type="button" data-open-runs-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Execuções recentes</button>
+                    <button type="button" data-open-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Importar gerador</button>
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
             </div>
@@ -89,7 +90,7 @@ class Alpha_RSS_AI_Generator_Admin
                     <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4">
                         <div>
                             <h2 class="text-lg font-semibold text-slate-950">Tabela de geradores</h2>
-                            <p class="mt-1 text-sm text-slate-500">Clique em Adicionar gerador para abrir o modal de cadastro. As demais opções ficam nos botões do topo.</p>
+                            <p class="mt-1 text-sm text-slate-500">Clique em Adicionar gerador para abrir o modal de cadastro. Use Importar gerador para carregar um JSON exportado e Exportar em cada linha para baixar um backup.</p>
                         </div>
                         <div class="text-sm text-slate-500">
                             <?php echo esc_html(count($generators)); ?> gerador(es)
@@ -173,6 +174,12 @@ class Alpha_RSS_AI_Generator_Admin
                                                         <input type="hidden" name="action" value="arc_duplicate_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
                                                         <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Duplicar</button>
+                                                    </form>
+                                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                                                        <?php wp_nonce_field('arc_export_generator', 'arc_export_nonce'); ?>
+                                                        <input type="hidden" name="action" value="arc_export_generator" />
+                                                        <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
+                                                        <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Exportar</button>
                                                     </form>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Excluir este gerador?');">
                                                         <?php wp_nonce_field('arc_delete_generator', 'arc_delete_nonce'); ?>
@@ -671,6 +678,50 @@ class Alpha_RSS_AI_Generator_Admin
                 </div>
             </div>
 
+            <div id="arc-generator-import-modal" class="fixed inset-0 z-50 hidden">
+                <div id="arc-generator-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+                <div class="relative mx-auto flex min-h-full max-w-3xl items-center px-4 py-8 sm:px-6 lg:px-8">
+                    <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h2 class="text-xl font-semibold text-slate-950">Importar gerador</h2>
+                                <p class="mt-1 text-sm text-slate-500">Envie um arquivo JSON exportado por este plugin. Se houver mais de um gerador no arquivo, escolha qual importar.</p>
+                            </div>
+                            <button type="button" data-close-generator-import-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
+                        </div>
+                        <form id="arc-generator-import-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
+                            <?php wp_nonce_field('arc_import_generator', 'arc_import_nonce'); ?>
+                            <input type="hidden" name="action" value="arc_import_generator" />
+
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo JSON</label>
+                                    <input id="arc-generator-import-file" type="file" name="generator_import_file" accept=".json,application/json" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                    <p class="mt-1 text-xs text-slate-500">O arquivo pode conter um gerador ou uma lista de geradores.</p>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Qual gerador importar?</label>
+                                    <select id="arc-generator-import-index" name="generator_import_index" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" disabled>
+                                        <option value="">Envie um arquivo para carregar as opcoes</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-slate-500">Quando o arquivo tiver varios registros, escolha a entrada desejada aqui.</p>
+                                </div>
+                                <div id="arc-generator-import-summary" class="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"></div>
+                                <div id="arc-generator-import-status" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+                            </div>
+
+                            <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                                <p class="text-sm text-slate-500">A importacao cria um novo gerador e nao sobrescreve o atual.</p>
+                                <div class="flex items-center gap-3">
+                                    <button type="button" data-close-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
+                                    <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Importar gerador</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
             
             <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -756,13 +807,20 @@ class Alpha_RSS_AI_Generator_Admin
                     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
                     var apiBase = <?php echo wp_json_encode(rest_url('alpha-rss-ai-generator/v1')); ?>;
                     var restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
+                    var generatorImportModal = document.getElementById('arc-generator-import-modal');
+                    var generatorImportBackdrop = document.getElementById('arc-generator-import-backdrop');
+                    var generatorImportForm = document.getElementById('arc-generator-import-form');
+                    var generatorImportFile = document.getElementById('arc-generator-import-file');
+                    var generatorImportIndex = document.getElementById('arc-generator-import-index');
+                    var generatorImportSummary = document.getElementById('arc-generator-import-summary');
+                    var generatorImportStatus = document.getElementById('arc-generator-import-status');
+                    var generatorImportCandidates = [];
                     window.AlphaRssAiGenerator = window.AlphaRssAiGenerator || {};
                     window.AlphaRssAiGenerator.generators = generators;
                     window.AlphaRssAiGenerator.defaults = defaults;
                     window.AlphaRssAiGenerator.editId = editId;
                     window.AlphaRssAiGenerator.apiBase = apiBase;
                     window.AlphaRssAiGenerator.restNonce = restNonce;
-                    return;
                     var openModalCount = 0;
                     var manualRunCurrentGeneratorId = '';
                     var manualRunCurrentGeneratorName = '';
@@ -1296,6 +1354,164 @@ class Alpha_RSS_AI_Generator_Admin
                         applyDefaults();
                     }
 
+                    function setGeneratorImportStatus(message, type) {
+                        if (!generatorImportStatus) {
+                            return;
+                        }
+                        if (!message) {
+                            generatorImportStatus.className = 'hidden rounded-xl border px-4 py-3 text-sm';
+                            generatorImportStatus.textContent = '';
+                            return;
+                        }
+                        var classes = 'rounded-xl border px-4 py-3 text-sm';
+                        if (type === 'error') {
+                            classes += ' border-rose-200 bg-rose-50 text-rose-700';
+                        } else if (type === 'success') {
+                            classes += ' border-emerald-200 bg-emerald-50 text-emerald-700';
+                        } else {
+                            classes += ' border-amber-200 bg-amber-50 text-amber-700';
+                        }
+                        generatorImportStatus.className = classes;
+                        generatorImportStatus.textContent = message;
+                    }
+
+                    function resetGeneratorImportForm() {
+                        generatorImportCandidates = [];
+                        if (generatorImportForm) {
+                            generatorImportForm.reset();
+                        }
+                        if (generatorImportIndex) {
+                            generatorImportIndex.innerHTML = '<option value="">Envie um arquivo para carregar as opcoes</option>';
+                            generatorImportIndex.disabled = true;
+                        }
+                        if (generatorImportSummary) {
+                            generatorImportSummary.classList.add('hidden');
+                            generatorImportSummary.textContent = '';
+                        }
+                        setGeneratorImportStatus('', '');
+                    }
+
+                    function describeGeneratorImportCandidate(candidate, index) {
+                        var parts = [];
+                        var name = candidate && candidate.name ? String(candidate.name) : 'Gerador ' + (index + 1);
+                        var sourceType = candidate && candidate.source_type ? String(candidate.source_type) : '';
+                        var sourceLabel = sourceType === 'keyword_list' ? 'Lista' : (sourceType === 'rss' ? 'RSS' : sourceType);
+                        if (sourceLabel) {
+                            parts.push(sourceLabel);
+                        }
+                        parts.unshift(name);
+                        if (candidate && candidate.feed_url) {
+                            parts.push(String(candidate.feed_url));
+                        } else if (candidate && candidate.list_id) {
+                            parts.push('lista #' + String(candidate.list_id));
+                        }
+                        return parts.join(' · ');
+                    }
+
+                    function renderGeneratorImportCandidates(candidates) {
+                        generatorImportCandidates = Array.isArray(candidates) ? candidates : [];
+                        if (!generatorImportIndex) {
+                            return;
+                        }
+                        if (!generatorImportCandidates.length) {
+                            generatorImportIndex.innerHTML = '<option value="">Nenhum gerador encontrado</option>';
+                            generatorImportIndex.disabled = true;
+                            if (generatorImportSummary) {
+                                generatorImportSummary.classList.add('hidden');
+                            }
+                            return;
+                        }
+                        var options = generatorImportCandidates.map(function(candidate, index) {
+                            return '<option value="' + index + '">' + escapeHtml(describeGeneratorImportCandidate(candidate, index)) + '</option>';
+                        }).join('');
+                        generatorImportIndex.innerHTML = options;
+                        generatorImportIndex.disabled = false;
+                        generatorImportIndex.value = '0';
+                        if (generatorImportSummary) {
+                            generatorImportSummary.textContent = generatorImportCandidates.length === 1 ? '1 gerador encontrado no arquivo.' : (generatorImportCandidates.length + ' geradores encontrados no arquivo.');
+                            generatorImportSummary.classList.remove('hidden');
+                        }
+                    }
+
+                    function updateGeneratorImportSummary() {
+                        if (!generatorImportSummary || !generatorImportCandidates.length || !generatorImportIndex) {
+                            return;
+                        }
+                        var index = parseInt(generatorImportIndex.value, 10);
+                        if (isNaN(index) || index < 0 || index >= generatorImportCandidates.length) {
+                            index = 0;
+                        }
+                        var candidate = generatorImportCandidates[index];
+                        if (!candidate) {
+                            return;
+                        }
+                        generatorImportSummary.textContent = 'Selecionado: ' + describeGeneratorImportCandidate(candidate, index);
+                        generatorImportSummary.classList.remove('hidden');
+                    }
+
+                    function parseGeneratorImportPayload(payload) {
+                        if (Array.isArray(payload)) {
+                            return payload.filter(function(item) {
+                                return item && typeof item === 'object' && !Array.isArray(item);
+                            });
+                        }
+                        if (!payload || typeof payload !== 'object') {
+                            return [];
+                        }
+                        if (Array.isArray(payload.generators)) {
+                            return payload.generators.filter(function(item) {
+                                return item && typeof item === 'object' && !Array.isArray(item);
+                            });
+                        }
+                        if (payload.generator && typeof payload.generator === 'object' && !Array.isArray(payload.generator)) {
+                            return [payload.generator];
+                        }
+                        if (payload.name || payload.feed_url || payload.source_type || payload.list_id) {
+                            return [payload];
+                        }
+                        return [];
+                    }
+
+                    function analyzeGeneratorImportFile() {
+                        if (!generatorImportFile || !generatorImportFile.files || !generatorImportFile.files.length) {
+                            setGeneratorImportStatus('Selecione um arquivo JSON para continuar.', 'error');
+                            return;
+                        }
+                        var file = generatorImportFile.files[0];
+                        var reader = new FileReader();
+                        setGeneratorImportStatus('Lendo arquivo...', 'warning');
+                        reader.onload = function(event) {
+                            try {
+                                var raw = String(event.target.result || '').trim();
+                                if (!raw) {
+                                    throw new Error('Arquivo vazio.');
+                                }
+                                var decoded = JSON.parse(raw);
+                                var candidates = parseGeneratorImportPayload(decoded);
+                                if (!candidates.length) {
+                                    throw new Error('Nenhum gerador valido foi encontrado no arquivo.');
+                                }
+                                renderGeneratorImportCandidates(candidates);
+                                setGeneratorImportStatus('Arquivo carregado. Escolha qual gerador importar.', 'success');
+                            } catch (error) {
+                                generatorImportCandidates = [];
+                                if (generatorImportIndex) {
+                                    generatorImportIndex.innerHTML = '<option value="">Envie um arquivo para carregar as opcoes</option>';
+                                    generatorImportIndex.disabled = true;
+                                }
+                                if (generatorImportSummary) {
+                                    generatorImportSummary.classList.add('hidden');
+                                    generatorImportSummary.textContent = '';
+                                }
+                                setGeneratorImportStatus(error.message || 'Nao foi possivel ler o arquivo JSON.', 'error');
+                            }
+                        };
+                        reader.onerror = function() {
+                            setGeneratorImportStatus('Nao foi possivel ler o arquivo selecionado.', 'error');
+                        };
+                        reader.readAsText(file);
+                    }
+
                     document.querySelectorAll('[data-open-settings-modal]').forEach(function(button) {
                         button.addEventListener('click', function() {
                             openModal(settingsModal);
@@ -1307,6 +1523,37 @@ class Alpha_RSS_AI_Generator_Admin
                             openModal(runsModal);
                         });
                     });
+
+                    document.querySelectorAll('[data-open-generator-import-modal]').forEach(function(button) {
+                        button.addEventListener('click', function() {
+                            resetGeneratorImportForm();
+                            openModal(generatorImportModal);
+                        });
+                    });
+
+                    if (generatorImportFile) {
+                        generatorImportFile.addEventListener('change', analyzeGeneratorImportFile);
+                    }
+
+                    if (generatorImportIndex) {
+                        generatorImportIndex.addEventListener('change', updateGeneratorImportSummary);
+                    }
+
+                    if (generatorImportForm) {
+                        generatorImportForm.addEventListener('submit', function(event) {
+                            if (!generatorImportFile || !generatorImportFile.files || !generatorImportFile.files.length) {
+                                event.preventDefault();
+                                setGeneratorImportStatus('Selecione um arquivo JSON antes de importar.', 'error');
+                                return;
+                            }
+                            if (!generatorImportCandidates.length) {
+                                event.preventDefault();
+                                setGeneratorImportStatus('Analise o arquivo antes de importar.', 'error');
+                                return;
+                            }
+                            updateGeneratorImportSummary();
+                        });
+                    }
 
                     document.querySelectorAll('[data-open-manual-run-modal]').forEach(function(button) {
                         button.addEventListener('click', function() {
@@ -1368,6 +1615,13 @@ class Alpha_RSS_AI_Generator_Admin
                         });
                     });
 
+                    document.querySelectorAll('[data-close-generator-import-modal]').forEach(function(button) {
+                        button.addEventListener('click', function() {
+                            closeModal(generatorImportModal);
+                            resetGeneratorImportForm();
+                        });
+                    });
+
                     document.querySelectorAll('[data-close-runs-modal]').forEach(function(button) {
                         button.addEventListener('click', function() {
                             closeModal(runsModal);
@@ -1406,6 +1660,13 @@ class Alpha_RSS_AI_Generator_Admin
                     if (runsBackdrop) {
                         runsBackdrop.addEventListener('click', function() {
                             closeModal(runsModal);
+                        });
+                    }
+
+                    if (generatorImportBackdrop) {
+                        generatorImportBackdrop.addEventListener('click', function() {
+                            closeModal(generatorImportModal);
+                            resetGeneratorImportForm();
                         });
                     }
 
@@ -1454,6 +1715,10 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             if (settingsModal && !settingsModal.classList.contains('hidden')) {
                                 closeModal(settingsModal);
+                            }
+                            if (generatorImportModal && !generatorImportModal.classList.contains('hidden')) {
+                                closeModal(generatorImportModal);
+                                resetGeneratorImportForm();
                             }
                             if (runsModal && !runsModal.classList.contains('hidden')) {
                                 closeModal(runsModal);

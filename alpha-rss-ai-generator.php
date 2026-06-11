@@ -129,6 +129,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             add_action('admin_post_arc_delete_generator', array($this, 'handle_delete_generator'));
             add_action('admin_post_arc_run_generator', array($this, 'handle_run_generator'));
             add_action('admin_post_arc_duplicate_generator', array($this, 'handle_duplicate_generator'));
+            add_action('admin_post_arc_export_generator', array($this, 'handle_export_generator'));
+            add_action('admin_post_arc_import_generator', array($this, 'handle_import_generator'));
             add_action(self::CRON_HOOK, array($this, 'cron_tick'));
             add_filter('cron_schedules', array($this, 'add_cron_schedule'));
             add_action('rest_api_init', array($this, 'register_rest_routes'));
@@ -579,7 +581,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'arc_notice' => $message,
                 'arc_notice_type' => $type,
             ), $extra), admin_url('admin.php'));
-            wp_safe_redirect($url);
+            nocache_headers();
+            wp_redirect($url);
             exit;
         }
 
@@ -5597,6 +5600,138 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return self::save_generator($duplicated);
         }
 
+        public static function normalize_export_list_field($value)
+        {
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                if ($trimmed !== '' && ($trimmed[0] === '[' || $trimmed[0] === '{')) {
+                    $decoded = json_decode($trimmed, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        $value = $decoded;
+                    }
+                }
+            }
+
+            return implode(',', self::parse_list_field($value));
+        }
+
+        public static function normalize_export_lines_field($value)
+        {
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                if ($trimmed !== '' && ($trimmed[0] === '[' || $trimmed[0] === '{')) {
+                    $decoded = json_decode($trimmed, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        $value = $decoded;
+                    }
+                }
+            }
+
+            if (is_array($value)) {
+                return self::array_to_key_value_lines($value);
+            }
+
+            $parsed = self::parse_key_value_lines((string) $value);
+            if (!empty($parsed)) {
+                return self::array_to_key_value_lines($parsed);
+            }
+
+            return trim((string) $value);
+        }
+
+        public static function build_generator_export_payload($generator)
+        {
+            if (!is_array($generator)) {
+                return array();
+            }
+
+            $payload = $generator;
+            unset($payload['id'], $payload['generator_id'], $payload['created_at'], $payload['updated_at'], $payload['next_run_at']);
+            $payload['category_ids'] = self::normalize_export_list_field(isset($generator['category_ids']) ? $generator['category_ids'] : '');
+            $payload['tags_default'] = self::normalize_export_list_field(isset($generator['tags_default']) ? $generator['tags_default'] : '');
+            $payload['custom_taxonomies'] = self::normalize_export_lines_field(isset($generator['custom_taxonomies']) ? $generator['custom_taxonomies'] : '');
+            $payload['custom_meta'] = self::normalize_export_lines_field(isset($generator['custom_meta']) ? $generator['custom_meta'] : '');
+            $payload['source_context_exclude_phrases'] = isset($generator['source_context_exclude_phrases']) ? (string) $generator['source_context_exclude_phrases'] : '';
+            $payload['source_context_rating_label'] = isset($generator['source_context_rating_label']) && $generator['source_context_rating_label'] !== '' ? (string) $generator['source_context_rating_label'] : 'IMDb';
+            $payload['source_context_min_rating'] = isset($generator['source_context_min_rating']) && $generator['source_context_min_rating'] !== '' ? (string) $generator['source_context_min_rating'] : '0';
+            $payload['source_context_keep_unrated'] = !empty($generator['source_context_keep_unrated']) ? 1 : 0;
+            $payload['source_context_filters_json'] = wp_json_encode(array(
+                'exclude_phrases' => Alpha_RSS_AI_Generator_Helper::parse_source_context_filter_phrases($payload['source_context_exclude_phrases']),
+                'rating_label' => $payload['source_context_rating_label'] !== '' ? $payload['source_context_rating_label'] : 'IMDb',
+                'min_rating' => max(0, floatval(str_replace(',', '.', (string) $payload['source_context_min_rating']))),
+                'keep_unrated' => !empty($payload['source_context_keep_unrated']) ? 1 : 0,
+            ));
+            $payload['pexels_enabled'] = self::image_source_mode_uses_pexels(isset($generator['image_source_mode']) ? $generator['image_source_mode'] : '') ? 1 : 0;
+
+            return $payload;
+        }
+
+        public static function extract_import_generator_candidates($decoded)
+        {
+            if (!is_array($decoded)) {
+                return array();
+            }
+
+            if (isset($decoded['generator']) && is_array($decoded['generator'])) {
+                return array_values(array_filter(array($decoded['generator']), 'is_array'));
+            }
+
+            if (isset($decoded['generators']) && is_array($decoded['generators'])) {
+                return array_values(array_filter($decoded['generators'], 'is_array'));
+            }
+
+            $is_list = array_keys($decoded) === range(0, count($decoded) - 1);
+            if ($is_list) {
+                return array_values(array_filter($decoded, 'is_array'));
+            }
+
+            if (isset($decoded['name']) || isset($decoded['feed_url']) || isset($decoded['source_type']) || isset($decoded['list_id'])) {
+                return array($decoded);
+            }
+
+            return array();
+        }
+
+        public static function prepare_import_generator_payload($generator)
+        {
+            if (!is_array($generator)) {
+                return array();
+            }
+
+            $payload = $generator;
+            unset($payload['id'], $payload['generator_id'], $payload['created_at'], $payload['updated_at'], $payload['next_run_at']);
+            $payload['category_ids'] = self::normalize_export_list_field(isset($payload['category_ids']) ? $payload['category_ids'] : '');
+            $payload['tags_default'] = self::normalize_export_list_field(isset($payload['tags_default']) ? $payload['tags_default'] : '');
+            $payload['custom_taxonomies'] = self::normalize_export_lines_field(isset($payload['custom_taxonomies']) ? $payload['custom_taxonomies'] : '');
+            $payload['custom_meta'] = self::normalize_export_lines_field(isset($payload['custom_meta']) ? $payload['custom_meta'] : '');
+
+            if (!isset($payload['source_context_exclude_phrases']) || trim((string) $payload['source_context_exclude_phrases']) === '') {
+                $filters = array();
+                if (!empty($payload['source_context_filters_json'])) {
+                    $filters = json_decode((string) $payload['source_context_filters_json'], true);
+                }
+                if (is_array($filters)) {
+                    $payload['source_context_exclude_phrases'] = !empty($filters['exclude_phrases']) ? implode("\n", (array) $filters['exclude_phrases']) : '';
+                    $payload['source_context_rating_label'] = isset($filters['rating_label']) ? (string) $filters['rating_label'] : 'IMDb';
+                    $payload['source_context_min_rating'] = isset($filters['min_rating']) ? (string) $filters['min_rating'] : '0';
+                    $payload['source_context_keep_unrated'] = !empty($filters['keep_unrated']) ? 1 : 0;
+                }
+            }
+
+            if (!isset($payload['source_context_rating_label']) || $payload['source_context_rating_label'] === '') {
+                $payload['source_context_rating_label'] = 'IMDb';
+            }
+            if (!isset($payload['source_context_min_rating']) || $payload['source_context_min_rating'] === '') {
+                $payload['source_context_min_rating'] = '0';
+            }
+            if (!isset($payload['source_context_keep_unrated'])) {
+                $payload['source_context_keep_unrated'] = 0;
+            }
+
+            $payload['generator_id'] = 0;
+            return $payload;
+        }
+
         public function handle_save_settings()
         {
             if (!current_user_can('manage_options')) {
@@ -5646,6 +5781,101 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 self::redirect_with_notice($result->get_error_message(), 'error');
             }
             self::redirect_with_notice('Gerador duplicado com sucesso.');
+        }
+
+        public function handle_export_generator()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_die('Acesso negado.');
+            }
+            check_admin_referer('arc_export_generator', 'arc_export_nonce');
+
+            $id = isset($_POST['generator_id']) ? intval($_POST['generator_id']) : 0;
+            $generator = $id > 0 ? self::get_generator($id) : null;
+            if (!$generator) {
+                self::redirect_with_notice('Gerador não encontrado.', 'error');
+            }
+
+            $export = self::build_generator_export_payload($generator);
+            if (empty($export)) {
+                self::redirect_with_notice('Não foi possível exportar o gerador.', 'error');
+            }
+
+            $safe_name = sanitize_title(isset($generator['name']) ? $generator['name'] : '');
+            if ($safe_name === '') {
+                $safe_name = 'generator-' . $id;
+            }
+            $filename = 'alpha-generator-' . $safe_name . '.json';
+            $json = wp_json_encode(array(
+                'plugin' => 'alpha-rss-ai-generator',
+                'version' => self::VERSION,
+                'exported_at' => current_time('mysql'),
+                'generator' => $export,
+            ), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+            if ($json === false) {
+                self::redirect_with_notice('Não foi possível gerar o arquivo de exportação.', 'error');
+            }
+
+            if (function_exists('ob_get_level')) {
+                while (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+            }
+            nocache_headers();
+            header('Content-Type: application/json; charset=' . get_option('blog_charset'));
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($json));
+            echo $json;
+            exit;
+        }
+
+        public function handle_import_generator()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_die('Acesso negado.');
+            }
+            check_admin_referer('arc_import_generator', 'arc_import_nonce');
+
+            if (empty($_FILES['generator_import_file']) || !isset($_FILES['generator_import_file']['tmp_name']) || !is_uploaded_file($_FILES['generator_import_file']['tmp_name'])) {
+                self::redirect_with_notice('Envie um arquivo JSON válido.', 'error');
+            }
+
+            $tmp_name = $_FILES['generator_import_file']['tmp_name'];
+            $file_contents = file_get_contents($tmp_name);
+            if ($file_contents === false || trim((string) $file_contents) === '') {
+                self::redirect_with_notice('Não foi possível ler o arquivo enviado.', 'error');
+            }
+            $file_contents = preg_replace('/^\xEF\xBB\xBF/', '', (string) $file_contents);
+
+            $decoded = json_decode($file_contents, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                self::redirect_with_notice('O arquivo enviado não é um JSON válido.', 'error');
+            }
+
+            $candidates = self::extract_import_generator_candidates($decoded);
+            if (empty($candidates)) {
+                self::redirect_with_notice('Nenhum gerador válido foi encontrado no arquivo.', 'error');
+            }
+
+            $selected_index = isset($_POST['generator_import_index']) ? intval($_POST['generator_import_index']) : 0;
+            if ($selected_index < 0 || $selected_index >= count($candidates)) {
+                $selected_index = 0;
+            }
+
+            $selected_generator = self::prepare_import_generator_payload($candidates[$selected_index]);
+            if (empty($selected_generator)) {
+                self::redirect_with_notice('Não foi possível preparar o gerador selecionado.', 'error');
+            }
+
+            $saved = self::save_generator($selected_generator);
+            if (is_wp_error($saved)) {
+                self::redirect_with_notice($saved->get_error_message(), 'error');
+            }
+
+            self::redirect_with_notice('Gerador importado com sucesso.', 'success', array(
+                'arc_notice_link' => admin_url('admin.php?page=alpha-rss-ai-generator&edit_id=' . intval($saved)),
+            ));
         }
 
         public function handle_run_generator()
