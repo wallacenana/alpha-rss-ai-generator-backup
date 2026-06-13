@@ -24,11 +24,13 @@
         image_source_mode: '',
         pexels_query: '',
         source_video_enabled: '0',
+        source_content_media_enabled: '0',
         video_selector_class: '',
         image_selector_class: '',
         link_selector_class: '',
         content_image_size: 'medium',
         source_link_phrases: '',
+        source_link_style: 'button',
         source_context_exclude_phrases: '',
         source_context_rating_label: 'IMDb',
         source_context_min_rating: '0',
@@ -71,6 +73,7 @@
     var listIdField = form.querySelector('[data-list-id-field]');
     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
+    var sourceContentMediaField = form.querySelector('[data-rss-source-content-media-field]');
     var imageSelectorField = form.querySelector('[data-rss-image-selector-field]');
     var linkSelectorField = form.querySelector('[data-rss-link-selector-field]');
     var sourceFiltersField = form.querySelector('[data-rss-source-filters-field]');
@@ -214,6 +217,9 @@
         var keywordListModeEl = byName('keyword_list_mode');
         var keywordListMode = keywordListModeEl ? keywordListModeEl.value : 'keywords';
         var imageSourceModeEl = byName('image_source_mode');
+        var sourceContentMediaEnabledEl = byName('source_content_media_enabled');
+        var sourceContentMediaEnabled = sourceContentMediaEnabledEl ? sourceContentMediaEnabledEl.value === '1' : false;
+        var showSourceContentMedia = sourceContentMediaEnabled && (sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference'));
 
         if (feedUrlField) {
             feedUrlField.classList.toggle('hidden', sourceType === 'keyword_list');
@@ -227,12 +233,9 @@
         if (videoSelectorField) {
             var showVideoSelector = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
             videoSelectorField.classList.toggle('hidden', !showVideoSelector);
-            if (imageSelectorField) {
-                imageSelectorField.classList.toggle('hidden', !showVideoSelector);
-            }
-            if (linkSelectorField) {
-                linkSelectorField.classList.toggle('hidden', !showVideoSelector);
-            }
+        }
+        if (sourceContentMediaField) {
+            sourceContentMediaField.classList.toggle('hidden', !showSourceContentMedia);
         }
         if (sourceFiltersField) {
             var showSourceFilters = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
@@ -302,6 +305,42 @@
             .replace(/'/g, '&#039;');
     }
 
+    function parseMaybeJsonResponseText(text) {
+        var value = String(text === undefined || text === null ? '' : text).replace(/^\uFEFF/, '').trim();
+        if (!value) {
+            return null;
+        }
+
+        var firstChar = value.charAt(0);
+        if (firstChar !== '{' && firstChar !== '[') {
+            var objectIndex = value.indexOf('{');
+            var arrayIndex = value.indexOf('[');
+            var startIndex = -1;
+            if (objectIndex >= 0 && arrayIndex >= 0) {
+                startIndex = Math.min(objectIndex, arrayIndex);
+            } else if (objectIndex >= 0) {
+                startIndex = objectIndex;
+            } else if (arrayIndex >= 0) {
+                startIndex = arrayIndex;
+            }
+
+            if (startIndex > 0) {
+                value = value.slice(startIndex).trim();
+            }
+        }
+
+        try {
+            return JSON.parse(value);
+        } catch (error) {
+            return {
+                success: false,
+                message: value || 'Resposta invalida'
+            };
+        }
+    }
+
+    window.AlphaRssAiParseMaybeJsonResponseText = parseMaybeJsonResponseText;
+
     function setManualRunStatus(message, type) {
         if (!manualRunStatus) {
             return;
@@ -321,6 +360,97 @@
         }
         manualRunStatus.className = classes;
         manualRunStatus.textContent = message;
+    }
+
+    function setManualRunStatusHtml(message, link, linkLabel, type) {
+        if (!manualRunStatus) {
+            return;
+        }
+        if (!message) {
+            manualRunStatus.className = 'hidden mb-4 rounded-xl border px-4 py-3 text-sm';
+            manualRunStatus.innerHTML = '';
+            return;
+        }
+        var classes = 'mb-4 rounded-xl border px-4 py-3 text-sm';
+        if (type === 'error') {
+            classes += ' border-rose-200 bg-rose-50 text-rose-700';
+        } else if (type === 'success') {
+            classes += ' border-emerald-200 bg-emerald-50 text-emerald-700';
+        } else {
+            classes += ' border-slate-200 bg-slate-50 text-slate-600';
+        }
+        var html = escapeHtml(message);
+        if (link) {
+            html += '<a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">' + escapeHtml(linkLabel || 'Ver conteúdo') + '</a>';
+        }
+        manualRunStatus.className = classes;
+        manualRunStatus.innerHTML = html;
+    }
+
+    function showManualRunSwal(title, html) {
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            window.Swal.fire({
+                title: title || 'Processando',
+                html: html || '',
+                icon: 'info',
+                backdrop: false,
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showCloseButton: false,
+                showConfirmButton: false,
+                didOpen: function () {
+                    if (window.Swal && typeof window.Swal.showLoading === 'function') {
+                        window.Swal.showLoading();
+                    }
+                }
+            });
+            return true;
+        }
+        return false;
+    }
+
+    function updateManualRunSwal(title, html, icon) {
+        var isFinalState = icon === 'success' || icon === 'error';
+        if (window.Swal && typeof window.Swal.update === 'function' && window.Swal.isVisible && window.Swal.isVisible()) {
+            if (isFinalState) {
+                var finalOptions = {
+                    title: title || '',
+                    html: html || '',
+                    icon: icon || 'info',
+                    backdrop: false,
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    showCloseButton: false,
+                    showConfirmButton: true,
+                    confirmButtonText: 'Fechar',
+                    customClass: {
+                        htmlContainer: 'text-center'
+                    }
+                };
+                window.Swal.close();
+                window.setTimeout(function () {
+                    if (window.Swal && typeof window.Swal.fire === 'function') {
+                        window.Swal.fire(finalOptions);
+                    }
+                }, 0);
+                return true;
+            }
+            window.Swal.update({
+                title: title || '',
+                html: html || '',
+                icon: icon || 'info',
+                showCloseButton: false,
+                showConfirmButton: false
+            });
+            if (typeof window.Swal.showLoading === 'function') {
+                window.Swal.showLoading();
+            }
+            if (isFinalState && typeof window.Swal.hideLoading === 'function') {
+                window.Swal.hideLoading();
+            }
+            return true;
+        }
+        return false;
     }
 
     function setManualRunLoading(isLoading) {
@@ -380,27 +510,135 @@
         });
     }
 
-    function submitManualRunItem(itemGuid) {
-        if (!manualRunForm) {
+    async function runManualRunItem(itemGuid) {
+        if (!manualRunCurrentGeneratorId || !itemGuid) {
             return;
         }
-        var generatorIdField = manualRunForm.querySelector('[name="generator_id"]');
-        var itemGuidField = manualRunForm.querySelector('[name="item_guid"]');
-        if (generatorIdField) {
-            generatorIdField.value = manualRunCurrentGeneratorId || '';
+        if (window.AlphaRssAiGeneratorManualRunBusy) {
+            return;
         }
-        if (itemGuidField) {
-            itemGuidField.value = itemGuid || '';
+
+        window.AlphaRssAiGeneratorManualRunBusy = true;
+        var swalOpened = showManualRunSwal('Gerando item', '<div class="text-left text-sm text-slate-600">Processando o item escolhido sem recarregar a página.</div>');
+        setManualRunStatus('Gerando item selecionado...', 'warning');
+
+        try {
+            var endpoint = apiBase.replace(/\/$/, '') + '/generators/' + encodeURIComponent(manualRunCurrentGeneratorId) + '/run';
+            var stageToken = '';
+
+            async function runStage(stage, token) {
+                var response = await fetch(endpoint, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': restNonce
+                    },
+                    body: JSON.stringify({
+                        stage: stage,
+                        item_guid: itemGuid,
+                        token: token || ''
+                    })
+                });
+
+                var responseText = await response.text();
+                var payload = window.AlphaRssAiParseMaybeJsonResponseText(responseText) || {};
+
+                if (!response.ok || !payload || !payload.success) {
+                    throw new Error((payload && payload.message) ? payload.message : 'Falha ao gerar o item');
+                }
+
+                return payload;
+            }
+
+            var seoBody = [
+                '<div class="text-left text-sm text-slate-600">',
+                '<div class="font-semibold text-slate-950">Etapa 1 de 4: gerando SEO.</div>',
+                '<div class="mt-2">Aguarde enquanto o titulo, slug e contexto sao preparados.</div>',
+                '</div>'
+            ].join('');
+            if (swalOpened) {
+                updateManualRunSwal('Gerando SEO', seoBody, 'info');
+            }
+            setManualRunStatus('Gerando SEO do item selecionado...', 'warning');
+
+            var seoResult = await runStage('seo', '');
+            stageToken = seoResult.token || '';
+            if (!stageToken) {
+                throw new Error('Nao foi possivel iniciar a etapa de conteudo');
+            }
+
+            var contentBody = [
+                '<div class="text-left text-sm text-slate-600">',
+                '<div class="font-semibold text-slate-950">Etapa 2 de 4: gerando conteudo.</div>',
+                '<div class="mt-2">O texto final esta sendo criado com base no item escolhido.</div>',
+                '</div>'
+            ].join('');
+            if (swalOpened) {
+                updateManualRunSwal('Gerando conteudo', contentBody, 'info');
+            }
+            setManualRunStatus('Gerando conteudo do item selecionado...', 'warning');
+
+            var contentResult = await runStage('content', stageToken);
+            stageToken = contentResult.token || stageToken;
+
+            var mediaBody = [
+                '<div class="text-left text-sm text-slate-600">',
+                '<div class="font-semibold text-slate-950">Etapa 3 de 4: preparando o post.</div>',
+                '<div class="mt-2">O conteudo base esta salvo e a midia sera aplicada em seguida.</div>',
+                '</div>'
+            ].join('');
+            if (swalOpened) {
+                updateManualRunSwal('Salvando post', mediaBody, 'info');
+            }
+            setManualRunStatus('Salvando o post gerado...', 'warning');
+
+            var mediaResult = await runStage('media', stageToken);
+            var mediaAttachBody = [
+                '<div class="text-left text-sm text-slate-600">',
+                '<div class="font-semibold text-slate-950">Etapa 4 de 4: baixando midias e finalizando.</div>',
+                '<div class="mt-2">Agora a imagem e os demais recursos da fonte estao sendo aplicados.</div>',
+                '</div>'
+            ].join('');
+            if (swalOpened) {
+                updateManualRunSwal('Finalizando midias', mediaAttachBody, 'info');
+            }
+            setManualRunStatus('Baixando midias e finalizando o post...', 'warning');
+
+            var mediaAttachResult = await runStage('media_attach', stageToken);
+            var generatedResult = mediaAttachResult.result || mediaResult.result || {};
+            var link = generatedResult.view_link || generatedResult.permalink || generatedResult.edit_link || '';
+            if (link) {
+                setManualRunStatusHtml('Item gerado com sucesso.', link, 'Ver conteúdo', 'success');
+            } else {
+                setManualRunStatus('Item gerado com sucesso.', 'success');
+            }
+
+            if (swalOpened) {
+                updateManualRunSwal('Item gerado', '<div class="text-center text-sm text-slate-600">O conteúdo foi criado com sucesso.</div>' + (link ? '<div class="mt-4 flex justify-center"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white no-underline transition hover:bg-indigo-500">Ver conteúdo</a></div>' : ''), 'success');
+            }
+
+            window.setTimeout(function () {
+                loadManualRunItems(manualRunCurrentGeneratorId, true);
+            }, 350);
+        } catch (error) {
+            if (swalOpened) {
+                updateManualRunSwal('Erro ao gerar', '<div class="text-left text-sm text-slate-600">' + escapeHtml(error && error.message ? error.message : 'Erro ao gerar o item.') + '</div>', 'error');
+            }
+            setManualRunStatus(error && error.message ? error.message : 'Erro ao gerar o item.', 'error');
+        } finally {
+            window.AlphaRssAiGeneratorManualRunBusy = false;
         }
-        manualRunForm.submit();
     }
 
-    function loadManualRunItems(generatorId) {
+    function loadManualRunItems(generatorId, preserveResultStatus) {
         if (!generatorId) {
             return;
         }
         manualRunCurrentGeneratorId = String(generatorId);
-        setManualRunStatus('', '');
+        if (!preserveResultStatus) {
+            setManualRunStatus('', '');
+        }
         if (manualRunTitle) {
             manualRunTitle.textContent = 'Escolher item';
         }
@@ -423,7 +661,8 @@
             },
             signal: manualRunLoadingRequest ? manualRunLoadingRequest.signal : undefined
         }).then(function (response) {
-            return response.json().then(function (payload) {
+            return response.text().then(function (text) {
+                var payload = window.AlphaRssAiParseMaybeJsonResponseText(text);
                 return {
                     ok: response.ok,
                     status: response.status,
@@ -490,11 +729,13 @@
         setValue('image_source_mode', normalizeImageSourceModeForType(defaults.source_type, defaults.image_source_mode || getDefaultImageSourceModeForType(defaults.source_type)));
         setValue('pexels_query', defaults.pexels_query);
         setValue('source_video_enabled', defaults.source_video_enabled);
+        setValue('source_content_media_enabled', defaults.source_content_media_enabled);
         setValue('video_selector_class', defaults.video_selector_class);
         setValue('image_selector_class', defaults.image_selector_class);
         setValue('link_selector_class', defaults.link_selector_class);
         setValue('content_image_size', defaults.content_image_size);
         setValue('source_link_phrases', defaults.source_link_phrases);
+        setValue('source_link_style', defaults.source_link_style);
         setValue('source_context_exclude_phrases', defaults.source_context_exclude_phrases);
         setValue('source_context_rating_label', defaults.source_context_rating_label);
         setValue('source_context_min_rating', defaults.source_context_min_rating);
@@ -543,11 +784,13 @@
         setValue('image_source_mode', normalizeImageSourceModeForType(generator.source_type || defaults.source_type, generator.image_source_mode || (typeof generator.pexels_enabled !== 'undefined' ? (String(generator.pexels_enabled) === '1' ? 'rss_or_pexels' : 'rss') : defaults.image_source_mode)));
         setValue('pexels_query', generator.pexels_query || defaults.pexels_query);
         setValue('source_video_enabled', String(typeof generator.source_video_enabled !== 'undefined' ? generator.source_video_enabled : defaults.source_video_enabled));
+        setValue('source_content_media_enabled', String(typeof generator.source_content_media_enabled !== 'undefined' ? generator.source_content_media_enabled : defaults.source_content_media_enabled));
         setValue('video_selector_class', generator.video_selector_class || defaults.video_selector_class);
         setValue('image_selector_class', generator.image_selector_class || defaults.image_selector_class);
         setValue('link_selector_class', generator.link_selector_class || defaults.link_selector_class);
         setValue('content_image_size', generator.content_image_size || defaults.content_image_size);
         setValue('source_link_phrases', generator.source_link_phrases || defaults.source_link_phrases);
+        setValue('source_link_style', generator.source_link_style || defaults.source_link_style);
         setValue('source_context_exclude_phrases', generator.source_context_exclude_phrases || defaults.source_context_exclude_phrases);
         setValue('source_context_rating_label', generator.source_context_rating_label || defaults.source_context_rating_label);
         setValue('source_context_min_rating', typeof generator.source_context_min_rating !== 'undefined' ? generator.source_context_min_rating : defaults.source_context_min_rating);
@@ -573,6 +816,10 @@
     var sourceTypeEl = byName('source_type');
     if (sourceTypeEl) {
         sourceTypeEl.addEventListener('change', syncSourceFields);
+    }
+    var sourceContentMediaEnabledEl = byName('source_content_media_enabled');
+    if (sourceContentMediaEnabledEl) {
+        sourceContentMediaEnabledEl.addEventListener('change', syncSourceFields);
     }
 
     initSelect2Fields();
@@ -748,10 +995,12 @@
             }
             var itemGuid = String(button.getAttribute('data-run-item-guid') || '');
             if (itemGuid !== '') {
-                submitManualRunItem(itemGuid);
+                runManualRunItem(itemGuid);
             }
         });
     }
+
+    window.AlphaRssAiGeneratorRunItem = runManualRunItem;
 
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {

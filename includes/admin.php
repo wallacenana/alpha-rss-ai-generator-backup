@@ -68,6 +68,17 @@ class Alpha_RSS_AI_Generator_Admin
             };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            .arc-accent-btn {
+                background-color: var(--wp-admin-theme-color) !important;
+                color: #fff !important;
+            }
+
+            .arc-accent-btn:hover {
+                background-color: var(--wp-admin-theme-color-darker-10, var(--wp-admin-theme-color)) !important;
+                color: #fff !important;
+            }
+        </style>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -323,12 +334,6 @@ class Alpha_RSS_AI_Generator_Admin
                             <div id="arc-manual-run-loading" class="flex items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-sm text-slate-500">Carregando itens...</div>
                             <div id="arc-manual-run-empty" class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">Nenhum item disponível. Todos os itens já foram processados.</div>
                             <div id="arc-manual-run-list" class="space-y-4"></div>
-                            <form id="arc-manual-run-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="hidden">
-                                <?php wp_nonce_field('arc_run_generator', 'arc_run_nonce'); ?>
-                                <input type="hidden" name="action" value="arc_run_generator" />
-                                <input type="hidden" name="generator_id" value="" />
-                                <input type="hidden" name="item_guid" value="" />
-                            </form>
                         </div>
                     </div>
                 </div>
@@ -483,33 +488,53 @@ class Alpha_RSS_AI_Generator_Admin
                                     <input type="text" name="video_selector_class" placeholder="slide-key image-holder" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                     <p class="mt-1 text-xs text-slate-500">Informe a classe exata do bloco que contém o iframe. O sistema só tenta esse wrapper para pegar o src do vídeo.</p>
                                 </div>
-                                <div class="grid gap-4 md:col-span-2 md:grid-cols-2" data-rss-source-selectors-field>
-                                    <div data-rss-image-selector-field>
-                                        <label class="mb-1 block text-sm font-medium text-slate-700">Classe da imagem da fonte</label>
-                                        <input type="text" name="image_selector_class" placeholder="responsive-img img-article-square" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                                        <p class="mt-1 text-xs text-slate-500">Use a classe do wrapper ou da imagem que deve entrar no outline da página.</p>
-                                    </div>
-                                    <div data-rss-link-selector-field>
-                                        <label class="mb-1 block text-sm font-medium text-slate-700">Classe do link da fonte</label>
-                                        <input type="text" name="link_selector_class" placeholder="affiliate-single" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                                        <p class="mt-1 text-xs text-slate-500">Use a classe do wrapper ou do link que deve entrar no outline da página.</p>
-                                    </div>
-                                </div>
                                 <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Tamanho das imagens no conteúdo</label>
-                                    <select name="content_image_size" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="thumbnail">Thumbnail</option>
-                                        <option value="medium" selected>Médio</option>
-                                        <option value="medium_large">Médio grande</option>
-                                        <option value="large">Grande</option>
-                                        <option value="full">Original</option>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Pegar imagens e links da fonte</label>
+                                    <select name="source_content_media_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                        <option value="0" selected>Nao</option>
+                                        <option value="1">Sim</option>
                                     </select>
-                                    <p class="mt-1 text-xs text-slate-500">Esse tamanho é usado quando o PHP baixa a imagem e monta o bloco Gutenberg localmente.</p>
+                                    <p class="mt-1 text-xs text-slate-500">Ative apenas se quiser que o PHP pegue imagens e links da fonte e insira isso no conteudo.</p>
                                 </div>
-                                <div class="md:col-span-2">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Frases do link da fonte</label>
-                                    <textarea name="source_link_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Assista na plataforma&#10;Veja no catálogo&#10;Confira a fonte"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases()); ?></textarea>
-                                    <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas para o link externo exibido ao fim de cada seção.</p>
+                                <div class="hidden md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-rss-source-content-media-field>
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div data-rss-image-selector-field>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Classe da imagem da fonte</label>
+                                            <input type="text" name="image_selector_class" placeholder="responsive-img img-article-square" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                            <p class="mt-1 text-xs text-slate-500">Use a classe do wrapper ou da imagem que deve entrar no outline da pagina.</p>
+                                        </div>
+                                        <div data-rss-link-selector-field>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Classe do link da fonte</label>
+                                            <input type="text" name="link_selector_class" placeholder="affiliate-single" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                            <p class="mt-1 text-xs text-slate-500">Use a classe do wrapper ou do link que deve entrar no outline da pagina.</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4">
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Tamanho das imagens no conteudo</label>
+                                        <select name="content_image_size" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                            <option value="thumbnail">Thumbnail</option>
+                                            <option value="medium" selected>Medio</option>
+                                            <option value="medium_large">Medio grande</option>
+                                            <option value="large">Grande</option>
+                                            <option value="full">Original</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-slate-500">Esse tamanho e usado quando o PHP baixa a imagem e monta o bloco Gutenberg localmente.</p>
+                                    </div>
+                                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                                        <div class="md:col-span-2">
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Frases do CTA da fonte</label>
+                                            <textarea name="source_link_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Assista na plataforma&#10;Veja no catalogo&#10;Confira a fonte"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases()); ?></textarea>
+                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas para o CTA exibido ao fim de cada secao.</p>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Formato do link da fonte</label>
+                                            <select name="source_link_style" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                <option value="button" selected>Botao</option>
+                                                <option value="link">Link simples</option>
+                                            </select>
+                                            <p class="mt-1 text-xs text-slate-500">Escolha se o CTA final vai sair como botao ou como link simples.</p>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-rss-source-filters-field>
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -542,13 +567,6 @@ class Alpha_RSS_AI_Generator_Admin
                                             </select>
                                         </div>
                                     </div>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">SEO ativado</label>
-                                    <select name="seo_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="1">Sim</option>
-                                        <option value="0">Não</option>
-                                    </select>
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Linguagem final de geração</label>
@@ -646,14 +664,14 @@ class Alpha_RSS_AI_Generator_Admin
                                         <p class="mt-1 text-xs text-slate-500">Comece a digitar para buscar e selecione quantas tags quiser.</p>
                                     </div>
                                 </div>
-                                <div class="md:col-span-2">
+                                <!-- <div class="md:col-span-2">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Taxonomias personalizadas</label>
                                     <textarea name="custom_taxonomies" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomy=term1,term2"></textarea>
                                 </div>
                                 <div class="md:col-span-2">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Campos meta personalizados</label>
                                     <textarea name="custom_meta" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
-                                </div>
+                                </div> -->
                                 <div class="md:col-span-2">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
                                     <textarea name="prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_prompt_template()); ?></textarea>
@@ -752,11 +770,13 @@ class Alpha_RSS_AI_Generator_Admin
                                         'image_source_mode' => '',
                                         'pexels_query' => Alpha_RSS_AI_Generator::get_default_pexels_query(),
                                         'source_video_enabled' => '0',
+                                        'source_content_media_enabled' => '0',
                                         'video_selector_class' => '',
                                         'image_selector_class' => '',
                                         'link_selector_class' => '',
                                         'content_image_size' => 'medium',
                                         'source_link_phrases' => Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases(),
+                                        'source_link_style' => 'button',
                                         'source_context_exclude_phrases' => '',
                                         'source_context_rating_label' => 'IMDb',
                                         'source_context_min_rating' => '0',
@@ -795,7 +815,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var manualRunLoading = document.getElementById('arc-manual-run-loading');
                     var manualRunEmpty = document.getElementById('arc-manual-run-empty');
                     var manualRunList = document.getElementById('arc-manual-run-list');
-                    var manualRunForm = document.getElementById('arc-manual-run-form');
                     var modal = document.getElementById('arc-generator-modal');
                     var backdrop = document.getElementById('arc-generator-backdrop');
                     var form = document.getElementById('arc-generator-form');
@@ -805,6 +824,7 @@ class Alpha_RSS_AI_Generator_Admin
                     var listIdField = form.querySelector('[data-list-id-field]');
                     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
                     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
+                    var sourceContentMediaField = form.querySelector('[data-rss-source-content-media-field]');
                     var apiBase = <?php echo wp_json_encode(rest_url('alpha-rss-ai-generator/v1')); ?>;
                     var restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
                     var generatorImportModal = document.getElementById('arc-generator-import-modal');
@@ -962,6 +982,9 @@ class Alpha_RSS_AI_Generator_Admin
                         var keywordListModeEl = byName('keyword_list_mode');
                         var keywordListMode = keywordListModeEl ? keywordListModeEl.value : 'keywords';
                         var imageSourceModeEl = byName('image_source_mode');
+                        var sourceContentMediaEnabledEl = byName('source_content_media_enabled');
+                        var sourceContentMediaEnabled = sourceContentMediaEnabledEl ? sourceContentMediaEnabledEl.value === '1' : false;
+                        var showSourceContentMedia = sourceContentMediaEnabled && (sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference'));
 
                         if (feedUrlField) {
                             feedUrlField.classList.toggle('hidden', sourceType === 'keyword_list');
@@ -975,6 +998,9 @@ class Alpha_RSS_AI_Generator_Admin
                         if (videoSelectorField) {
                             var showVideoSelector = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
                             videoSelectorField.classList.toggle('hidden', !showVideoSelector);
+                        }
+                        if (sourceContentMediaField) {
+                            sourceContentMediaField.classList.toggle('hidden', !showSourceContentMedia);
                         }
                         if (imageSourceModeEl) {
                             imageSourceModeEl.value = normalizeImageSourceModeForType(sourceType, keywordListMode, imageSourceModeEl.value);
@@ -1061,6 +1087,31 @@ class Alpha_RSS_AI_Generator_Admin
                         manualRunStatus.textContent = message;
                     }
 
+                    function setManualRunStatusHtml(message, link, linkLabel, type) {
+                        if (!manualRunStatus) {
+                            return;
+                        }
+                        if (!message) {
+                            manualRunStatus.className = 'hidden mb-4 rounded-xl border px-4 py-3 text-sm';
+                            manualRunStatus.textContent = '';
+                            return;
+                        }
+                        var classes = 'mb-4 rounded-xl border px-4 py-3 text-sm';
+                        if (type === 'error') {
+                            classes += ' border-rose-200 bg-rose-50 text-rose-700';
+                        } else if (type === 'success') {
+                            classes += ' border-emerald-200 bg-emerald-50 text-emerald-700';
+                        } else {
+                            classes += ' border-slate-200 bg-slate-50 text-slate-600';
+                        }
+                        manualRunStatus.className = classes;
+                        var html = '<div>' + escapeHtml(message) + '</div>';
+                        if (link) {
+                            html += '<a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">' + escapeHtml(linkLabel || 'Ver conteúdo') + '</a>';
+                        }
+                        manualRunStatus.innerHTML = html;
+                    }
+
                     function setManualRunLoading(isLoading) {
                         if (manualRunLoading) {
                             manualRunLoading.classList.toggle('hidden', !isLoading);
@@ -1118,27 +1169,368 @@ class Alpha_RSS_AI_Generator_Admin
                         });
                     }
 
-                    function submitManualRunItem(itemGuid) {
-                        if (!manualRunForm) {
+                    async function runManualRunItem(itemGuid) {
+                        if (!manualRunCurrentGeneratorId || !itemGuid) {
                             return;
                         }
-                        var generatorIdField = manualRunForm.querySelector('[name="generator_id"]');
-                        var itemGuidField = manualRunForm.querySelector('[name="item_guid"]');
-                        if (generatorIdField) {
-                            generatorIdField.value = manualRunCurrentGeneratorId || '';
+                        if (window.AlphaRssAiGeneratorManualRunBusy) {
+                            return;
                         }
-                        if (itemGuidField) {
-                            itemGuidField.value = itemGuid || '';
+
+                        window.AlphaRssAiGeneratorManualRunBusy = true;
+                        var swalOpened = showManualRunSwal('Gerando item', '<div class="text-left text-sm text-slate-600">Processando o item escolhido sem recarregar a página.</div>');
+                        setManualRunStatus('Gerando item selecionado...', 'warning');
+
+                        try {
+                            var endpoint = '/generators/' + encodeURIComponent(manualRunCurrentGeneratorId) + '/run';
+                            var stageToken = '';
+
+                            async function runStage(stage, token) {
+                                var result = await api(endpoint, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        stage: stage,
+                                        item_guid: itemGuid,
+                                        token: token || ''
+                                    })
+                                });
+
+                                if (!result.ok || !result.payload || !result.payload.success) {
+                                    throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Falha ao gerar o item');
+                                }
+
+                                return result.payload;
+                            }
+
+                            var seoBody = [
+                                '<div class="text-left text-sm text-slate-600">',
+                                '<div class="font-semibold text-slate-950">Etapa 1 de 4: gerando SEO.</div>',
+                                '<div class="mt-2">Aguarde enquanto o titulo, slug e contexto sao preparados.</div>',
+                                '</div>'
+                            ].join('');
+                            if (swalOpened) {
+                                updateManualRunSwal('Gerando SEO', seoBody, 'info');
+                            }
+                            setManualRunStatus('Gerando SEO do item selecionado...', 'warning');
+
+                            var seoResult = await runStage('seo', '');
+                            stageToken = seoResult.token || '';
+                            if (!stageToken) {
+                                throw new Error('Nao foi possivel iniciar a etapa de conteudo');
+                            }
+
+                            var contentBody = [
+                                '<div class="text-left text-sm text-slate-600">',
+                                '<div class="font-semibold text-slate-950">Etapa 2 de 4: gerando conteudo.</div>',
+                                '<div class="mt-2">O texto final esta sendo criado com base no item escolhido.</div>',
+                                '</div>'
+                            ].join('');
+                            if (swalOpened) {
+                                updateManualRunSwal('Gerando conteudo', contentBody, 'info');
+                            }
+                            setManualRunStatus('Gerando conteudo do item selecionado...', 'warning');
+
+                            var contentResult = await runStage('content', stageToken);
+                            stageToken = contentResult.token || stageToken;
+
+                            var mediaBody = [
+                                '<div class="text-left text-sm text-slate-600">',
+                                '<div class="font-semibold text-slate-950">Etapa 3 de 4: preparando o post.</div>',
+                                '<div class="mt-2">O conteudo base esta salvo e a midia sera aplicada em seguida.</div>',
+                                '</div>'
+                            ].join('');
+                            if (swalOpened) {
+                                updateManualRunSwal('Salvando post', mediaBody, 'info');
+                            }
+                            setManualRunStatus('Salvando o post gerado...', 'warning');
+
+                            var mediaResult = await runStage('media', stageToken);
+                            var mediaAttachBody = [
+                                '<div class="text-left text-sm text-slate-600">',
+                                '<div class="font-semibold text-slate-950">Etapa 4 de 4: baixando midias e finalizando.</div>',
+                                '<div class="mt-2">Agora a imagem e os demais recursos da fonte estao sendo aplicados.</div>',
+                                '</div>'
+                            ].join('');
+                            if (swalOpened) {
+                                updateManualRunSwal('Finalizando midias', mediaAttachBody, 'info');
+                            }
+                            setManualRunStatus('Baixando midias e finalizando o post...', 'warning');
+
+                            var mediaAttachResult = await runStage('media_attach', stageToken);
+                            var generatedResult = mediaAttachResult.result || mediaResult.result || {};
+                            var link = generatedResult.view_link || generatedResult.permalink || generatedResult.edit_link || '';
+                            if (link) {
+                                setManualRunStatusHtml('Item gerado com sucesso.', link, 'Ver conteúdo', 'success');
+                            } else {
+                                setManualRunStatus('Item gerado com sucesso.', 'success');
+                            }
+
+                            if (swalOpened) {
+                                updateManualRunSwal('Item gerado', '<div class="text-center text-sm text-slate-600">O conteúdo foi criado com sucesso.</div>' + (link ? '<div class="mt-4 flex justify-center"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white no-underline transition hover:bg-indigo-500">Ver conteúdo</a></div>' : ''), 'success');
+                            }
+
+                            window.setTimeout(function () {
+                                loadManualRunItems(manualRunCurrentGeneratorId, true);
+                            }, 350);
+                        } catch (error) {
+                            if (swalOpened) {
+                                updateManualRunSwal('Erro ao gerar', '<div class="text-left text-sm text-slate-600">' + escapeHtml(error && error.message ? error.message : 'Erro ao gerar o item.') + '</div>', 'error');
+                            }
+                            setManualRunStatus(error && error.message ? error.message : 'Erro ao gerar o item.', 'error');
+                        } finally {
+                            window.AlphaRssAiGeneratorManualRunBusy = false;
                         }
-                        manualRunForm.submit();
                     }
 
-                    function loadManualRunItems(generatorId) {
+                    window.AlphaRssAiGeneratorRunItem = runManualRunItem;
+
+                    async function runGenerateBatchSplit() {
+                        if (!currentGenerateList || !currentGenerateList.id) {
+                            return;
+                        }
+
+                        var requested = 1;
+                        if (generateRequestedInput) {
+                            requested = Math.max(1, parseInt(generateRequestedInput.value, 10) || 1);
+                        }
+
+                        var filters = getGenerateFilters();
+                        var settings = gatherGenerateSettings();
+
+                        if (!currentGenerateCountReady || currentGenerateAvailableCount === null) {
+                            await refreshGenerateAvailability();
+                        }
+
+                        var available = Math.max(0, parseInt(currentGenerateAvailableCount, 10) || 0);
+                        var target = Math.min(requested, available);
+
+                        if (target <= 0) {
+                            setStatus(generateModalStatus, "Nenhum item elegível para gerar com os filtros atuais.", 'error');
+                            return;
+                        }
+
+                        var generated = 0;
+                        var lastGeneratedLink = '';
+                        var runLabel = generateRunButton ? generateRunButton.textContent : 'Gerar agora';
+                        var ctaLabel = generateRunCtaButton ? generateRunCtaButton.textContent : 'Iniciar geração';
+                        currentGenerateRunToken++;
+                        var runToken = currentGenerateRunToken;
+                        var swalOpened = showGenerateSwal('Preparando geração', '<div class="text-left text-sm text-slate-600">Aguarde enquanto separamos a próxima linha elegível.</div>');
+
+                        if (generateRunButton) {
+                            generateRunButton.disabled = true;
+                            generateRunButton.textContent = 'Gerando...';
+                        }
+                        if (generateRunCtaButton) {
+                            generateRunCtaButton.disabled = true;
+                            generateRunCtaButton.textContent = 'Gerando...';
+                        }
+
+                        try {
+                            while (generated < target) {
+                                if (runToken !== currentGenerateRunToken) {
+                                    break;
+                                }
+
+                                var itemPosition = generated + 1;
+                                var stepLabel = 'Item ' + itemPosition + ' de ' + target;
+                                var seoBody = [
+                                    '<div class="text-left text-sm text-slate-600">',
+                                    '<div class="font-semibold text-slate-950">' + escapeHtml(stepLabel) + '</div>',
+                                    '<div class="mt-2">Etapa 1 de 4: gerando SEO, slug e contexto.</div>',
+                                    '</div>'
+                                ].join('');
+                                if (swalOpened) {
+                                    updateGenerateSwal('Gerando SEO', seoBody, 'info');
+                                }
+                                setStatus(generateModalStatus, 'Gerando SEO do item ' + itemPosition + ' de ' + target + '...', 'warning');
+
+                                var seoResult = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        stage: 'seo',
+                                        split_stages: true,
+                                        filters: filters,
+                                        settings: settings
+                                    })
+                                });
+
+                                if (!seoResult.ok || !seoResult.payload) {
+                                    throw new Error((seoResult.payload && seoResult.payload.message) ? seoResult.payload.message : 'Falha ao preparar o SEO do item');
+                                }
+
+                                if (!seoResult.payload.success) {
+                                    if (seoResult.payload.done) {
+                                        if (seoResult.payload.counts && typeof seoResult.payload.counts.pending_rows !== 'undefined') {
+                                            currentGenerateAvailableCount = Math.max(0, parseInt(seoResult.payload.counts.pending_rows || 0, 10) || 0);
+                                            updateGenerateTargetSummary();
+                                        }
+                                        break;
+                                    }
+                                    throw new Error(seoResult.payload.message || 'Falha ao preparar o SEO do item');
+                                }
+
+                                var stageToken = seoResult.payload.token || '';
+                                var stageItem = seoResult.payload.item || {};
+                                if (!stageToken) {
+                                    throw new Error('Nao foi possivel iniciar a etapa de conteudo');
+                                }
+
+                                var contentBody = [
+                                    '<div class="text-left text-sm text-slate-600">',
+                                    '<div class="font-semibold text-slate-950">' + escapeHtml(stepLabel) + '</div>',
+                                    '<div class="mt-2">Etapa 2 de 4: escrevendo o conteudo.</div>',
+                                    '</div>'
+                                ].join('');
+                                if (swalOpened) {
+                                    updateGenerateSwal('Gerando conteúdo', contentBody, 'info');
+                                }
+                                setStatus(generateModalStatus, 'Gerando conteúdo do item ' + itemPosition + ' de ' + target + '...', 'warning');
+
+                                var contentResult = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        stage: 'content',
+                                        split_stages: true,
+                                        token: stageToken,
+                                        filters: filters,
+                                        settings: settings
+                                    })
+                                });
+
+                                if (!contentResult.ok || !contentResult.payload || !contentResult.payload.success) {
+                                    throw new Error((contentResult.payload && contentResult.payload.message) ? contentResult.payload.message : 'Falha ao concluir o conteúdo do item');
+                                }
+
+                                var mediaBody = [
+                                    '<div class="text-left text-sm text-slate-600">',
+                                    '<div class="font-semibold text-slate-950">' + escapeHtml(stepLabel) + '</div>',
+                                    '<div class="mt-2">Etapa 3 de 4: preparando o post para receber a midia.</div>',
+                                    '</div>'
+                                ].join('');
+                                if (swalOpened) {
+                                    updateGenerateSwal('Salvando post', mediaBody, 'info');
+                                }
+                                setStatus(generateModalStatus, 'Preparando o post do item ' + itemPosition + ' de ' + target + '...', 'warning');
+
+                                var mediaResult = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        stage: 'media',
+                                        split_stages: true,
+                                        token: stageToken,
+                                        filters: filters,
+                                        settings: settings
+                                    })
+                                });
+
+                                if (!mediaResult.ok || !mediaResult.payload || !mediaResult.payload.success) {
+                                    throw new Error((mediaResult.payload && mediaResult.payload.message) ? mediaResult.payload.message : 'Falha ao concluir o conteúdo do item');
+                                }
+
+                                var mediaAttachBody = [
+                                    '<div class="text-left text-sm text-slate-600">',
+                                    '<div class="font-semibold text-slate-950">' + escapeHtml(stepLabel) + '</div>',
+                                    '<div class="mt-2">Etapa 4 de 4: baixando midias e finalizando o post.</div>',
+                                    '</div>'
+                                ].join('');
+                                if (swalOpened) {
+                                    updateGenerateSwal('Finalizando midias', mediaAttachBody, 'info');
+                                }
+                                setStatus(generateModalStatus, 'Baixando midias do item ' + itemPosition + ' de ' + target + '...', 'warning');
+
+                                var mediaAttachResult = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        stage: 'media_attach',
+                                        split_stages: true,
+                                        token: stageToken,
+                                        filters: filters,
+                                        settings: settings
+                                    })
+                                });
+
+                                if (!mediaAttachResult.ok || !mediaAttachResult.payload || !mediaAttachResult.payload.success) {
+                                    throw new Error((mediaAttachResult.payload && mediaAttachResult.payload.message) ? mediaAttachResult.payload.message : 'Falha ao concluir o conteÃºdo do item');
+                                }
+
+                                if (mediaAttachResult.payload.done) {
+                                    if (mediaAttachResult.payload.counts && typeof mediaAttachResult.payload.counts.pending_rows !== 'undefined') {
+                                        currentGenerateAvailableCount = Math.max(0, parseInt(mediaAttachResult.payload.counts.pending_rows || 0, 10) || 0);
+                                        updateGenerateTargetSummary();
+                                    }
+                                    break;
+                                }
+
+                                var generatedResult = mediaAttachResult.payload.result || mediaResult.payload.result || {};
+                                lastGeneratedLink = generatedResult.view_link || generatedResult.permalink || generatedResult.edit_link || '';
+                                if (lastGeneratedLink) {
+                                    setStatusHtml(generateModalStatus, 'Item gerado com sucesso.', lastGeneratedLink, 'Abrir conteúdo', 'success');
+                                } else {
+                                    setStatus(generateModalStatus, 'Item gerado com sucesso.', 'success');
+                                }
+
+                                generated++;
+                                if (mediaAttachResult.payload.counts && typeof mediaAttachResult.payload.counts.pending_rows !== 'undefined') {
+                                    currentGenerateAvailableCount = Math.max(0, parseInt(mediaAttachResult.payload.counts.pending_rows || 0, 10) || 0);
+                                } else {
+                                    currentGenerateAvailableCount = Math.max(0, (currentGenerateAvailableCount || 0) - 1);
+                                }
+                                updateGenerateTargetSummary();
+                            }
+
+                            if (generated > 0) {
+                                if (lastGeneratedLink) {
+                                    setStatusHtml(generateModalStatus, 'Geração concluída. ' + generated + ' item(ns) criado(s).', lastGeneratedLink, 'Abrir último conteúdo', 'success');
+                                } else {
+                                    setStatus(generateModalStatus, 'Geração concluída. ' + generated + ' item(ns) criado(s).', 'success');
+                                }
+                            } else if (target > 0) {
+                                setStatus(generateModalStatus, 'Nenhum item foi gerado.', 'warning');
+                            }
+                        } catch (error) {
+                            if (swalOpened) {
+                                updateGenerateSwal('Erro na geração', '<div class="text-left text-sm text-slate-600">' + escapeHtml(error.message || 'Erro ao gerar em lote.') + '</div>', 'error');
+                            }
+                            setStatus(generateModalStatus, error.message || 'Erro ao gerar em lote.', 'error');
+                        } finally {
+                            closeGenerateSwal();
+                            if (generateRunButton) {
+                                generateRunButton.disabled = false;
+                                generateRunButton.textContent = runLabel || 'Gerar agora';
+                            }
+                            if (generateRunCtaButton) {
+                                generateRunCtaButton.disabled = false;
+                                generateRunCtaButton.textContent = ctaLabel || 'Iniciar geração';
+                            }
+                        }
+                    }
+
+                    window.AlphaRssAiGenerateBatchSplit = runGenerateBatchSplit;
+
+                    function loadManualRunItems(generatorId, preserveResultStatus) {
                         if (!generatorId) {
                             return;
                         }
                         manualRunCurrentGeneratorId = String(generatorId);
-                        setManualRunStatus('', '');
+                        if (!preserveResultStatus) {
+                            setManualRunStatus('', '');
+                        }
                         if (manualRunTitle) {
                             manualRunTitle.textContent = 'Escolher item';
                         }
@@ -1161,7 +1553,8 @@ class Alpha_RSS_AI_Generator_Admin
                             },
                             signal: manualRunLoadingRequest ? manualRunLoadingRequest.signal : undefined
                         }).then(function(response) {
-                            return response.json().then(function(payload) {
+                            return response.text().then(function(text) {
+                                var payload = window.AlphaRssAiParseMaybeJsonResponseText(text);
                                 return {
                                     ok: response.ok,
                                     status: response.status,
@@ -1229,9 +1622,11 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('image_source_mode', normalizeImageSourceModeForType(defaults.source_type, defaults.keyword_list_mode, defaults.image_source_mode || getDefaultImageSourceModeForType(defaults.source_type, defaults.keyword_list_mode)));
                         setValue('pexels_query', defaults.pexels_query);
                         setValue('source_video_enabled', defaults.source_video_enabled);
+                        setValue('source_content_media_enabled', defaults.source_content_media_enabled);
                         setValue('video_selector_class', defaults.video_selector_class);
                         setValue('content_image_size', defaults.content_image_size);
                         setValue('source_link_phrases', defaults.source_link_phrases);
+                        setValue('source_link_style', defaults.source_link_style);
                         setValue('seo_enabled', defaults.seo_enabled);
                         setValue('generation_language', defaults.generation_language);
                         setValue('related_posts_enabled', defaults.related_posts_enabled);
@@ -1286,9 +1681,11 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('image_source_mode', normalizeImageSourceModeForType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.image_source_mode || (typeof generator.pexels_enabled !== 'undefined' ? (String(generator.pexels_enabled) === '1' ? 'rss_or_pexels' : 'rss') : defaults.image_source_mode)));
                         setValue('pexels_query', generator.pexels_query || defaults.pexels_query);
                         setValue('source_video_enabled', String(typeof generator.source_video_enabled !== 'undefined' ? generator.source_video_enabled : defaults.source_video_enabled));
+                        setValue('source_content_media_enabled', String(typeof generator.source_content_media_enabled !== 'undefined' ? generator.source_content_media_enabled : defaults.source_content_media_enabled));
                         setValue('video_selector_class', generator.video_selector_class || defaults.video_selector_class);
                         setValue('content_image_size', generator.content_image_size || defaults.content_image_size);
                         setValue('source_link_phrases', generator.source_link_phrases || defaults.source_link_phrases);
+                        setValue('source_link_style', generator.source_link_style || defaults.source_link_style);
                         setValue('seo_enabled', String(typeof generator.seo_enabled !== 'undefined' ? generator.seo_enabled : defaults.seo_enabled));
                         setValue('generation_language', generator.generation_language || defaults.generation_language);
                         setValue('related_posts_enabled', String(typeof generator.related_posts_enabled !== 'undefined' ? generator.related_posts_enabled : defaults.related_posts_enabled));
@@ -1319,6 +1716,10 @@ class Alpha_RSS_AI_Generator_Admin
                     var sourceTypeEl = byName('source_type');
                     if (sourceTypeEl) {
                         sourceTypeEl.addEventListener('change', syncSourceFields);
+                    }
+                    var sourceContentMediaEnabledEl = byName('source_content_media_enabled');
+                    if (sourceContentMediaEnabledEl) {
+                        sourceContentMediaEnabledEl.addEventListener('change', syncSourceFields);
                     }
                     var keywordListModeEl = byName('keyword_list_mode');
                     if (keywordListModeEl) {
@@ -1694,19 +2095,6 @@ class Alpha_RSS_AI_Generator_Admin
                         });
                     }
 
-                    if (manualRunList) {
-                        manualRunList.addEventListener('click', function(event) {
-                            var button = event.target && event.target.closest ? event.target.closest('[data-run-item-guid]') : null;
-                            if (!button) {
-                                return;
-                            }
-                            var itemGuid = String(button.getAttribute('data-run-item-guid') || '');
-                            if (itemGuid !== '') {
-                                submitManualRunItem(itemGuid);
-                            }
-                        });
-                    }
-
                     document.addEventListener('keydown', function(event) {
                         if (event.key === 'Escape') {
                             if (modal && !modal.classList.contains('hidden')) {
@@ -1976,7 +2364,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             <td class="px-6 py-4">
                                                 <div class="flex flex-wrap gap-2">
                                                     <button type="button" data-open-keyword-list-modal data-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Abrir</button>
-                                                    <button type="button" data-open-keyword-generate-modal data-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-emerald-500">Gerar</button>
+                                                    <button type="button" data-open-keyword-generate-modal data-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="arc-accent-btn inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-semibold transition">Gerar</button>
                                                     <button type="button" data-delete-keyword-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir</button>
                                                 </div>
                                             </td>
@@ -2033,7 +2421,7 @@ class Alpha_RSS_AI_Generator_Admin
                         <div class="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                             <button type="button" id="arc-keyword-delete-current-list" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir lista</button>
                             <div class="flex items-center gap-3">
-                                <button type="button" id="arc-keyword-open-generate-btn" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500">Gerar em lote</button>
+                                <button type="button" id="arc-keyword-open-generate-btn" class="arc-accent-btn inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition">Gerar em lote</button>
                                 <button type="button" data-close-keyword-list-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Fechar</button>
                                 <button type="button" id="arc-keyword-save-map-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Salvar mapeamento</button>
                             </div>
@@ -2097,7 +2485,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-indigo-950">Pronto para gerar</h3>
                                                 <p class="mt-1 text-sm text-indigo-700">Quando a quantidade estiver correta, clique para iniciar a geração dos itens da planilha.</p>
                                             </div>
-                                            <button type="button" id="arc-keyword-generate-run-cta" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Iniciar geração</button>
+                                            <button type="button" id="arc-keyword-generate-run-cta" class="arc-accent-btn inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition">Iniciar geração</button>
                                         </div>
                                     </div>
 
@@ -2211,34 +2599,6 @@ class Alpha_RSS_AI_Generator_Admin
                                             </div>
                                         </div>
                                     </div>
-
-                                    <div class="grid gap-6 md:grid-cols-2">
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50">
-                                            <div class="border-b border-slate-200 px-4 py-3">
-                                                <h3 class="text-sm font-semibold text-slate-950">Taxonomias personalizadas</h3>
-                                            </div>
-                                            <div class="px-4 py-4">
-                                                <textarea id="arc-keyword-generate-taxonomies" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomia=term1,term2"></textarea>
-                                                <p class="mt-2 text-xs text-slate-500">Use uma linha por taxonomia. Ex.: `series=principal,secundaria`.</p>
-                                                <?php
-                                                $public_taxonomy_labels = array();
-                                                foreach ($public_taxonomies as $public_taxonomy) {
-                                                    $public_taxonomy_labels[] = !empty($public_taxonomy->labels->name) ? $public_taxonomy->labels->name : $public_taxonomy->name;
-                                                }
-                                                ?>
-                                                <p class="mt-2 text-xs text-slate-500">Taxonomias públicas detectadas: <?php echo esc_html(!empty($public_taxonomy_labels) ? implode(', ', $public_taxonomy_labels) : '-'); ?></p>
-                                            </div>
-                                        </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50">
-                                            <div class="border-b border-slate-200 px-4 py-3">
-                                                <h3 class="text-sm font-semibold text-slate-950">Metadados personalizados</h3>
-                                            </div>
-                                            <div class="px-4 py-4">
-                                                <textarea id="arc-keyword-generate-meta" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
-                                                <p class="mt-2 text-xs text-slate-500">Use uma linha por meta. Ex.: `_seo_title=Meu título`.</p>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2247,7 +2607,7 @@ class Alpha_RSS_AI_Generator_Admin
                             <div class="text-sm text-slate-500">Clique em atualizar quantidade após aplicar filtros para ver o total elegível.</div>
                             <div class="flex items-center gap-3">
                                 <button type="button" data-close-keyword-generate-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Fechar</button>
-                                <button type="button" id="arc-keyword-generate-run-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Iniciar geração</button>
+                                <button type="button" id="arc-keyword-generate-run-btn" class="arc-accent-btn inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition">Iniciar geração</button>
                             </div>
                         </div>
                     </div>
@@ -2402,6 +2762,42 @@ class Alpha_RSS_AI_Generator_Admin
                         target.innerHTML = html;
                     }
 
+                    function parseMaybeJsonResponseText(text) {
+                        var value = String(text === undefined || text === null ? '' : text).replace(/^\uFEFF/, '').trim();
+                        if (!value) {
+                            return null;
+                        }
+
+                        var firstChar = value.charAt(0);
+                        if (firstChar !== '{' && firstChar !== '[') {
+                            var objectIndex = value.indexOf('{');
+                            var arrayIndex = value.indexOf('[');
+                            var startIndex = -1;
+                            if (objectIndex >= 0 && arrayIndex >= 0) {
+                                startIndex = Math.min(objectIndex, arrayIndex);
+                            } else if (objectIndex >= 0) {
+                                startIndex = objectIndex;
+                            } else if (arrayIndex >= 0) {
+                                startIndex = arrayIndex;
+                            }
+
+                            if (startIndex > 0) {
+                                value = value.slice(startIndex).trim();
+                            }
+                        }
+
+                        try {
+                            return JSON.parse(value);
+                        } catch (error) {
+                            return {
+                                success: false,
+                                message: value || 'Resposta invalida'
+                            };
+                        }
+                    }
+
+                    window.AlphaRssAiParseMaybeJsonResponseText = parseMaybeJsonResponseText;
+
                     function api(path, options) {
                         var fetchOptions = options || {};
                         fetchOptions.credentials = 'same-origin';
@@ -2409,15 +2805,7 @@ class Alpha_RSS_AI_Generator_Admin
                         fetchOptions.headers['X-WP-Nonce'] = restNonce;
                         return fetch(apiBase + path, fetchOptions).then(function(response) {
                             return response.text().then(function(text) {
-                                var payload = null;
-                                try {
-                                    payload = text ? JSON.parse(text) : null;
-                                } catch (error) {
-                                    payload = {
-                                        success: false,
-                                        message: text || 'Resposta invalida'
-                                    };
-                                }
+                                var payload = window.AlphaRssAiParseMaybeJsonResponseText(text);
                                 return {
                                     ok: response.ok,
                                     status: response.status,
@@ -2425,6 +2813,143 @@ class Alpha_RSS_AI_Generator_Admin
                                 };
                             });
                         });
+                    }
+
+                    var generateSwalFallback = null;
+
+                    function renderGenerateSwalFallback(title, html, icon) {
+                        if (!document.body) {
+                            return;
+                        }
+
+                        if (generateSwalFallback && generateSwalFallback.parentNode) {
+                            generateSwalFallback.parentNode.removeChild(generateSwalFallback);
+                        }
+
+                        var overlay = document.createElement('div');
+                        overlay.id = 'arc-generate-swal-fallback';
+                        overlay.style.position = 'fixed';
+                        overlay.style.inset = '0';
+                        overlay.style.zIndex = '100000';
+                        overlay.style.background = 'rgba(15, 23, 42, 0.72)';
+                        overlay.style.display = 'flex';
+                        overlay.style.alignItems = 'center';
+                        overlay.style.justifyContent = 'center';
+                        overlay.style.padding = '20px';
+
+                        var tone = icon === 'error' ? '#dc2626' : (icon === 'success' ? '#16a34a' : '#4f46e5');
+                        overlay.innerHTML = [
+                            '<div style="width:min(420px, 100%); border-radius:24px; background:#fff; box-shadow:0 25px 70px rgba(0,0,0,.3); padding:24px 22px; text-align:center; font-family:inherit;">',
+                            '  <div style="display:flex; justify-content:center; margin-bottom:16px;">',
+                            '    <div style="width:54px; height:54px; border-radius:999px; border:4px solid rgba(79,70,229,.14); border-top-color:' + tone + '; animation: arcSpin 0.9s linear infinite;"></div>',
+                            '  </div>',
+                            '  <div data-generate-swal-title style="font-size:1.1rem; font-weight:700; color:#0f172a; margin-bottom:8px;">' + escapeHtml(title || 'Processando...') + '</div>',
+                            '  <div data-generate-swal-body style="font-size:.95rem; line-height:1.6; color:#475569;">' + (html || '') + '</div>',
+                            '  <div data-generate-swal-actions style="display:flex; justify-content:center; gap:12px; margin-top:18px;"></div>',
+                            '</div>'
+                        ].join('');
+
+                        document.body.appendChild(overlay);
+                        generateSwalFallback = overlay;
+                    }
+
+                    function showGenerateSwal(title, html) {
+                        if (window.Swal && typeof window.Swal.fire === 'function') {
+                            window.Swal.fire({
+                                title: title || 'Processando...',
+                                html: html || '',
+                                backdrop: false,
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                showCloseButton: false,
+                                showConfirmButton: false,
+                                didOpen: function() {
+                                    if (window.Swal && typeof window.Swal.showLoading === 'function') {
+                                        window.Swal.showLoading();
+                                    }
+                                }
+                            });
+                            return true;
+                        }
+                        renderGenerateSwalFallback(title, html, 'info');
+                        return true;
+                    }
+
+                    function updateGenerateSwal(title, html, icon) {
+                        var isFinalState = icon === 'success' || icon === 'error';
+                        if (window.Swal && typeof window.Swal.update === 'function' && window.Swal.isVisible && window.Swal.isVisible()) {
+                            if (isFinalState) {
+                                var finalOptions = {
+                                    title: title || '',
+                                    html: html || '',
+                                    icon: icon || 'info',
+                                    backdrop: false,
+                                    allowOutsideClick: false,
+                                    allowEscapeKey: false,
+                                    showCloseButton: false,
+                                    showConfirmButton: true,
+                                    confirmButtonText: 'Fechar',
+                                    customClass: {
+                                        htmlContainer: 'text-center'
+                                    }
+                                };
+                                window.Swal.close();
+                                window.setTimeout(function () {
+                                    if (window.Swal && typeof window.Swal.fire === 'function') {
+                                        window.Swal.fire(finalOptions);
+                                    }
+                                }, 0);
+                                return;
+                            }
+                            window.Swal.update({
+                                title: title || '',
+                                html: html || '',
+                                icon: icon || 'info',
+                                showCloseButton: false,
+                                showConfirmButton: isFinalState,
+                                confirmButtonText: isFinalState ? 'Fechar' : 'OK'
+                            });
+                            if (isFinalState && typeof window.Swal.hideLoading === 'function') {
+                                window.Swal.hideLoading();
+                            } else if (!isFinalState && typeof window.Swal.showLoading === 'function') {
+                                window.Swal.showLoading();
+                            }
+                            return;
+                        }
+
+                        if (generateSwalFallback) {
+                            var titleNode = generateSwalFallback.querySelector('[data-generate-swal-title]');
+                            var bodyNode = generateSwalFallback.querySelector('[data-generate-swal-body]');
+                            var actionsNode = generateSwalFallback.querySelector('[data-generate-swal-actions]');
+                            var spinnerNode = generateSwalFallback.querySelector('div[style*="animation"]');
+                            if (spinnerNode) {
+                                spinnerNode.style.borderTopColor = icon === 'error' ? '#dc2626' : (icon === 'success' ? '#16a34a' : '#4f46e5');
+                                if (isFinalState) {
+                                    spinnerNode.style.animation = 'none';
+                                    spinnerNode.style.display = 'none';
+                                }
+                            }
+                            if (titleNode) {
+                                titleNode.textContent = title || '';
+                            }
+                            if (bodyNode) {
+                                bodyNode.innerHTML = html || '';
+                                bodyNode.style.textAlign = 'center';
+                            }
+                            if (actionsNode) {
+                                actionsNode.innerHTML = isFinalState ? '<button type="button" onclick="var overlay=document.getElementById(\'arc-generate-swal-fallback\'); if (overlay && overlay.parentNode) { overlay.parentNode.removeChild(overlay); }" style="appearance:none; border:0; border-radius:12px; background:#4f46e5; color:#fff; font-weight:700; padding:12px 18px; cursor:pointer;">Fechar</button>' : '';
+                            }
+                        }
+                    }
+
+                    function closeGenerateSwal() {
+                        if (window.Swal && typeof window.Swal.close === 'function') {
+                            window.Swal.close();
+                        }
+                        if (generateSwalFallback && generateSwalFallback.parentNode) {
+                            generateSwalFallback.parentNode.removeChild(generateSwalFallback);
+                        }
+                        generateSwalFallback = null;
                     }
 
                     function escapeHtml(value) {
@@ -2774,19 +3299,25 @@ class Alpha_RSS_AI_Generator_Admin
                         var target = Math.min(requested, available);
 
                         if (target <= 0) {
-                            setStatus(generateModalStatus, 'Nenhum item elegível para gerar com os filtros atuais.', 'error');
+                            setStatus(generateModalStatus, "Nenhum item elegível para gerar com os filtros atuais.", 'error');
                             return;
                         }
 
                         var generated = 0;
                         var lastGeneratedLink = '';
                         var runLabel = generateRunButton ? generateRunButton.textContent : 'Gerar agora';
+                        var ctaLabel = generateRunCtaButton ? generateRunCtaButton.textContent : 'Iniciar geração';
                         currentGenerateRunToken++;
                         var runToken = currentGenerateRunToken;
+                        var swalOpened = showGenerateSwal('Preparando geração', '<div class="text-left text-sm text-slate-600">Aguarde enquanto separamos a próxima linha elegível.</div>');
 
                         if (generateRunButton) {
                             generateRunButton.disabled = true;
                             generateRunButton.textContent = 'Gerando...';
+                        }
+                        if (generateRunCtaButton) {
+                            generateRunCtaButton.disabled = true;
+                            generateRunCtaButton.textContent = 'Gerando...';
                         }
 
                         try {
@@ -2795,27 +3326,89 @@ class Alpha_RSS_AI_Generator_Admin
                                     break;
                                 }
 
-                                setStatus(generateModalStatus, 'Gerando item ' + (generated + 1) + ' de ' + target + '...', 'warning');
-                                var result = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
+                                var itemPosition = generated + 1;
+                                var stepLabel = 'Item ' + itemPosition + ' de ' + target;
+                                var seoBody = [
+                                    '<div class="text-left text-sm text-slate-600">',
+                                    '<div class="font-semibold text-slate-950">' + escapeHtml(stepLabel) + '</div>',
+                                    '<div class="mt-2">Etapa 1 de 2: gerando SEO, slug e contexto.</div>',
+                                    '</div>'
+                                ].join('');
+                                if (swalOpened) {
+                                    updateGenerateSwal('Gerando SEO', seoBody, 'info');
+                                }
+                                setStatus(generateModalStatus, 'Gerando SEO do item ' + itemPosition + ' de ' + target + '...', 'warning');
+
+                                var seoResult = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json'
                                     },
                                     body: JSON.stringify({
+                                        stage: 'seo',
                                         filters: filters,
                                         settings: settings
                                     })
                                 });
 
-                                if (!result.ok || !result.payload || !result.payload.success) {
-                                    throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Falha ao gerar o item');
+                                if (!seoResult.ok || !seoResult.payload) {
+                                    throw new Error((seoResult.payload && seoResult.payload.message) ? seoResult.payload.message : 'Falha ao preparar o SEO do item');
                                 }
 
-                                if (result.payload.done) {
+                                if (!seoResult.payload.success) {
+                                    if (seoResult.payload.done) {
+                                        if (seoResult.payload.counts && typeof seoResult.payload.counts.pending_rows !== 'undefined') {
+                                            currentGenerateAvailableCount = Math.max(0, parseInt(seoResult.payload.counts.pending_rows || 0, 10) || 0);
+                                            updateGenerateTargetSummary();
+                                        }
+                                        break;
+                                    }
+                                    throw new Error(seoResult.payload.message || 'Falha ao preparar o SEO do item');
+                                }
+
+                                var stageToken = seoResult.payload.token || '';
+                                var stageItem = seoResult.payload.item || {};
+                                if (!stageToken) {
+                                    throw new Error('Nao foi possivel iniciar a etapa de conteudo');
+                                }
+
+                                var contentBody = [
+                                    '<div class="text-left text-sm text-slate-600">',
+                                    '<div class="font-semibold text-slate-950">' + escapeHtml(stepLabel) + '</div>',
+                                    '<div class="mt-2">Etapa 2 de 2: escrevendo o conteúdo e salvando o post.</div>',
+                                    '</div>'
+                                ].join('');
+                                if (swalOpened) {
+                                    updateGenerateSwal('Gerando conteúdo', contentBody, 'info');
+                                }
+                                setStatus(generateModalStatus, 'Gerando conteúdo do item ' + itemPosition + ' de ' + target + '...', 'warning');
+
+                                var contentResult = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        stage: 'content',
+                                        token: stageToken,
+                                        filters: filters,
+                                        settings: settings
+                                    })
+                                });
+
+                                if (!contentResult.ok || !contentResult.payload || !contentResult.payload.success) {
+                                    throw new Error((contentResult.payload && contentResult.payload.message) ? contentResult.payload.message : 'Falha ao concluir o conteúdo do item');
+                                }
+
+                                if (contentResult.payload.done) {
+                                    if (contentResult.payload.counts && typeof contentResult.payload.counts.pending_rows !== 'undefined') {
+                                        currentGenerateAvailableCount = Math.max(0, parseInt(contentResult.payload.counts.pending_rows || 0, 10) || 0);
+                                        updateGenerateTargetSummary();
+                                    }
                                     break;
                                 }
 
-                                var generatedResult = result.payload.result || {};
+                                var generatedResult = contentResult.payload.result || {};
                                 lastGeneratedLink = generatedResult.view_link || generatedResult.permalink || generatedResult.edit_link || '';
                                 if (lastGeneratedLink) {
                                     setStatusHtml(generateModalStatus, 'Item gerado com sucesso.', lastGeneratedLink, 'Abrir conteúdo', 'success');
@@ -2824,7 +3417,11 @@ class Alpha_RSS_AI_Generator_Admin
                                 }
 
                                 generated++;
-                                currentGenerateAvailableCount = Math.max(0, (currentGenerateAvailableCount || 0) - 1);
+                                if (contentResult.payload.counts && typeof contentResult.payload.counts.pending_rows !== 'undefined') {
+                                    currentGenerateAvailableCount = Math.max(0, parseInt(contentResult.payload.counts.pending_rows || 0, 10) || 0);
+                                } else {
+                                    currentGenerateAvailableCount = Math.max(0, (currentGenerateAvailableCount || 0) - 1);
+                                }
                                 updateGenerateTargetSummary();
                             }
 
@@ -2838,11 +3435,19 @@ class Alpha_RSS_AI_Generator_Admin
                                 setStatus(generateModalStatus, 'Nenhum item foi gerado.', 'warning');
                             }
                         } catch (error) {
+                            if (swalOpened) {
+                                updateGenerateSwal('Erro na geração', '<div class="text-left text-sm text-slate-600">' + escapeHtml(error.message || 'Erro ao gerar em lote.') + '</div>', 'error');
+                            }
                             setStatus(generateModalStatus, error.message || 'Erro ao gerar em lote.', 'error');
                         } finally {
+                            closeGenerateSwal();
                             if (generateRunButton) {
                                 generateRunButton.disabled = false;
                                 generateRunButton.textContent = runLabel || 'Gerar agora';
+                            }
+                            if (generateRunCtaButton) {
+                                generateRunCtaButton.disabled = false;
+                                generateRunCtaButton.textContent = ctaLabel || 'Iniciar geração';
                             }
                         }
                     }
@@ -3339,7 +3944,8 @@ class Alpha_RSS_AI_Generator_Admin
                     }
 
                     if (openGenerateFromListButton) {
-                        openGenerateFromListButton.addEventListener('click', function() {
+                        openGenerateFromListButton.addEventListener('click', function(event) {
+                            event.preventDefault();
                             if (currentDetailList) {
                                 closeModal(listModal);
                                 openGenerateModal(currentDetailList.id);
@@ -3412,11 +4018,36 @@ class Alpha_RSS_AI_Generator_Admin
                     }
 
                     if (generateRunButton) {
-                        generateRunButton.addEventListener('click', runGenerateBatch);
+                        generateRunButton.addEventListener('click', function(event) {
+                            event.preventDefault();
+                            if (window.AlphaRssAiGenerateBatchSplit) {
+                                window.AlphaRssAiGenerateBatchSplit();
+                            }
+                        });
                     }
 
                     if (generateRunCtaButton) {
-                        generateRunCtaButton.addEventListener('click', runGenerateBatch);
+                        generateRunCtaButton.addEventListener('click', function(event) {
+                            event.preventDefault();
+                            if (window.AlphaRssAiGenerateBatchSplit) {
+                                window.AlphaRssAiGenerateBatchSplit();
+                            }
+                        });
+                    }
+
+                    if (manualRunList) {
+                        manualRunList.addEventListener('click', function(event) {
+                            var button = event.target && event.target.closest ? event.target.closest('[data-run-item-guid]') : null;
+                            if (!button) {
+                                return;
+                            }
+                            event.preventDefault();
+                            event.stopPropagation();
+                            var itemGuid = String(button.getAttribute('data-run-item-guid') || '');
+                            if (itemGuid !== '') {
+                                runManualRunItem(itemGuid);
+                            }
+                        });
                     }
 
                     document.querySelectorAll('[data-delete-keyword-list-id]').forEach(function(button) {

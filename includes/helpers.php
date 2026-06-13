@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 if (!defined('ABSPATH')) {
     exit;
@@ -523,7 +523,7 @@ class Alpha_RSS_AI_Generator_Helper
             'video_url' => '',
             'video_embed_html' => '',
             'video_source' => '',
-        ); 
+        );
 
         $url = esc_url_raw(trim((string) $url));
         if ($url === '') {
@@ -884,6 +884,327 @@ class Alpha_RSS_AI_Generator_Helper
         return $items;
     }
 
+    public static function normalize_source_link_cta_style($style)
+    {
+        $style = sanitize_key((string) $style);
+        if (!in_array($style, array('button', 'link'), true)) {
+            $style = 'button';
+        }
+
+        return $style;
+    }
+
+    public static function normalize_outline_match_title($title)
+    {
+        $title = self::clean_source_text($title);
+        if ($title === '') {
+            return '';
+        }
+
+        $title = remove_accents($title);
+        $title = strtolower($title);
+        $title = preg_replace('/\b\d+\b/u', ' ', $title);
+        $title = preg_replace('/[^a-z0-9]+/u', ' ', $title);
+        $parts = preg_split('/\s+/', trim((string) $title));
+        if (empty($parts)) {
+            return '';
+        }
+
+        $stopwords = array(
+            'a',
+            'o',
+            'os',
+            'as',
+            'um',
+            'uma',
+            'uns',
+            'umas',
+            'de',
+            'da',
+            'do',
+            'das',
+            'dos',
+            'e',
+            'em',
+            'no',
+            'na',
+            'nos',
+            'nas',
+            'para',
+            'por',
+            'com',
+            'sem',
+            'ao',
+            'aos',
+            'the',
+            'of',
+            'and',
+            'to',
+        );
+
+        $filtered = array();
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ($part === '' || in_array($part, $stopwords, true)) {
+                continue;
+            }
+            $filtered[] = $part;
+        }
+
+        return trim(implode(' ', $filtered));
+    }
+
+    public static function score_outline_match_title($generated_title, $source_title)
+    {
+        $generated = self::normalize_outline_match_title($generated_title);
+        $source = self::normalize_outline_match_title($source_title);
+        if ($generated === '' || $source === '') {
+            return 0.0;
+        }
+        if ($generated === $source) {
+            return 1.0;
+        }
+
+        $generated_tokens = array_values(array_unique(array_filter(preg_split('/\s+/', $generated))));
+        $source_tokens = array_values(array_unique(array_filter(preg_split('/\s+/', $source))));
+        if (empty($generated_tokens) || empty($source_tokens)) {
+            return 0.0;
+        }
+
+        $intersection = array_intersect($generated_tokens, $source_tokens);
+        $token_overlap = count($intersection) / max(count($generated_tokens), count($source_tokens));
+        $containment_bonus = (strpos($generated, $source) !== false || strpos($source, $generated) !== false) ? 0.45 : 0.0;
+
+        $levenshtein_score = 0.0;
+        if (function_exists('levenshtein')) {
+            $max_length = max(strlen($generated), strlen($source));
+            if ($max_length > 0) {
+                $distance = levenshtein($generated, $source);
+                $levenshtein_score = max(0.0, 1.0 - ($distance / max(1, $max_length)));
+            }
+        }
+
+        $score = ($token_overlap * 0.65) + ($levenshtein_score * 0.35) + $containment_bonus;
+        return $score > 1.0 ? 1.0 : $score;
+    }
+
+    public static function split_content_blocks_into_h2_sections($blocks)
+    {
+        $sections = array();
+        $current = null;
+
+        foreach ((array) $blocks as $block) {
+            $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
+            $is_h2 = false;
+            if ($block_name === 'core/heading') {
+                $level = 2;
+                if (is_array($block) && isset($block['attrs']['level'])) {
+                    $level = intval($block['attrs']['level']);
+                }
+                $is_h2 = ($level === 2);
+            }
+
+            if ($is_h2) {
+                if (is_array($current)) {
+                    $sections[] = $current;
+                }
+                $current = array(
+                    'title' => self::clean_source_text(wp_strip_all_tags(self::extract_block_html($block))),
+                    'blocks' => array($block),
+                );
+                continue;
+            }
+
+            if (!is_array($current)) {
+                $current = array(
+                    'title' => '',
+                    'blocks' => array(),
+                );
+            }
+            $current['blocks'][] = $block;
+        }
+
+        if (is_array($current)) {
+            $sections[] = $current;
+        }
+
+        return $sections;
+    }
+
+    public static function make_html_block($html)
+    {
+        $html = trim((string) $html);
+        if ($html === '') {
+            return array();
+        }
+
+        return array(
+            'blockName' => 'core/html',
+            'attrs' => array(),
+            'innerBlocks' => array(),
+            'innerContent' => array($html),
+        );
+    }
+
+    public static function strip_generated_image_blocks_from_parsed_blocks($blocks)
+    {
+        if (!is_array($blocks) || empty($blocks)) {
+            return array();
+        }
+
+        $cleaned = array();
+        foreach ($blocks as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+
+            $block_name = !empty($block['blockName']) ? (string) $block['blockName'] : '';
+            if (in_array($block_name, array('core/image', 'core/gallery', 'core/cover'), true)) {
+                continue;
+            }
+
+            $block_html = self::extract_block_html($block);
+            if ($block_html !== '') {
+                $stripped_html = self::strip_generated_image_markup_from_html($block_html);
+
+                if ($stripped_html === '' && preg_match('~<(?:img|picture|figure)\b~i', $block_html)) {
+                    continue;
+                }
+
+                if ($stripped_html !== $block_html) {
+                    if (isset($block['innerHTML'])) {
+                        $block['innerHTML'] = $stripped_html;
+                    }
+                    if (isset($block['innerContent']) && is_array($block['innerContent'])) {
+                        $block['innerContent'] = array($stripped_html);
+                    }
+                }
+            }
+
+            $cleaned[] = $block;
+        }
+
+        return array_values($cleaned);
+    }
+
+    public static function pick_best_outline_section_link_candidate($section)
+    {
+        if (!is_array($section)) {
+            return array();
+        }
+
+        $links = isset($section['links']) && is_array($section['links']) ? array_values($section['links']) : array();
+        if (empty($links)) {
+            return array();
+        }
+
+        $best_link = array();
+        $best_score = -1000;
+
+        foreach ($links as $link) {
+            if (!is_array($link) || empty($link['url'])) {
+                continue;
+            }
+
+            $link_url = trim((string) $link['url']);
+            if ($link_url === '') {
+                continue;
+            }
+
+            $link_text = isset($link['text']) ? self::clean_source_text($link['text']) : '';
+            $blob = strtolower($link_url . ' ' . $link_text);
+            $score = 0;
+
+            if (preg_match('/affiliate|affiliate-single|cta|button|watch|stream|where-to-watch|where to watch|play|rent|buy|external|single-link|link/i', $blob)) {
+                $score += 35;
+            }
+            if (preg_match('/watch|assistir|ver|stream|play|rent|buy|onde assistir|onde ver|read more|view more|go to/i', $blob)) {
+                $score += 30;
+            }
+            if (preg_match('/netflix|amazon|prime|hulu|disney|max|apple|paramount|peacock|youtube|vimeo/i', $blob)) {
+                $score += 15;
+            }
+            if (strpos($link_url, '://') !== false) {
+                $score += 3;
+            }
+            if (preg_match('/utm_|ref=|source=/i', $link_url)) {
+                $score -= 5;
+            }
+
+            if ($score > $best_score) {
+                $best_score = $score;
+                $best_link = $link;
+            }
+        }
+
+        return is_array($best_link) ? $best_link : array();
+    }
+
+    public static function pick_best_outline_section_image_candidate($section)
+    {
+        if (!is_array($section)) {
+            return array();
+        }
+
+        $images = isset($section['images']) && is_array($section['images']) ? array_values($section['images']) : array();
+        if (empty($images)) {
+            return array();
+        }
+
+        $best_image = array();
+        $best_score = -1000;
+
+        foreach ($images as $image) {
+            if (!is_array($image) || empty($image['url'])) {
+                continue;
+            }
+
+            $image_url = trim((string) $image['url']);
+            if ($image_url === '') {
+                continue;
+            }
+            if (class_exists('Alpha_RSS_AI_Generator') && Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($image_url, '')) {
+                continue;
+            }
+
+            $attr = !empty($image['attr']) ? strtolower((string) $image['attr']) : '';
+            $source = !empty($image['source']) ? strtolower((string) $image['source']) : '';
+            $blob = strtolower($image_url . ' ' . $attr . ' ' . $source);
+            $score = 0;
+
+            if (preg_match('/poster|cover|keyart|key-art|hero|feature|featured|thumb|thumbnail|large|original|image|art/i', $blob)) {
+                $score += 25;
+            }
+            if (preg_match('/logo|sprite|icon|avatar|favicon|placeholder|blank|transparent|spinner|badge|button|overlay|play/i', $blob)) {
+                $score -= 30;
+            }
+            if ($attr === 'data-img-url') {
+                $score += 12;
+            } elseif (in_array($attr, array('data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-full', 'data-large'), true)) {
+                $score += 8;
+            } elseif ($attr === 'srcset' || $attr === 'data-srcset') {
+                $score += 6;
+            } elseif ($attr === 'src') {
+                $score += 2;
+            }
+            if ($source === 'img') {
+                $score += 4;
+            } elseif ($source === 'picture' || $source === 'source') {
+                $score += 3;
+            }
+            if (preg_match('/\.(jpe?g|png|webp|gif)(?:\?|$)/i', $image_url)) {
+                $score += 3;
+            }
+
+            if ($score > $best_score) {
+                $best_score = $score;
+                $best_image = $image;
+            }
+        }
+
+        return is_array($best_image) ? $best_image : array();
+    }
+
     public static function parse_source_context_filter_phrases($phrases)
     {
         if (is_array($phrases)) {
@@ -1230,66 +1551,96 @@ class Alpha_RSS_AI_Generator_Helper
         return trim((string) $fallback);
     }
 
-    public static function build_outline_section_media_html($section, $post_id = 0, $image_size = 'medium', $link_phrases = array())
+    public static function build_outline_section_image_html($section, $post_id = 0, $image_size = 'medium')
     {
         if (!is_array($section)) {
             return '';
         }
 
         $section_title = isset($section['h2']) ? self::clean_source_text($section['h2']) : '';
-        $html_parts = array();
         $post_id = intval($post_id);
         $image_size = Alpha_RSS_AI_Generator::normalize_image_display_size($image_size);
 
-        $images = isset($section['images']) && is_array($section['images']) ? array_values($section['images']) : array();
-        if (!empty($images)) {
-            foreach ($images as $image) {
-                if (!is_array($image) || empty($image['url'])) {
-                    continue;
-                }
-                $image_url = trim((string) $image['url']);
-                if ($image_url === '') {
-                    continue;
-                }
+        $best_image = self::pick_best_outline_section_image_candidate($section);
+        if (empty($best_image) || empty($best_image['url'])) {
+            return '';
+        }
 
-                $alt_text = $section_title !== '' ? $section_title : 'Imagem relacionada';
-                $attachment_id = Alpha_RSS_AI_Generator::download_image_attachment_from_url($post_id, $image_url, $alt_text, 'content');
-                if ($attachment_id > 0) {
-                    $figure_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, $alt_text);
-                    if ($figure_html !== '') {
-                        $html_parts[] = $figure_html;
-                    }
-                }
-                break;
+        $image_url = trim((string) $best_image['url']);
+        if ($image_url === '') {
+            return '';
+        }
+
+        $alt_text = $section_title !== '' ? $section_title : 'Imagem relacionada';
+        $attachment_id = Alpha_RSS_AI_Generator::download_image_attachment_from_url($post_id, $image_url, $alt_text, 'content');
+        if ($attachment_id > 0) {
+            $figure_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, $alt_text);
+            if ($figure_html !== '') {
+                return $figure_html;
             }
         }
 
-        $links = isset($section['links']) && is_array($section['links']) ? array_values($section['links']) : array();
-        if (!empty($links)) {
-            foreach ($links as $link) {
-                if (!is_array($link) || empty($link['url'])) {
-                    continue;
-                }
-                $link_url = trim((string) $link['url']);
-                if ($link_url === '') {
-                    continue;
-                }
+        return '';
+    }
 
-                $link_text_options = self::parse_source_link_cta_phrases($link_phrases);
-                $link_text = self::pick_random_text_variant($link_text_options, $section_title !== '' ? $section_title : __('Leia mais', 'alpha-rss-ai-generator'));
+    public static function build_outline_section_button_html($section, $link_phrases = array())
+    {
+        return self::build_outline_section_link_html($section, $link_phrases, 'button');
+    }
 
-                $html_parts[] = '<p class="arc-source-link"><a href="' . esc_url($link_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($link_text) . '</a></p>';
-                break;
-            }
+    public static function build_outline_section_link_html($section, $link_phrases = array(), $link_style = 'button')
+    {
+        if (!is_array($section)) {
+            return '';
+        }
+
+        $link_style = self::normalize_source_link_cta_style($link_style);
+        $best_link = self::pick_best_outline_section_link_candidate($section);
+        if (empty($best_link) || empty($best_link['url'])) {
+            return '';
+        }
+
+        $link_url = trim((string) $best_link['url']);
+        if ($link_url === '') {
+            return '';
+        }
+
+        $link_text_options = self::parse_source_link_cta_phrases($link_phrases);
+        $link_text = self::pick_random_text_variant($link_text_options, __('Assista na Netflix', 'alpha-rss-ai-generator'));
+        if ($link_text === '') {
+            $link_text = __('Assista na Netflix', 'alpha-rss-ai-generator');
+        }
+
+        if ($link_style === 'link') {
+            return "<p><a href=\"" . esc_url($link_url) . "\" target=\"_blank\" rel=\"noreferrer noopener nofollow\">" . esc_html($link_text) . "</a></p>";
+        }
+
+        return "<div class=\"wp-block-buttons is-layout-flex wp-block-buttons-is-layout-flex\"><div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\" href=\"" . esc_url($link_url) . "\" target=\"_blank\" rel=\"noreferrer noopener nofollow\">" . esc_html($link_text) . "</a></div></div>";
+    }
+
+    public static function build_outline_section_media_html($section, $post_id = 0, $image_size = 'medium', $link_phrases = array(), $link_style = 'button')
+    {
+        $html_parts = array();
+        $image_html = self::build_outline_section_image_html($section, $post_id, $image_size);
+        $link_html = self::build_outline_section_link_html($section, $link_phrases, $link_style);
+        if ($image_html !== '') {
+            $html_parts[] = $image_html;
+        }
+        if ($link_html !== '') {
+            $html_parts[] = $link_html;
         }
 
         return trim(implode("\n", $html_parts));
     }
 
-    public static function inject_outline_section_media_into_content($content, $outline_sections, $post_id = 0, $image_size = 'medium', $link_phrases = array())
+    public static function inject_outline_section_media_into_content($content, $outline_sections, $post_id = 0, $image_size = 'medium', $link_phrases = array(), $link_style = 'button')
     {
         $content = trim((string) $content);
         if ($content === '') {
+            return $content;
+        }
+
+        if (stripos($content, 'arc-outline-media:') !== false) {
             return $content;
         }
 
@@ -1309,53 +1660,73 @@ class Alpha_RSS_AI_Generator_Helper
             return $content;
         }
 
-        $result_blocks = array();
-        $section_index = -1;
-        $pending_section_html = '';
-        $inserted_any = false;
+        $generated_sections = self::split_content_blocks_into_h2_sections($blocks);
+        if (empty($generated_sections)) {
+            return $content;
+        }
 
-        foreach ($blocks as $block) {
-            $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
-            $is_heading_level_2 = false;
-            if ($block_name === 'core/heading') {
-                $level = 2;
-                if (is_array($block) && isset($block['attrs']['level'])) {
-                    $level = intval($block['attrs']['level']);
+        $matched_sections = array();
+        $used_outline_indices = array();
+        foreach ($generated_sections as $generated_index => $generated_section) {
+            $generated_title = !empty($generated_section['title']) ? (string) $generated_section['title'] : '';
+            $best_index = -1;
+            $best_score = 0.0;
+            foreach ($outline_sections as $outline_index => $outline_section) {
+                if (isset($used_outline_indices[$outline_index])) {
+                    continue;
                 }
-                $is_heading_level_2 = ($level === 2);
+                $source_title = isset($outline_section['h2']) ? (string) $outline_section['h2'] : '';
+                $score = self::score_outline_match_title($generated_title, $source_title);
+                if ($score > $best_score) {
+                    $best_score = $score;
+                    $best_index = $outline_index;
+                }
             }
 
-            if ($is_heading_level_2) {
-                if ($pending_section_html !== '') {
-                    $result_blocks[] = array(
-                        'blockName' => 'core/html',
-                        'attrs' => array(),
-                        'innerBlocks' => array(),
-                        'innerContent' => array($pending_section_html),
-                    );
-                    $inserted_any = true;
-                    $pending_section_html = '';
-                }
+            if ($best_index >= 0 && $best_score >= 0.55) {
+                $used_outline_indices[$best_index] = true;
+                $matched_sections[$generated_index] = $outline_sections[$best_index];
+            }
+        }
 
-                $result_blocks[] = $block;
-                $section_index++;
-                if (isset($outline_sections[$section_index])) {
-                    $pending_section_html = self::build_outline_section_media_html($outline_sections[$section_index], $post_id, $image_size, $link_phrases);
-                }
+        $result_blocks = array();
+        $inserted_any = false;
+        foreach ($generated_sections as $generated_index => $generated_section) {
+            $section_blocks = isset($generated_section['blocks']) && is_array($generated_section['blocks']) ? array_values($generated_section['blocks']) : array();
+            if (empty($section_blocks)) {
                 continue;
             }
 
-            $result_blocks[] = $block;
-        }
+            $matched_outline_section = isset($matched_sections[$generated_index]) && is_array($matched_sections[$generated_index]) ? $matched_sections[$generated_index] : array();
+            $section_image_html = '';
+            $section_link_html = '';
+            if (!empty($matched_outline_section)) {
+                $section_image_html = self::build_outline_section_image_html($matched_outline_section, $post_id, $image_size);
+                $section_link_html = self::build_outline_section_link_html($matched_outline_section, $link_phrases, $link_style);
+            }
 
-        if ($pending_section_html !== '') {
-            $result_blocks[] = array(
-                'blockName' => 'core/html',
-                'attrs' => array(),
-                'innerBlocks' => array(),
-                'innerContent' => array($pending_section_html),
-            );
-            $inserted_any = true;
+            if ($section_image_html !== '') {
+                $section_blocks = self::strip_generated_image_blocks_from_parsed_blocks($section_blocks);
+                if (empty($section_blocks)) {
+                    continue;
+                }
+            }
+
+            $result_blocks[] = $section_blocks[0];
+
+            if ($section_image_html !== '') {
+                $result_blocks[] = self::make_html_block($section_image_html);
+                $inserted_any = true;
+            }
+
+            for ($block_index = 1; $block_index < count($section_blocks); $block_index++) {
+                $result_blocks[] = $section_blocks[$block_index];
+            }
+
+            if ($section_link_html !== '') {
+                $result_blocks[] = self::make_html_block($section_link_html);
+                $inserted_any = true;
+            }
         }
 
         return $inserted_any ? serialize_blocks($result_blocks) : $content;
@@ -1583,6 +1954,8 @@ class Alpha_RSS_AI_Generator_Helper
     public static function build_source_context_block($generator, $item)
     {
         $lines = array('## DADOS DA FONTE');
+        $use_source_content_media = class_exists('Alpha_RSS_AI_Generator') && Alpha_RSS_AI_Generator::generator_uses_source_content_media($generator);
+
 
         $feed_title = isset($item['feed_title']) ? self::normalize_prompt_context_text($item['feed_title']) : '';
         $source_title = isset($item['source_title']) ? self::normalize_prompt_context_text($item['source_title']) : '';
@@ -1597,6 +1970,16 @@ class Alpha_RSS_AI_Generator_Helper
         $source_page_title = isset($item['source_page_title']) ? self::normalize_prompt_context_text($item['source_page_title']) : '';
         $source_page_excerpt = isset($item['source_page_excerpt']) ? self::normalize_prompt_context_text($item['source_page_excerpt']) : '';
         $source_page_content = isset($item['source_page_content']) ? self::normalize_prompt_context_text($item['source_page_content']) : '';
+        $source_outline_sections = !empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections']) ? array_values(array_filter($item['source_page_outline_sections'], function ($section) {
+            return is_array($section);
+        })) : array();
+        $source_outline_count = count($source_outline_sections);
+        $source_outline_media_count = 0;
+        foreach ($source_outline_sections as $source_outline_section) {
+            if ((!empty($source_outline_section['links']) && is_array($source_outline_section['links'])) || (!empty($source_outline_section['images']) && is_array($source_outline_section['images']))) {
+                $source_outline_media_count++;
+            }
+        }
         $site_name = self::normalize_prompt_context_text(get_bloginfo('name'));
         $generator_name = !empty($generator['name']) ? self::normalize_prompt_context_text($generator['name']) : '';
         $generation_language = !empty($generator['generation_language'])
@@ -1622,6 +2005,10 @@ class Alpha_RSS_AI_Generator_Helper
             $lines[] = 'Estrutura da pagina de origem:';
             $lines[] = $source_page_outline;
         }
+        if ($source_outline_count > 0) {
+            $lines[] = 'Quantidade de seções na estrutura de origem: ' . $source_outline_count;
+            $lines[] = 'Quantidade de seções com imagem ou link na estrutura de origem: ' . $source_outline_media_count;
+        }
         if ($source_excerpt !== '') {
             $lines[] = 'Resumo da fonte: ' . $source_excerpt;
         }
@@ -1642,6 +2029,12 @@ class Alpha_RSS_AI_Generator_Helper
         }
         if ($generation_language !== '') {
             $lines[] = 'Idioma final: ' . $generation_language;
+        }
+
+        if (!$use_source_content_media) {
+            $lines = array_values(array_filter($lines, function ($line) {
+                return strpos($line, 'Quantidade de seções com imagem ou link na estrutura de origem') === false;
+            }));
         }
 
         return implode("\n", $lines);
@@ -1707,6 +2100,7 @@ class Alpha_RSS_AI_Generator_Helper
         if ($visible_template === '') {
             $visible_template = Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible();
         }
+        $use_source_content_media = class_exists('Alpha_RSS_AI_Generator') && Alpha_RSS_AI_Generator::generator_uses_source_content_media($generator);
 
         $source_title = isset($item['source_title']) ? $item['source_title'] : '';
         $source_url = isset($item['source_url']) ? $item['source_url'] : '';
@@ -1716,6 +2110,16 @@ class Alpha_RSS_AI_Generator_Helper
         $source_page_title = isset($item['source_page_title']) ? $item['source_page_title'] : '';
         $source_page_excerpt = isset($item['source_page_excerpt']) ? $item['source_page_excerpt'] : '';
         $source_page_content = isset($item['source_page_content']) ? $item['source_page_content'] : '';
+        $source_outline_sections = !empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections']) ? array_values(array_filter($item['source_page_outline_sections'], function ($section) {
+            return is_array($section);
+        })) : array();
+        $source_outline_count = count($source_outline_sections);
+        $source_outline_media_count = 0;
+        foreach ($source_outline_sections as $source_outline_section) {
+            if ((!empty($source_outline_section['links']) && is_array($source_outline_section['links'])) || (!empty($source_outline_section['images']) && is_array($source_outline_section['images']))) {
+                $source_outline_media_count++;
+            }
+        }
         $selected_tags = Alpha_RSS_AI_Generator::get_generator_selected_tags($generator);
         $selected_tags_csv = !empty($selected_tags) ? implode(', ', $selected_tags) : '';
 
@@ -1735,11 +2139,14 @@ class Alpha_RSS_AI_Generator_Helper
             'Keyword: {{keyword}}',
             'URL de origem: {{source_url}}',
             'Link do item: {{source_permalink}}',
-            'Mídias e CTAs da fonte: o sistema vai inserir a imagem baixada e o link localmente; não escreva imagens, figures ou CTAs manuais no texto.',
+            'Mídias e CTAs da fonte: o sistema vai inserir a imagem baixada e o CTA localmente; não escreva imagens, figures, links, botões ou CTAs manuais no texto.',
             'Titulo da pagina de origem: {{source_page_title}}',
             'Resumo da pagina de origem: {{source_page_excerpt}}',
             'Conteudo da pagina de origem: {{source_page_content}}',
             'Estrutura da pagina de origem: {{source_page_outline}}',
+            'Quantidade de seções na estrutura de origem: {{source_outline_count}}',
+            'Quantidade de seções com imagem ou link na estrutura de origem: {{source_outline_media_count}}',
+            'Na sessao de conteudo, mantenha a imagem imediatamente abaixo do H2 correspondente e deixe apenas um CTA ao final da seção. Não escreva frases como "Assista na Netflix", "Assistir agora" ou "Watch on Netflix".',
             'Resumo da fonte: {{source_excerpt}}',
             'Conteúdo da fonte: {{source_content}}',
             'Slug final: {{generated_slug}}',
@@ -1749,6 +2156,14 @@ class Alpha_RSS_AI_Generator_Helper
             'Gerador: {{generator_name}}',
             'Idioma final: {{generation_language}}',
         );
+
+        if (!$use_source_content_media) {
+            $hidden_context = array_values(array_filter($hidden_context, function ($line) {
+                return strpos($line, 'Mídias e CTAs da fonte') === false
+                    && strpos($line, 'Quantidade de seções com imagem ou link') === false
+                    && strpos($line, 'Na sessao de conteudo, mantenha a imagem') === false;
+            }));
+        }
 
         $template = $visible_template . "\n\n" . implode("\n", $hidden_context);
 
@@ -1762,6 +2177,8 @@ class Alpha_RSS_AI_Generator_Helper
             '{{source_page_excerpt}}' => isset($item['source_page_excerpt']) ? $item['source_page_excerpt'] : '',
             '{{source_page_content}}' => isset($item['source_page_content']) ? $item['source_page_content'] : '',
             '{{source_page_outline}}' => isset($item['source_page_outline']) ? $item['source_page_outline'] : '',
+            '{{source_outline_count}}' => (string) $source_outline_count,
+            '{{source_outline_media_count}}' => (string) $source_outline_media_count,
             '{{source_excerpt}}' => $item['excerpt'],
             '{{source_content}}' => $item['content'],
             '{{final_slug}}' => isset($item['final_slug']) ? $item['final_slug'] : '',
@@ -1780,8 +2197,16 @@ class Alpha_RSS_AI_Generator_Helper
         return strtr($template, $replacements);
     }
 
-    public static function call_openai($generator, $item)
+    /**
+     * @param array<string, mixed>|object $generator
+     * @param array<string, mixed>|object $item
+     * @return array<string, mixed>|WP_Error
+     */
+    public static function call_openai_seo($generator, $item)
     {
+        $generator = is_array($generator) ? $generator : (array) $generator;
+        $item = is_array($item) ? $item : (array) $item;
+
         $seo_prompt = self::build_prompt($generator, $item);
         $seo_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $seo_prompt, array(
             'stage' => 'seo',
@@ -1797,6 +2222,21 @@ class Alpha_RSS_AI_Generator_Helper
             return $seo_article;
         }
 
+        return $seo_article;
+    }
+
+    /**
+     * @param array<string, mixed>|object $generator
+     * @param array<string, mixed>|object $item
+     * @param array<string, mixed>|object $seo_article
+     * @return array<string, mixed>|WP_Error
+     */
+    public static function call_openai_content($generator, $item, $seo_article = array())
+    {
+        $generator = is_array($generator) ? $generator : (array) $generator;
+        $item = is_array($item) ? $item : (array) $item;
+        $seo_article = is_array($seo_article) ? $seo_article : (array) $seo_article;
+
         $content_prompt = self::build_content_prompt($generator, $item, $seo_article);
         $content_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $content_prompt, array(
             'stage' => 'content',
@@ -1811,15 +2251,51 @@ class Alpha_RSS_AI_Generator_Helper
             return $content_article;
         }
 
+        return $content_article;
+    }
+
+    /**
+     * @param array<string, mixed>|object $seo_article
+     * @param array<string, mixed>|object $content_article
+     * @return array<string, mixed>
+     */
+    public static function merge_generated_articles($seo_article, $content_article, $use_source_content_media = false)
+    {
+        $seo_article = is_array($seo_article) ? $seo_article : (array) $seo_article;
+        $content_article = is_array($content_article) ? $content_article : (array) $content_article;
+
         $seo_article['content_html'] = !empty($content_article['content_html']) ? $content_article['content_html'] : (isset($seo_article['content_html']) ? $seo_article['content_html'] : '');
         if (!empty($seo_article['content_html'])) {
-            $seo_article['content_html'] = self::strip_generated_image_markup_from_html($seo_article['content_html']);
+            if ($use_source_content_media) {
+                $seo_article['content_html'] = self::strip_generated_image_markup_from_html($seo_article['content_html']);
+            }
         }
         if (empty($seo_article['excerpt']) && !empty($content_article['excerpt'])) {
             $seo_article['excerpt'] = $content_article['excerpt'];
         }
 
         return $seo_article;
+    }
+
+    /**
+     * @param array<string, mixed>|object $generator
+     * @param array<string, mixed>|object $item
+     * @return array<string, mixed>|WP_Error
+     */
+    public static function call_openai($generator, $item)
+    {
+        $seo_article = self::call_openai_seo($generator, $item);
+        if (is_wp_error($seo_article)) {
+            return $seo_article;
+        }
+
+        $content_article = self::call_openai_content($generator, $item, $seo_article);
+        if (is_wp_error($content_article)) {
+            return $content_article;
+        }
+
+        $use_source_content_media = class_exists('Alpha_RSS_AI_Generator') && Alpha_RSS_AI_Generator::generator_uses_source_content_media($generator);
+        return self::merge_generated_articles($seo_article, $content_article, $use_source_content_media);
     }
 
     public static function normalize_related_posts_settings($generator)

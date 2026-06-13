@@ -348,22 +348,16 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             return true;
         }
 
-        public function handle_regenerate_post()
+        public static function regenerate_post_by_id($post_id)
         {
-            if (!current_user_can('manage_options')) {
-                wp_die('Acesso negado.');
-            }
-
-            check_admin_referer('arc_regenerate_generated_post', 'arc_regenerate_nonce');
-
-            $post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+            $post_id = intval($post_id);
             if ($post_id <= 0) {
-                $this->redirect_with_notice('Post invalido.', 'error');
+                return new WP_Error('arc_generated_post_invalid', 'Post invalido.');
             }
 
             $context = self::resolve_generated_post_context($post_id);
             if (is_wp_error($context)) {
-                $this->redirect_with_notice($context->get_error_message(), 'error');
+                return $context;
             }
 
             $generator = $context['generator'];
@@ -372,7 +366,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
 
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
             if (is_wp_error($article)) {
-                $this->redirect_with_notice($article->get_error_message(), 'error');
+                return $article;
             }
 
             $title = !empty($article['title']) ? trim((string) $article['title']) : '';
@@ -414,7 +408,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $content_html = (string) $post->post_content;
             }
 
-            if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])) {
+            if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections']) && Alpha_RSS_AI_Generator::generator_uses_source_content_media($generator)) {
                 $content_image_size = !empty($generator['content_image_size'])
                     ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
                     : 'medium';
@@ -423,7 +417,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     $item['source_page_outline_sections'],
                     $post_id,
                     $content_image_size,
-                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : ''
+                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
+                    !empty($generator['source_link_style']) ? $generator['source_link_style'] : 'button'
                 );
             }
 
@@ -435,13 +430,13 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             ), true);
 
             if (is_wp_error($update_result)) {
-                $this->redirect_with_notice($update_result->get_error_message(), 'error');
+                return $update_result;
             }
 
             Alpha_RSS_AI_Generator::apply_taxonomies_and_meta($post_id, $generator, $article, $item);
             $thumbnail_result = self::maybe_set_generated_thumbnail($post_id, $generator, $item, $article);
             if (is_wp_error($thumbnail_result)) {
-                $this->redirect_with_notice($thumbnail_result->get_error_message(), 'error');
+                return $thumbnail_result;
             }
 
             Alpha_RSS_AI_Generator::insert_run_log($generator['id'], 'success', 'Post regenerado manualmente', array(
@@ -457,8 +452,33 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $view_link = Alpha_RSS_AI_Generator::get_post_view_link($post_id);
             $edit_link = Alpha_RSS_AI_Generator::get_post_edit_link($post_id);
 
-            $this->redirect_with_notice('Post regenerado com sucesso.', 'success', array(
-                'arc_notice_link' => $view_link ? $view_link : $edit_link,
+            return array(
+                'success' => true,
+                'post_id' => $post_id,
+                'title' => $title,
+                'view_link' => $view_link ? $view_link : '',
+                'permalink' => $view_link ? $view_link : '',
+                'edit_link' => $edit_link ? $edit_link : '',
+                'message' => 'Post regenerado com sucesso.',
+            );
+        }
+
+        public function handle_regenerate_post()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_die('Acesso negado.');
+            }
+
+            check_admin_referer('arc_regenerate_generated_post', 'arc_regenerate_nonce');
+
+            $post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+            $result = self::regenerate_post_by_id($post_id);
+            if (is_wp_error($result)) {
+                $this->redirect_with_notice($result->get_error_message(), 'error');
+            }
+
+            $this->redirect_with_notice($result['message'], 'success', array(
+                'arc_notice_link' => !empty($result['view_link']) ? $result['view_link'] : (!empty($result['edit_link']) ? $result['edit_link'] : ''),
             ));
         }
 
@@ -651,12 +671,13 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                         <a href="<?php echo esc_url($edit_link); ?>" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Editar</a>
                                                     <?php endif; ?>
                                                     <?php if ($can_regenerate): ?>
-                                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Regerar este post com o prompt atual do gerador?');">
-                                                            <?php wp_nonce_field('arc_regenerate_generated_post', 'arc_regenerate_nonce'); ?>
-                                                            <input type="hidden" name="action" value="arc_regenerate_generated_post" />
-                                                            <input type="hidden" name="post_id" value="<?php echo esc_attr($post_id); ?>" />
-                                                            <button type="submit" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Regerar</button>
-                                                        </form>
+                                                        <button
+                                                            type="button"
+                                                            data-regenerate-post-id="<?php echo esc_attr($post_id); ?>"
+                                                            data-regenerate-post-title="<?php echo esc_attr(get_the_title($post_id)); ?>"
+                                                            class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">
+                                                            Regerar
+                                                        </button>
                                                     <?php else: ?>
                                                         <span class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-400" title="Nao foi possivel identificar o gerador original">Regerar indisponivel</span>
                                                     <?php endif; ?>
@@ -698,6 +719,11 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     <?php endif; ?>
                 </section>
             </div>
+            <script>
+                window.AlphaRssAiGeneratedPosts = window.AlphaRssAiGeneratedPosts || {};
+                window.AlphaRssAiGeneratedPosts.apiBase = <?php echo wp_json_encode(rest_url('alpha-rss-ai-generator/v1')); ?>;
+                window.AlphaRssAiGeneratedPosts.restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
+            </script>
             <?php
         }
     }

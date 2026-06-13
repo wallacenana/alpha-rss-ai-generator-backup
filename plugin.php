@@ -15,6 +15,13 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_SCRIPT_URL')) {
     define('ALPHA_RSS_AI_GENERATOR_SCRIPT_URL', plugin_dir_url(__FILE__) . 'assets/js/scripts.js');
 }
 
+if (!defined('ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_PATH')) {
+    define('ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_PATH', plugin_dir_path(__FILE__) . 'assets/js/generated-posts.js');
+}
+if (!defined('ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_URL')) {
+    define('ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_URL', plugin_dir_url(__FILE__) . 'assets/js/generated-posts.js');
+}
+
 if (!function_exists('alpha_rss_ai_generator_enqueue_assets')) {
     function alpha_rss_ai_generator_enqueue_assets() {
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
@@ -31,6 +38,13 @@ if (!function_exists('alpha_rss_ai_generator_enqueue_assets')) {
             );
         }
 
+        wp_enqueue_style(
+            'alpha-rss-ai-generator-sweetalert2',
+            'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css',
+            array(),
+            '11'
+        );
+
         $script_path = plugin_dir_path(__FILE__) . 'assets/js/scripts.js';
         if (file_exists($script_path)) {
             wp_enqueue_script(
@@ -38,6 +52,24 @@ if (!function_exists('alpha_rss_ai_generator_enqueue_assets')) {
                 ALPHA_RSS_AI_GENERATOR_SCRIPT_URL,
                 array('jquery'),
                 filemtime($script_path),
+                true
+            );
+        }
+
+        wp_enqueue_script(
+            'alpha-rss-ai-generator-sweetalert2',
+            'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.js',
+            array(),
+            '11',
+            true
+        );
+
+        if ($page === 'alpha-rss-ai-generated-posts' && file_exists(ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_PATH)) {
+            wp_enqueue_script(
+                'alpha-rss-ai-generated-posts-script',
+                ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_URL,
+                array('alpha-rss-ai-generator-sweetalert2'),
+                filemtime(ALPHA_RSS_AI_GENERATED_POSTS_SCRIPT_PATH),
                 true
             );
         }
