@@ -5328,7 +5328,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             update_post_meta($post_id, '_arc_generator_id', intval($generator['id']));
 
             if (!empty($generator['seo_enabled'])) {
-                self::sync_seo_meta($post_id, $generator, $article);
+                self::sync_seo_meta($post_id, $generator, $article, $item);
             }
         }
 
@@ -5338,15 +5338,42 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
          * @param array<string, mixed> $article
          * @return void
          */
-        public static function sync_seo_meta($post_id, $generator, $article)
+        public static function sync_seo_meta($post_id, $generator, $article, $item = array())
         {
-            $seo_title = $article['title'];
-            $meta_description = $article['meta_description'];
-            $focus_keyword = !empty($article['focus_keyword']) ? $article['focus_keyword'] : $article['title'];
+            $seo_title = !empty($article['title']) ? trim((string) $article['title']) : '';
+            if ($seo_title === '' && !empty($item['source_title'])) {
+                $seo_title = trim((string) $item['source_title']);
+            }
+            if ($seo_title === '' && !empty($item['title'])) {
+                $seo_title = trim((string) $item['title']);
+            }
+
+            $meta_description = !empty($article['meta_description']) ? trim((string) $article['meta_description']) : '';
+            if ($meta_description === '' && !empty($article['excerpt'])) {
+                $meta_description = trim((string) $article['excerpt']);
+            }
+            if ($meta_description === '' && !empty($item['excerpt'])) {
+                $meta_description = wp_trim_words(wp_strip_all_tags((string) $item['excerpt']), 25);
+            }
+            if ($meta_description === '' && !empty($item['content'])) {
+                $meta_description = wp_trim_words(wp_strip_all_tags((string) $item['content']), 25);
+            }
+            if ($meta_description === '' && $seo_title !== '') {
+                $meta_description = $seo_title;
+            }
+
+            $focus_keyword = !empty($article['focus_keyword']) ? trim((string) $article['focus_keyword']) : '';
+            if ($focus_keyword === '' && !empty($item['keyword'])) {
+                $focus_keyword = sanitize_text_field($item['keyword']);
+            }
+            if ($focus_keyword === '' && $seo_title !== '') {
+                $focus_keyword = $seo_title;
+            }
 
             update_post_meta($post_id, '_yoast_wpseo_title', $seo_title);
             update_post_meta($post_id, '_yoast_wpseo_metadesc', $meta_description);
             update_post_meta($post_id, '_yoast_wpseo_focuskw', $focus_keyword);
+            update_post_meta($post_id, '_yoast_wpseo_focuskw_text_input', $focus_keyword);
 
             update_post_meta($post_id, 'rank_math_title', $seo_title);
             update_post_meta($post_id, 'rank_math_description', $meta_description);
