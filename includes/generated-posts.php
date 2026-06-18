@@ -142,6 +142,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 'source_video_url' => (string) get_post_meta($post_id, '_arc_source_video_url', true),
                 'source_video_embed_html' => (string) get_post_meta($post_id, '_arc_source_video_embed_html', true),
                 'source_video_source' => (string) get_post_meta($post_id, '_arc_source_video_source', true),
+                'outline_target_h2_min' => intval(get_post_meta($post_id, '_arc_outline_target_h2_min', true)),
+                'outline_target_h2_max' => intval(get_post_meta($post_id, '_arc_outline_target_h2_max', true)),
+                'outline_target_h2_count' => intval(get_post_meta($post_id, '_arc_outline_target_h2_count', true)),
+                'outline_block_quantities' => array(),
                 'source_image_selector_class' => (string) get_post_meta($post_id, '_arc_source_image_selector_class', true),
                 'source_link_selector_class' => (string) get_post_meta($post_id, '_arc_source_link_selector_class', true),
                 'source_title' => (string) get_post_meta($post_id, '_arc_source_title', true),
@@ -157,6 +161,14 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $outline_sections = json_decode($outline_sections_raw, true);
                 if (is_array($outline_sections)) {
                     $item['source_page_outline_sections'] = $outline_sections;
+                }
+            }
+
+            $outline_block_quantities_raw = (string) get_post_meta($post_id, '_arc_outline_block_quantities', true);
+            if ($outline_block_quantities_raw !== '') {
+                $outline_block_quantities = json_decode($outline_block_quantities_raw, true);
+                if (is_array($outline_block_quantities)) {
+                    $item['outline_block_quantities'] = $outline_block_quantities;
                 }
             }
 
@@ -208,6 +220,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     'source_video_url',
                     'source_video_embed_html',
                     'source_video_source',
+                    'outline_target_h2_min',
+                    'outline_target_h2_max',
+                    'outline_target_h2_count',
+                    'outline_block_quantities',
                     'source_image_selector_class',
                     'source_link_selector_class',
                     'source_page_title',
@@ -275,6 +291,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     'source_video_url',
                     'source_video_embed_html',
                     'source_video_source',
+                    'outline_target_h2_min',
+                    'outline_target_h2_max',
+                    'outline_target_h2_count',
+                    'outline_block_quantities',
                     'source_image_selector_class',
                     'source_link_selector_class',
                     'source_page_title',
@@ -291,6 +311,16 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 if (empty($item['source_url']) && !empty($item['permalink'])) {
                     $item['source_url'] = $item['permalink'];
                 }
+            }
+
+            $title_outline_count = Alpha_RSS_AI_Generator_Helper::extract_outline_target_h2_count_from_title(
+                !empty($post->post_title) ? $post->post_title : (isset($item['title']) ? $item['title'] : ''),
+                !empty($item['source_title']) ? $item['source_title'] : ''
+            );
+            if ($title_outline_count > 0) {
+                $item['outline_target_h2_min'] = $title_outline_count;
+                $item['outline_target_h2_max'] = $title_outline_count;
+                $item['outline_target_h2_count'] = $title_outline_count;
             }
 
             $item = Alpha_RSS_AI_Generator::maybe_enrich_rss_item_context($generator, $item);
@@ -375,6 +405,16 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $this->redirect_with_notice($article->get_error_message(), 'error');
             }
 
+            $title_outline_count = Alpha_RSS_AI_Generator_Helper::extract_outline_target_h2_count_from_title(
+                !empty($article['title']) ? $article['title'] : '',
+                !empty($item['source_title']) ? $item['source_title'] : (!empty($item['title']) ? $item['title'] : '')
+            );
+            if ($title_outline_count > 0) {
+                $item['outline_target_h2_min'] = $title_outline_count;
+                $item['outline_target_h2_max'] = $title_outline_count;
+                $item['outline_target_h2_count'] = $title_outline_count;
+            }
+
             $title = !empty($article['title']) ? trim((string) $article['title']) : '';
             if ($title === '' && !empty($item['source_title'])) {
                 $title = trim((string) $item['source_title']);
@@ -423,7 +463,9 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     $item['source_page_outline_sections'],
                     $post_id,
                     $content_image_size,
-                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : ''
+                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
+                    Alpha_RSS_AI_Generator::generator_uses_source_content_images($generator),
+                    Alpha_RSS_AI_Generator::generator_uses_source_content_links($generator)
                 );
             }
 
@@ -651,7 +693,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                         <a href="<?php echo esc_url($edit_link); ?>" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Editar</a>
                                                     <?php endif; ?>
                                                     <?php if ($can_regenerate): ?>
-                                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Regerar este post com o prompt atual do gerador?');">
+                                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-swal-confirm="Regerar este post com o prompt atual do gerador?">
                                                             <?php wp_nonce_field('arc_regenerate_generated_post', 'arc_regenerate_nonce'); ?>
                                                             <input type="hidden" name="action" value="arc_regenerate_generated_post" />
                                                             <input type="hidden" name="post_id" value="<?php echo esc_attr($post_id); ?>" />

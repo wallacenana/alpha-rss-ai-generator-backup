@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 if (!defined('ABSPATH')) {
     exit;
@@ -46,6 +46,7 @@ class Alpha_RSS_AI_Generator_Admin
         $settings = Alpha_RSS_AI_Generator::get_settings();
         $generators = Alpha_RSS_AI_Generator::get_generators(200);
         $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
+        $outline_models = Alpha_RSS_AI_Generator::get_outline_models();
         $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
         $editing_generator = $edit_id > 0 ? Alpha_RSS_AI_Generator::get_generator($edit_id) : array();
 
@@ -78,6 +79,7 @@ class Alpha_RSS_AI_Generator_Admin
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" data-open-settings-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Configurações globais</button>
                     <button type="button" data-open-runs-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Execuções recentes</button>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-outline-models')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Modelos de outline</a>
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
             </div>
@@ -118,6 +120,15 @@ class Alpha_RSS_AI_Generator_Admin
                                         $generator_status_label = Alpha_RSS_AI_Generator::get_generator_status_label($generator['status']);
                                         $schedule_label = Alpha_RSS_AI_Generator::get_schedule_type_label($generator['schedule_type']);
                                         $language_label = Alpha_RSS_AI_Generator::normalize_generation_language_value(isset($generator['generation_language']) ? $generator['generation_language'] : Alpha_RSS_AI_Generator::get_default_generation_language());
+                                        $outline_model_label = '';
+                                        if (!empty($generator['outline_model_key'])) {
+                                            foreach ($outline_models as $outline_model_candidate) {
+                                                if (!empty($outline_model_candidate['key']) && (string) $outline_model_candidate['key'] === (string) $generator['outline_model_key']) {
+                                                    $outline_model_label = !empty($outline_model_candidate['name']) ? $outline_model_candidate['name'] : $outline_model_candidate['key'];
+                                                    break;
+                                                }
+                                            }
+                                        }
                                         ?>
                                         <tr class="align-top">
                                             <td class="px-6 py-4">
@@ -138,6 +149,9 @@ class Alpha_RSS_AI_Generator_Admin
                                                         <?php echo esc_html($generator['feed_url']); ?>
                                                     <?php endif; ?>
                                                 </div>
+                                                <?php if ($outline_model_label !== ''): ?>
+                                                    <div class="mt-1 text-xs text-slate-500">Outline: <?php echo esc_html($outline_model_label); ?></div>
+                                                <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4">
                                                 <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold <?php echo $generator['status'] === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'; ?>">
@@ -174,7 +188,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
                                                         <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Duplicar</button>
                                                     </form>
-                                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Excluir este gerador?');">
+                                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-swal-confirm="Excluir este gerador?">
                                                         <?php wp_nonce_field('arc_delete_generator', 'arc_delete_nonce'); ?>
                                                         <input type="hidden" name="action" value="arc_delete_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
@@ -422,6 +436,17 @@ class Alpha_RSS_AI_Generator_Admin
                                     <input type="number" min="256" name="max_tokens" value="<?php echo esc_attr(isset($editing_generator['max_tokens']) && $editing_generator['max_tokens'] !== '' ? $editing_generator['max_tokens'] : $settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Extensao do conteudo</label>
+                                    <select name="content_length_class" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                        <?php $editing_content_length_class = Alpha_RSS_AI_Generator::normalize_content_length_class(isset($editing_generator['content_length_class']) ? $editing_generator['content_length_class'] : Alpha_RSS_AI_Generator::get_default_content_length_class()); ?>
+                                        <option value="small" <?php selected($editing_content_length_class, 'small'); ?>>Pequeno (300-500 palavras)</option>
+                                        <option value="medium" <?php selected($editing_content_length_class, 'medium'); ?>>Medio (500-1000 palavras)</option>
+                                        <option value="large" <?php selected($editing_content_length_class, 'large'); ?>>Grande (1000-2500 palavras)</option>
+                                        <option value="extra_large" <?php selected($editing_content_length_class, 'extra_large'); ?>>Extra grande (2500-5000 palavras)</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-slate-500">O backend calcula o alvo de H2 a partir dessa faixa. H3 contam dentro da mesma sessao.</p>
+                                </div>
+                                <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Posts por execução</label>
                                     <input type="number" min="1" name="posts_per_run" value="<?php echo esc_attr(isset($editing_generator['posts_per_run']) && $editing_generator['posts_per_run'] !== '' ? $editing_generator['posts_per_run'] : 1); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
@@ -471,6 +496,22 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="1">Sim</option>
                                     </select>
                                 </div>
+                                <div class="grid gap-4 md:col-span-2 md:grid-cols-2" data-rss-source-media-toggle-field>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Usar imagens da fonte</label>
+                                        <select name="source_content_images_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                            <option value="1" selected>Sim</option>
+                                            <option value="0">Não</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Usar links da fonte</label>
+                                        <select name="source_content_links_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                            <option value="1" selected>Sim</option>
+                                            <option value="0">Não</option>
+                                        </select>
+                                    </div>
+                                </div>
                                 <div data-rss-video-selector-field>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Classe do wrapper do vídeo</label>
                                     <input type="text" name="video_selector_class" placeholder="slide-key image-holder" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
@@ -488,7 +529,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <p class="mt-1 text-xs text-slate-500">Use a classe do wrapper ou do link que deve entrar no outline da página.</p>
                                     </div>
                                 </div>
-                                <div>
+                                <div data-rss-image-size-field>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Tamanho das imagens no conteúdo</label>
                                     <select name="content_image_size" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                         <option value="thumbnail">Thumbnail</option>
@@ -499,7 +540,7 @@ class Alpha_RSS_AI_Generator_Admin
                                     </select>
                                     <p class="mt-1 text-xs text-slate-500">Esse tamanho é usado quando o PHP baixa a imagem e monta o bloco Gutenberg localmente.</p>
                                 </div>
-                                <div class="md:col-span-2">
+                                <div class="md:col-span-2" data-rss-link-phrases-field>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Frases do link da fonte</label>
                                     <textarea name="source_link_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Assista na plataforma&#10;Veja no catálogo&#10;Confira a fonte"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases()); ?></textarea>
                                     <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas para o link externo exibido ao fim de cada seção.</p>
@@ -657,6 +698,19 @@ class Alpha_RSS_AI_Generator_Admin
                                     <textarea name="content_prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible()); ?></textarea>
                                     <p class="mt-1 text-xs text-slate-500">Esse prompt e visivel e editavel. O backend adiciona as variaveis automaticamente na geracao do conteudo.</p>
                                 </div>
+                                <div class="md:col-span-2">
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Modelo de outline</label>
+                                    <select name="outline_model_key" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                        <option value="">Selecione um modelo</option>
+                                        <?php foreach ($outline_models as $outline_model): ?>
+                                            <?php $outline_model_h2_range = Alpha_RSS_AI_Generator::get_outline_model_target_h2_range($outline_model); ?>
+                                            <option value="<?php echo esc_attr(isset($outline_model['key']) ? $outline_model['key'] : ''); ?>" <?php selected(isset($editing_generator['outline_model_key']) ? $editing_generator['outline_model_key'] : Alpha_RSS_AI_Generator::get_default_outline_model_key(), isset($outline_model['key']) ? $outline_model['key'] : ''); ?>>
+                                                <?php echo esc_html((isset($outline_model['name']) ? $outline_model['name'] : '') . ' · ' . ($outline_model_h2_range['min'] === $outline_model_h2_range['max'] ? $outline_model_h2_range['min'] : ($outline_model_h2_range['min'] . '-' . $outline_model_h2_range['max'])) . ' H2'); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <p class="mt-1 text-xs text-slate-500">Esse modelo define a estrutura visual usada como guia pelo backend na etapa de conteudo.</p>
+                                </div>
                             </div>
 
                             <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
@@ -692,6 +746,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'model' => $settings['default_model'],
                                         'temperature' => (string) $settings['default_temperature'],
                                         'max_tokens' => (string) $settings['default_max_tokens'],
+                                        'content_length_class' => Alpha_RSS_AI_Generator::get_default_content_length_class(),
                                         'posts_per_run' => '1',
                                         'schedule_type' => 'interval',
                                         'interval_minutes' => '180',
@@ -701,6 +756,8 @@ class Alpha_RSS_AI_Generator_Admin
                                         'image_source_mode' => '',
                                         'pexels_query' => Alpha_RSS_AI_Generator::get_default_pexels_query(),
                                         'source_video_enabled' => '0',
+                                        'source_content_images_enabled' => '1',
+                                        'source_content_links_enabled' => '1',
                                         'video_selector_class' => '',
                                         'image_selector_class' => '',
                                         'link_selector_class' => '',
@@ -719,6 +776,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'prompt_template' => Alpha_RSS_AI_Generator::get_default_prompt_template(),
                                         'content_prompt_template' => Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible(),
                                         'keyword_prompt_template' => Alpha_RSS_AI_Generator::get_default_keyword_prompt_template(),
+                                        'outline_model_key' => Alpha_RSS_AI_Generator::get_default_outline_model_key(),
                                         'related_posts_enabled' => '0',
                                         'related_posts_position' => 'end',
                                         'related_posts_interval' => '4',
@@ -758,6 +816,7 @@ class Alpha_RSS_AI_Generator_Admin
                     var restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
                     window.AlphaRssAiGenerator = window.AlphaRssAiGenerator || {};
                     window.AlphaRssAiGenerator.generators = generators;
+                    window.AlphaRssAiGenerator.outlineModels = <?php echo wp_json_encode(array_values($outline_models)); ?>;
                     window.AlphaRssAiGenerator.defaults = defaults;
                     window.AlphaRssAiGenerator.editId = editId;
                     window.AlphaRssAiGenerator.apiBase = apiBase;
@@ -1162,6 +1221,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('model', defaults.model);
                         setValue('temperature', defaults.temperature);
                         setValue('max_tokens', defaults.max_tokens);
+                        setValue('content_length_class', defaults.content_length_class);
                         setValue('posts_per_run', defaults.posts_per_run);
                         setValue('schedule_type', defaults.schedule_type);
                         setValue('interval_minutes', defaults.interval_minutes);
@@ -1191,6 +1251,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('custom_meta', defaults.custom_meta);
                         setValue('prompt_template', defaults.prompt_template);
                         setValue('content_prompt_template', defaults.content_prompt_template);
+                        setValue('outline_model_key', defaults.outline_model_key);
                         syncSourceFields();
                         if (titleEl) {
                             titleEl.textContent = 'Adicionar gerador';
@@ -1219,6 +1280,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('model', generator.model);
                         setValue('temperature', generator.temperature);
                         setValue('max_tokens', generator.max_tokens);
+                        setValue('content_length_class', generator.content_length_class || defaults.content_length_class);
                         setValue('posts_per_run', generator.posts_per_run);
                         setValue('schedule_type', generator.schedule_type);
                         setValue('interval_minutes', generator.interval_minutes);
@@ -1248,6 +1310,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('custom_meta', objectToLines(parseObjectValue(generator.custom_meta)));
                         setValue('prompt_template', normalizePromptForSourceType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.prompt_template || ((generator.source_type === 'keyword_list' && (generator.keyword_list_mode || defaults.keyword_list_mode) !== 'url_reference') ? defaults.keyword_prompt_template : defaults.prompt_template)));
                         setValue('content_prompt_template', generator.content_prompt_template || defaults.content_prompt_template);
+                        setValue('outline_model_key', generator.outline_model_key || defaults.outline_model_key);
                         syncSourceFields();
 
                         if (titleEl) {
@@ -2965,7 +3028,14 @@ class Alpha_RSS_AI_Generator_Admin
                         if (!listId) {
                             return;
                         }
-                        if (!window.confirm('Excluir esta lista e todas as linhas importadas?')) {
+                        if (window.AlphaRssAiGeneratorSwal && typeof window.AlphaRssAiGeneratorSwal.confirm === 'function') {
+                            var confirmed = await window.AlphaRssAiGeneratorSwal.confirm('Excluir esta lista e todas as linhas importadas?', {
+                                title: 'Confirmacao'
+                            });
+                            if (!confirmed) {
+                                return;
+                            }
+                        } else if (!window.confirm('Excluir esta lista e todas as linhas importadas?')) {
                             return;
                         }
 
@@ -2985,7 +3055,11 @@ class Alpha_RSS_AI_Generator_Admin
                             if (statusTarget) {
                                 setStatus(statusTarget, error.message || 'Erro ao excluir a lista.', 'error');
                             } else {
-                                alert(error.message || 'Erro ao excluir a lista.');
+                                if (window.AlphaRssAiGeneratorSwal && typeof window.AlphaRssAiGeneratorSwal.error === 'function') {
+                                    window.AlphaRssAiGeneratorSwal.error(error.message || 'Erro ao excluir a lista.', 'Erro');
+                                } else {
+                                    window.alert(error.message || 'Erro ao excluir a lista.');
+                                }
                             }
                         }
                     }

@@ -15,6 +15,7 @@
         model: '',
         temperature: '0.7',
         max_tokens: '3000',
+        content_length_class: 'medium',
         posts_per_run: '1',
         schedule_type: 'interval',
         interval_minutes: '180',
@@ -24,6 +25,8 @@
         image_source_mode: '',
         pexels_query: '',
         source_video_enabled: '0',
+        source_content_images_enabled: '1',
+        source_content_links_enabled: '1',
         video_selector_class: '',
         image_selector_class: '',
         link_selector_class: '',
@@ -41,6 +44,7 @@
         custom_meta: '',
         prompt_template: '',
         content_prompt_template: '',
+        outline_model_key: '',
         keyword_prompt_template: ''
     };
     var editId = parseInt(arcConfig.editId || 0, 10) || 0;
@@ -71,8 +75,12 @@
     var listIdField = form.querySelector('[data-list-id-field]');
     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
+    var sourceMediaToggleField = form.querySelector('[data-rss-source-media-toggle-field]');
+    var sourceSelectorsField = form.querySelector('[data-rss-source-selectors-field]');
     var imageSelectorField = form.querySelector('[data-rss-image-selector-field]');
     var linkSelectorField = form.querySelector('[data-rss-link-selector-field]');
+    var imageSizeField = form.querySelector('[data-rss-image-size-field]');
+    var linkPhrasesField = form.querySelector('[data-rss-link-phrases-field]');
     var sourceFiltersField = form.querySelector('[data-rss-source-filters-field]');
     var apiBase = arcConfig.apiBase || '';
     var restNonce = arcConfig.restNonce || '';
@@ -80,6 +88,8 @@
     var manualRunCurrentGeneratorId = '';
     var manualRunCurrentGeneratorName = '';
     var manualRunLoadingRequest = null;
+    var manualRunGenerationRequest = null;
+    var manualRunGenerating = false;
 
     function byName(name) {
         return form.querySelector('[name="' + name + '"]');
@@ -224,19 +234,35 @@
         if (keywordListModeField) {
             keywordListModeField.classList.toggle('hidden', sourceType !== 'keyword_list');
         }
+        var showSourceMediaControls = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
+        var sourceContentImagesEnabledEl = byName('source_content_images_enabled');
+        var sourceContentLinksEnabledEl = byName('source_content_links_enabled');
+        var useSourceContentImages = !sourceContentImagesEnabledEl || String(sourceContentImagesEnabledEl.value || '1') === '1';
+        var useSourceContentLinks = !sourceContentLinksEnabledEl || String(sourceContentLinksEnabledEl.value || '1') === '1';
+
         if (videoSelectorField) {
-            var showVideoSelector = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
-            videoSelectorField.classList.toggle('hidden', !showVideoSelector);
-            if (imageSelectorField) {
-                imageSelectorField.classList.toggle('hidden', !showVideoSelector);
-            }
-            if (linkSelectorField) {
-                linkSelectorField.classList.toggle('hidden', !showVideoSelector);
-            }
+            videoSelectorField.classList.toggle('hidden', !showSourceMediaControls);
+        }
+        if (sourceMediaToggleField) {
+            sourceMediaToggleField.classList.toggle('hidden', !showSourceMediaControls);
+        }
+        if (sourceSelectorsField) {
+            sourceSelectorsField.classList.toggle('hidden', !showSourceMediaControls || (!useSourceContentImages && !useSourceContentLinks));
+        }
+        if (imageSelectorField) {
+            imageSelectorField.classList.toggle('hidden', !showSourceMediaControls || !useSourceContentImages);
+        }
+        if (linkSelectorField) {
+            linkSelectorField.classList.toggle('hidden', !showSourceMediaControls || !useSourceContentLinks);
+        }
+        if (imageSizeField) {
+            imageSizeField.classList.toggle('hidden', !showSourceMediaControls || !useSourceContentImages);
+        }
+        if (linkPhrasesField) {
+            linkPhrasesField.classList.toggle('hidden', !showSourceMediaControls || !useSourceContentLinks);
         }
         if (sourceFiltersField) {
-            var showSourceFilters = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
-            sourceFiltersField.classList.toggle('hidden', !showSourceFilters);
+            sourceFiltersField.classList.toggle('hidden', !showSourceMediaControls);
         }
         if (imageSourceModeEl) {
             imageSourceModeEl.value = normalizeImageSourceModeForType(sourceType, keywordListMode, imageSourceModeEl.value);
@@ -300,6 +326,40 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    function getSwalBridge() {
+        return window.AlphaRssAiGeneratorSwal || null;
+    }
+
+    function showSwalLoading(title, text) {
+        var bridge = getSwalBridge();
+        if (bridge && typeof bridge.loading === 'function') {
+            return bridge.loading(title, text);
+        }
+        return Promise.resolve({
+            isConfirmed: true
+        });
+    }
+
+    function showSwalSuccess(title, html) {
+        var bridge = getSwalBridge();
+        if (bridge && typeof bridge.success === 'function') {
+            return bridge.success(title, html);
+        }
+        return Promise.resolve({
+            isConfirmed: true
+        });
+    }
+
+    function showSwalError(message, title) {
+        var bridge = getSwalBridge();
+        if (bridge && typeof bridge.error === 'function') {
+            return bridge.error(message, title);
+        }
+        return Promise.resolve({
+            isConfirmed: true
+        });
     }
 
     function setManualRunStatus(message, type) {
@@ -381,18 +441,87 @@
     }
 
     function submitManualRunItem(itemGuid) {
-        if (!manualRunForm) {
+        var generatorId = String(manualRunCurrentGeneratorId || '');
+        if (!generatorId || !itemGuid || manualRunGenerating) {
             return;
         }
-        var generatorIdField = manualRunForm.querySelector('[name="generator_id"]');
-        var itemGuidField = manualRunForm.querySelector('[name="item_guid"]');
-        if (generatorIdField) {
-            generatorIdField.value = manualRunCurrentGeneratorId || '';
+        if (!apiBase) {
+            showSwalError('A URL da API nao foi configurada.', 'Erro');
+            return;
         }
-        if (itemGuidField) {
-            itemGuidField.value = itemGuid || '';
+
+        manualRunGenerating = true;
+        setManualRunStatus('Gerando item selecionado...', 'warning');
+        showSwalLoading('Gerando item...', 'Aguarde enquanto o post e criado.');
+
+        if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
+            manualRunGenerationRequest.abort();
         }
-        manualRunForm.submit();
+        manualRunGenerationRequest = typeof AbortController !== 'undefined' ? new AbortController() : null;
+
+        var url = apiBase.replace(/\/$/, '') + '/generators/' + encodeURIComponent(generatorId) + '/generate';
+        fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': restNonce
+            },
+            body: JSON.stringify({
+                item_guid: itemGuid
+            }),
+            signal: manualRunGenerationRequest ? manualRunGenerationRequest.signal : undefined
+        }).then(function (response) {
+            return response.json().then(function (payload) {
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    payload: payload
+                };
+            });
+        }).then(function (result) {
+            if (!result.ok || !result.payload || !result.payload.success) {
+                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Nao foi possivel gerar este item.');
+            }
+
+            var payload = result.payload || {};
+            var viewLink = String(payload.view_link || payload.permalink || '');
+            var editLink = String(payload.edit_link || '');
+            var itemTitle = String(payload.item_title || '');
+            var htmlParts = [];
+            if (itemTitle) {
+                htmlParts.push('<p class="mb-3 text-sm text-slate-600">' + escapeHtml(itemTitle) + '</p>');
+            }
+            if (viewLink) {
+                htmlParts.push('<a href="' + escapeHtml(viewLink) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white no-underline transition hover:bg-indigo-500">Abrir conteudo</a>');
+            }
+            if (!viewLink && editLink) {
+                htmlParts.push('<a href="' + escapeHtml(editLink) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50">Editar post</a>');
+            }
+
+            setManualRunStatus('Item gerado com sucesso.', 'success');
+            if (getSwalBridge() && typeof getSwalBridge().close === 'function') {
+                getSwalBridge().close();
+            }
+            return showSwalSuccess('Item gerado com sucesso.', htmlParts.join(' ')).then(function () {
+                loadManualRunItems(generatorId);
+            });
+        }).catch(function (error) {
+            if (error && error.name === 'AbortError') {
+                return;
+            }
+            setManualRunStatus(error.message || 'Falha ao gerar o item.', 'error');
+            if (getSwalBridge() && typeof getSwalBridge().close === 'function') {
+                getSwalBridge().close();
+            }
+            showSwalError(error.message || 'Falha ao gerar o item.', 'Erro');
+        }).finally(function () {
+            manualRunGenerating = false;
+            if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
+                manualRunGenerationRequest.abort();
+            }
+            manualRunGenerationRequest = null;
+        });
     }
 
     function loadManualRunItems(generatorId) {
@@ -463,6 +592,7 @@
                 manualRunEmpty.classList.add('hidden');
             }
             setManualRunStatus(error.message || 'Falha ao carregar os itens do feed.', 'error');
+            showSwalError(error.message || 'Falha ao carregar os itens do feed.', 'Erro');
         }).finally(function () {
             setManualRunLoading(false);
         });
@@ -481,6 +611,7 @@
         setValue('model', defaults.model);
         setValue('temperature', defaults.temperature);
         setValue('max_tokens', defaults.max_tokens);
+        setValue('content_length_class', defaults.content_length_class);
         setValue('posts_per_run', defaults.posts_per_run);
         setValue('schedule_type', defaults.schedule_type);
         setValue('interval_minutes', defaults.interval_minutes);
@@ -490,6 +621,8 @@
         setValue('image_source_mode', normalizeImageSourceModeForType(defaults.source_type, defaults.image_source_mode || getDefaultImageSourceModeForType(defaults.source_type)));
         setValue('pexels_query', defaults.pexels_query);
         setValue('source_video_enabled', defaults.source_video_enabled);
+        setValue('source_content_images_enabled', typeof defaults.source_content_images_enabled !== 'undefined' ? defaults.source_content_images_enabled : '1');
+        setValue('source_content_links_enabled', typeof defaults.source_content_links_enabled !== 'undefined' ? defaults.source_content_links_enabled : '1');
         setValue('video_selector_class', defaults.video_selector_class);
         setValue('image_selector_class', defaults.image_selector_class);
         setValue('link_selector_class', defaults.link_selector_class);
@@ -507,6 +640,7 @@
         setValue('custom_meta', defaults.custom_meta);
         setValue('prompt_template', defaults.prompt_template);
         setValue('content_prompt_template', defaults.content_prompt_template);
+        setValue('outline_model_key', defaults.outline_model_key);
         syncSourceFields();
         if (titleEl) {
             titleEl.textContent = 'Adicionar gerador';
@@ -534,6 +668,7 @@
         setValue('model', generator.model);
         setValue('temperature', generator.temperature);
         setValue('max_tokens', generator.max_tokens);
+        setValue('content_length_class', generator.content_length_class || defaults.content_length_class);
         setValue('posts_per_run', generator.posts_per_run);
         setValue('schedule_type', generator.schedule_type);
         setValue('interval_minutes', generator.interval_minutes);
@@ -543,6 +678,8 @@
         setValue('image_source_mode', normalizeImageSourceModeForType(generator.source_type || defaults.source_type, generator.image_source_mode || (typeof generator.pexels_enabled !== 'undefined' ? (String(generator.pexels_enabled) === '1' ? 'rss_or_pexels' : 'rss') : defaults.image_source_mode)));
         setValue('pexels_query', generator.pexels_query || defaults.pexels_query);
         setValue('source_video_enabled', String(typeof generator.source_video_enabled !== 'undefined' ? generator.source_video_enabled : defaults.source_video_enabled));
+        setValue('source_content_images_enabled', String(typeof generator.source_content_images_enabled !== 'undefined' ? generator.source_content_images_enabled : defaults.source_content_images_enabled));
+        setValue('source_content_links_enabled', String(typeof generator.source_content_links_enabled !== 'undefined' ? generator.source_content_links_enabled : defaults.source_content_links_enabled));
         setValue('video_selector_class', generator.video_selector_class || defaults.video_selector_class);
         setValue('image_selector_class', generator.image_selector_class || defaults.image_selector_class);
         setValue('link_selector_class', generator.link_selector_class || defaults.link_selector_class);
@@ -560,6 +697,7 @@
         setValue('custom_meta', objectToLines(parseObjectValue(generator.custom_meta)));
         setValue('prompt_template', normalizePromptForSourceType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.prompt_template || (generator.source_type === 'keyword_list' ? defaults.keyword_prompt_template : defaults.prompt_template)));
         setValue('content_prompt_template', generator.content_prompt_template || defaults.content_prompt_template);
+        setValue('outline_model_key', generator.outline_model_key || defaults.outline_model_key);
         syncSourceFields();
 
         if (titleEl) {
@@ -573,6 +711,18 @@
     var sourceTypeEl = byName('source_type');
     if (sourceTypeEl) {
         sourceTypeEl.addEventListener('change', syncSourceFields);
+    }
+    var keywordListModeEl = byName('keyword_list_mode');
+    if (keywordListModeEl) {
+        keywordListModeEl.addEventListener('change', syncSourceFields);
+    }
+    var sourceContentImagesEnabledEl = byName('source_content_images_enabled');
+    if (sourceContentImagesEnabledEl) {
+        sourceContentImagesEnabledEl.addEventListener('change', syncSourceFields);
+    }
+    var sourceContentLinksEnabledEl = byName('source_content_links_enabled');
+    if (sourceContentLinksEnabledEl) {
+        sourceContentLinksEnabledEl.addEventListener('change', syncSourceFields);
     }
 
     initSelect2Fields();
@@ -694,6 +844,9 @@
             if (manualRunLoadingRequest && manualRunLoadingRequest.abort) {
                 manualRunLoadingRequest.abort();
             }
+            if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
+                manualRunGenerationRequest.abort();
+            }
         });
     });
 
@@ -728,6 +881,9 @@
             }
             if (manualRunLoadingRequest && manualRunLoadingRequest.abort) {
                 manualRunLoadingRequest.abort();
+            }
+            if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
+                manualRunGenerationRequest.abort();
             }
         });
     }
@@ -776,6 +932,9 @@
                 }
                 if (manualRunLoadingRequest && manualRunLoadingRequest.abort) {
                     manualRunLoadingRequest.abort();
+                }
+                if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
+                    manualRunGenerationRequest.abort();
                 }
             }
         }

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita via OpenAI, imagens do Pexels, SEO, execuÃƒÂ§ÃƒÂµes manuais e agendamento aleatório.
-Version: 1.6.9
+Version: 1.8.1
 Author: OpenAI
 */
 
@@ -24,15 +24,17 @@ require_once __DIR__ . '/includes/admin.php';
 require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/generated-posts.php';
+require_once __DIR__ . '/includes/outline-models.php';
 require_once __DIR__ . '/includes/related-posts.php';
 
 if (!class_exists('Alpha_RSS_AI_Generator')) {
     final class Alpha_RSS_AI_Generator
     {
-    const VERSION = '1.6.9';
-    const DB_VERSION = '1.6.9';
+    const VERSION = '1.8.1';
+    const DB_VERSION = '1.8.1';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
+        const OPTION_KEY_OUTLINE_MODELS = 'alpha_rss_ai_outline_models';
         const TABLE_SUFFIX_GENERATORS = 'arc_generators';
         const TABLE_SUFFIX_RUNS = 'arc_runs';
         const TABLE_SUFFIX_ITEMS = 'arc_items';
@@ -102,6 +104,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 update_option(Alpha_RSS_AI_Related_Posts::OPTION_KEY, array_merge($related_defaults, $related_settings), false);
             }
 
+            if (class_exists('Alpha_RSS_AI_Outline_Models')) {
+                $outline_defaults = Alpha_RSS_AI_Outline_Models::get_default_models();
+                $outline_settings = get_option(self::OPTION_KEY_OUTLINE_MODELS, array());
+                if (!is_array($outline_settings) || empty($outline_settings)) {
+                    update_option(self::OPTION_KEY_OUTLINE_MODELS, $outline_defaults, false);
+                }
+            }
+
             self::instance()->seed_next_run_for_active_generators();
         }
 
@@ -119,6 +129,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             self::maybe_upgrade_schema();
             if (class_exists('Alpha_RSS_AI_Related_Posts')) {
                 new Alpha_RSS_AI_Related_Posts();
+            }
+            if (class_exists('Alpha_RSS_AI_Outline_Models')) {
+                new Alpha_RSS_AI_Outline_Models();
             }
             if (class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 new Alpha_RSS_AI_Generated_Posts();
@@ -188,6 +201,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 model varchar(120) NOT NULL DEFAULT 'gpt-4.1-mini',
                 temperature decimal(4,2) NOT NULL DEFAULT 0.70,
                 max_tokens int(11) NOT NULL DEFAULT 3000,
+                content_length_class varchar(20) NOT NULL DEFAULT 'medium',
                 posts_per_run int(11) NOT NULL DEFAULT 1,
                 schedule_type varchar(20) NOT NULL DEFAULT 'interval',
                 interval_minutes int(11) NOT NULL DEFAULT 180,
@@ -198,6 +212,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 pexels_enabled tinyint(1) NOT NULL DEFAULT 1,
                 pexels_query varchar(255) NOT NULL DEFAULT '{{pexels_tags}}',
                 source_video_enabled tinyint(1) NOT NULL DEFAULT 0,
+                source_content_images_enabled tinyint(1) NOT NULL DEFAULT 1,
+                source_content_links_enabled tinyint(1) NOT NULL DEFAULT 1,
                 video_selector_class varchar(255) NOT NULL DEFAULT '',
                 image_selector_class varchar(255) NOT NULL DEFAULT '',
                 link_selector_class varchar(255) NOT NULL DEFAULT '',
@@ -206,6 +222,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 generation_language varchar(80) NOT NULL DEFAULT 'Português do Brasil',
                 prompt_template longtext DEFAULT NULL,
                 content_prompt_template longtext DEFAULT NULL,
+                outline_model_key varchar(120) NOT NULL DEFAULT '',
                 related_posts_enabled tinyint(1) NOT NULL DEFAULT 0,
                 related_posts_position varchar(20) NOT NULL DEFAULT 'end',
                 related_posts_interval int(11) NOT NULL DEFAULT 4,
@@ -335,6 +352,85 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return 'Português do Brasil';
         }
 
+        public static function get_default_content_length_class()
+        {
+            return 'medium';
+        }
+
+        public static function normalize_content_length_class($value)
+        {
+            $value = str_replace('-', '_', sanitize_key((string) $value));
+            if ($value === 'xlarge' || $value === 'extra_grande' || $value === 'extra_large') {
+                $value = 'extra_large';
+            }
+
+            $allowed = array('small', 'medium', 'large', 'extra_large');
+            if (!in_array($value, $allowed, true)) {
+                return self::get_default_content_length_class();
+            }
+
+            return $value;
+        }
+
+        public static function get_content_length_range($content_length_class)
+        {
+            $content_length_class = self::normalize_content_length_class($content_length_class);
+
+            switch ($content_length_class) {
+                case 'small':
+                    return array(
+                        'class' => 'small',
+                        'label' => 'Pequeno',
+                        'min_words' => 300,
+                        'max_words' => 500,
+                    );
+                case 'large':
+                    return array(
+                        'class' => 'large',
+                        'label' => 'Grande',
+                        'min_words' => 1000,
+                        'max_words' => 2500,
+                    );
+                case 'extra_large':
+                    return array(
+                        'class' => 'extra_large',
+                        'label' => 'Extra grande',
+                        'min_words' => 2500,
+                        'max_words' => 5000,
+                    );
+                case 'medium':
+                default:
+                    return array(
+                        'class' => 'medium',
+                        'label' => 'Medio',
+                        'min_words' => 500,
+                        'max_words' => 1000,
+                    );
+            }
+        }
+
+        public static function pick_content_length_target_words($content_length_class)
+        {
+            $range = self::get_content_length_range($content_length_class);
+            $min_words = isset($range['min_words']) ? max(1, intval($range['min_words'])) : 500;
+            $max_words = isset($range['max_words']) ? max($min_words, intval($range['max_words'])) : $min_words;
+            if ($min_words >= $max_words) {
+                return $min_words;
+            }
+
+            if (function_exists('wp_rand')) {
+                return wp_rand($min_words, $max_words);
+            }
+
+            return rand($min_words, $max_words);
+        }
+
+        public static function get_content_length_target_h2_count($target_words)
+        {
+            $target_words = max(1, intval($target_words));
+            return max(1, (int) ceil($target_words / 300));
+        }
+
         public static function get_default_pexels_query()
         {
             return '{{pexels_tags}}';
@@ -359,6 +455,427 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'Veja também:',
                 'Confira também:',
             ));
+        }
+
+        public static function get_default_outline_models()
+        {
+            return array(
+                array(
+                    'key' => 'news_short',
+                    'name' => 'Noticia curta',
+                    'description' => 'Estrutura enxuta para noticias rapidas, com abertura direta e fechamento simples.',
+                    'target_h2_min' => 2,
+                    'target_h2_max' => 3,
+                    'blocks' => array(
+                        array('type' => 'intro_without_h2', 'label' => 'Introducao sem H2', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'h2', 'label' => 'H2 principal', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'paragraph', 'label' => 'Paragrafo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
+                        array('type' => 'conclusion', 'label' => 'Conclusao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                    ),
+                ),
+                array(
+                    'key' => 'list_article',
+                    'name' => 'Lista / ranking',
+                    'description' => 'Modelo para artigos em lista, rankings e selecoes com blocos visuais.',
+                    'target_h2_min' => 4,
+                    'target_h2_max' => 6,
+                    'blocks' => array(
+                        array('type' => 'intro_with_title', 'label' => 'Introducao com titulo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'h2', 'label' => 'H2 da lista', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'paragraph', 'label' => 'Paragrafo', 'notes' => '', 'quantity_min' => 2, 'quantity_max' => 4),
+                        array('type' => 'bullet', 'label' => 'Lista em bullets', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 3),
+                        array('type' => 'table', 'label' => 'Tabela', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
+                        array('type' => 'image', 'label' => 'Imagem', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'button', 'label' => 'Botao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'conclusion', 'label' => 'Conclusao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                    ),
+                ),
+                array(
+                    'key' => 'guide_long',
+                    'name' => 'Guia longo',
+                    'description' => 'Modelo mais completo, pensado para conteudo longo com mais profundidade e ritmo editorial.',
+                    'target_h2_min' => 5,
+                    'target_h2_max' => 8,
+                    'blocks' => array(
+                        array('type' => 'intro_with_title', 'label' => 'Introducao com titulo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'h2', 'label' => 'H2 principal', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'paragraph', 'label' => 'Paragrafo', 'notes' => '', 'quantity_min' => 2, 'quantity_max' => 4),
+                        array('type' => 'list', 'label' => 'Lista', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
+                        array('type' => 'table', 'label' => 'Tabela', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
+                        array('type' => 'image', 'label' => 'Imagem', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'button', 'label' => 'Botao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'conclusion', 'label' => 'Conclusao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                    ),
+                ),
+            );
+        }
+
+        public static function normalize_outline_quantity_range($min, $max, $default_min = 1, $default_max = 1)
+        {
+            $min = intval($min);
+            $max = intval($max);
+            $default_min = max(1, intval($default_min));
+            $default_max = max(1, intval($default_max));
+
+            if ($min <= 0 && $max <= 0) {
+                $min = $default_min;
+                $max = $default_max;
+            } elseif ($min <= 0) {
+                $min = $max > 0 ? $max : $default_min;
+            } elseif ($max <= 0) {
+                $max = $min > 0 ? $min : $default_max;
+            }
+
+            $min = max(1, $min);
+            $max = max(1, $max);
+            if ($max < $min) {
+                $swap = $min;
+                $min = $max;
+                $max = $swap;
+            }
+
+            return array(
+                'min' => $min,
+                'max' => $max,
+            );
+        }
+
+        public static function pick_outline_quantity($min, $max, $fallback = 1)
+        {
+            $range = self::normalize_outline_quantity_range($min, $max, $fallback, $fallback);
+            if ($range['min'] >= $range['max']) {
+                return $range['min'];
+            }
+
+            if (function_exists('wp_rand')) {
+                return wp_rand($range['min'], $range['max']);
+            }
+
+            return rand($range['min'], $range['max']);
+        }
+
+        public static function get_outline_model_target_h2_range($outline_model)
+        {
+            $outline_model = is_array($outline_model) ? $outline_model : array();
+            $min = isset($outline_model['target_h2_min']) ? intval($outline_model['target_h2_min']) : 0;
+            $max = isset($outline_model['target_h2_max']) ? intval($outline_model['target_h2_max']) : 0;
+            if ($min <= 0 && $max <= 0 && isset($outline_model['target_h2_count'])) {
+                $min = intval($outline_model['target_h2_count']);
+                $max = intval($outline_model['target_h2_count']);
+            }
+
+            return self::normalize_outline_quantity_range($min, $max, 3, 3);
+        }
+
+        public static function get_outline_block_quantity_range($block)
+        {
+            $block = is_array($block) ? $block : array();
+            $min = isset($block['quantity_min']) ? intval($block['quantity_min']) : 0;
+            $max = isset($block['quantity_max']) ? intval($block['quantity_max']) : 0;
+            if ($min <= 0 && $max <= 0) {
+                $min = 1;
+                $max = 1;
+            }
+
+            return self::normalize_outline_quantity_range($min, $max, 1, 1);
+        }
+
+        public static function get_default_outline_model_key()
+        {
+            $models = self::get_default_outline_models();
+            return !empty($models) && !empty($models[0]['key']) ? (string) $models[0]['key'] : '';
+        }
+
+        public static function get_outline_block_label($type)
+        {
+            $map = array(
+                'intro' => 'Introducao',
+                'intro_with_title' => 'Introducao com titulo',
+                'intro_without_h2' => 'Introducao sem H2',
+                'h2' => 'H2',
+                'paragraph' => 'Paragrafo',
+                'list' => 'Lista',
+                'bullet' => 'Bullet',
+                'table' => 'Tabela',
+                'image' => 'Imagem',
+                'button' => 'Botao',
+                'conclusion' => 'Conclusao',
+            );
+
+            $type = sanitize_key((string) $type);
+            return isset($map[$type]) ? $map[$type] : ucfirst($type);
+        }
+
+        public static function normalize_outline_block_definition($block)
+        {
+            $block = is_array($block) ? $block : array();
+            $type = isset($block['type']) ? sanitize_key((string) $block['type']) : 'paragraph';
+            $allowed_types = array('intro', 'intro_with_title', 'intro_without_h2', 'h2', 'paragraph', 'list', 'bullet', 'table', 'image', 'button', 'conclusion');
+            if (!in_array($type, $allowed_types, true)) {
+                $type = 'paragraph';
+            }
+
+            $label = isset($block['label']) ? sanitize_text_field((string) $block['label']) : '';
+            if ($label === '') {
+                $label = self::get_outline_block_label($type);
+            }
+
+            return array(
+                'type' => $type,
+                'label' => $label,
+                'notes' => isset($block['notes']) ? sanitize_text_field((string) $block['notes']) : '',
+                'quantity_min' => self::get_outline_block_quantity_range($block)['min'],
+                'quantity_max' => self::get_outline_block_quantity_range($block)['max'],
+            );
+        }
+
+        public static function normalize_outline_model_definition($model)
+        {
+            $model = is_array($model) ? $model : array();
+            $key = isset($model['key']) ? sanitize_key((string) $model['key']) : '';
+            $name = isset($model['name']) ? sanitize_text_field((string) $model['name']) : '';
+            $description = isset($model['description']) ? sanitize_textarea_field((string) $model['description']) : '';
+            $target_h2_range = self::get_outline_model_target_h2_range($model);
+            $blocks = array();
+            if (!empty($model['blocks']) && is_array($model['blocks'])) {
+                foreach ($model['blocks'] as $block) {
+                    $blocks[] = self::normalize_outline_block_definition($block);
+                }
+            }
+
+            return array(
+                'key' => $key,
+                'name' => $name !== '' ? $name : ucwords(str_replace(array('-', '_'), ' ', $key)),
+                'description' => $description,
+                'target_h2_min' => $target_h2_range['min'],
+                'target_h2_max' => $target_h2_range['max'],
+                'target_h2_count' => $target_h2_range['min'] === $target_h2_range['max'] ? $target_h2_range['min'] : 0,
+                'blocks' => $blocks,
+            );
+        }
+
+        public static function normalize_outline_models($models)
+        {
+            if (!is_array($models) || empty($models)) {
+                return self::get_default_outline_models();
+            }
+
+            $normalized = array();
+            foreach ($models as $model) {
+                $model = self::normalize_outline_model_definition($model);
+                if ($model['key'] === '') {
+                    continue;
+                }
+                $normalized[$model['key']] = $model;
+            }
+
+            if (empty($normalized)) {
+                return self::get_default_outline_models();
+            }
+
+            return array_values($normalized);
+        }
+
+        public static function get_outline_models()
+        {
+            $models = get_option(self::OPTION_KEY_OUTLINE_MODELS, array());
+            if (!is_array($models) || empty($models)) {
+                $models = self::get_default_outline_models();
+            }
+
+            return self::normalize_outline_models($models);
+        }
+
+        public static function get_outline_model($outline_model_key = '')
+        {
+            $outline_model_key = sanitize_key((string) $outline_model_key);
+            $models = self::get_outline_models();
+            foreach ($models as $model) {
+                if (!empty($model['key']) && $model['key'] === $outline_model_key) {
+                    return $model;
+                }
+            }
+
+            if (!empty($models)) {
+                return $models[0];
+            }
+
+            return array(
+                'key' => '',
+                'name' => '',
+                'description' => '',
+                'target_h2_min' => 0,
+                'target_h2_max' => 0,
+                'target_h2_count' => 0,
+                'blocks' => array(),
+            );
+        }
+
+        public static function get_generator_outline_model($generator)
+        {
+            $outline_model_key = !empty($generator['outline_model_key']) ? sanitize_key((string) $generator['outline_model_key']) : self::get_default_outline_model_key();
+            return self::get_outline_model($outline_model_key);
+        }
+
+        public static function resolve_outline_generation_context($generator, $item = array())
+        {
+            $outline_model = self::get_generator_outline_model($generator);
+            $outline_h2_range = self::get_outline_model_target_h2_range($outline_model);
+            $content_length_class = !empty($item['content_length_class'])
+                ? self::normalize_content_length_class($item['content_length_class'])
+                : (!empty($generator['content_length_class']) ? self::normalize_content_length_class($generator['content_length_class']) : self::get_default_content_length_class());
+            $content_length_range = self::get_content_length_range($content_length_class);
+            $content_length_target_words = !empty($item['content_length_target_words'])
+                ? max(1, intval($item['content_length_target_words']))
+                : self::pick_content_length_target_words($content_length_class);
+            $content_length_target_h2_count = !empty($item['content_length_target_h2_count'])
+                ? max(1, intval($item['content_length_target_h2_count']))
+                : self::get_content_length_target_h2_count($content_length_target_words);
+            if (isset($item['outline_target_h2_min']) && intval($item['outline_target_h2_min']) > 0) {
+                $outline_h2_range['min'] = intval($item['outline_target_h2_min']);
+            }
+            if (isset($item['outline_target_h2_max']) && intval($item['outline_target_h2_max']) > 0) {
+                $outline_h2_range['max'] = intval($item['outline_target_h2_max']);
+            }
+            $runtime_h2_count = 0;
+            if (isset($item['outline_target_h2_count'])) {
+                $runtime_h2_count = intval($item['outline_target_h2_count']);
+            }
+            if ($runtime_h2_count <= 0) {
+                $runtime_h2_count = $content_length_target_h2_count > 0
+                    ? $content_length_target_h2_count
+                    : self::pick_outline_quantity($outline_h2_range['min'], $outline_h2_range['max'], $outline_h2_range['min']);
+            }
+
+            $blocks = !empty($outline_model['blocks']) && is_array($outline_model['blocks']) ? $outline_model['blocks'] : array();
+            $runtime_block_quantities = array();
+            $stored_block_quantities = array();
+            if (!empty($item['outline_block_quantities']) && is_array($item['outline_block_quantities'])) {
+                $stored_block_quantities = $item['outline_block_quantities'];
+            }
+
+            foreach ($blocks as $index => $block) {
+                $block = self::normalize_outline_block_definition($block);
+                $block_range = self::get_outline_block_quantity_range($block);
+                $stored_quantity = isset($stored_block_quantities[$index]['quantity']) ? intval($stored_block_quantities[$index]['quantity']) : 0;
+                $quantity = $stored_quantity > 0 ? $stored_quantity : self::pick_outline_quantity($block_range['min'], $block_range['max'], $block_range['min']);
+                $runtime_block_quantities[$index] = array(
+                    'type' => $block['type'],
+                    'label' => $block['label'],
+                    'quantity_min' => $block_range['min'],
+                    'quantity_max' => $block_range['max'],
+                    'quantity' => $quantity,
+                );
+            }
+
+            $runtime_context = array(
+                'outline_model' => $outline_model,
+                'outline_model_key' => !empty($outline_model['key']) ? $outline_model['key'] : '',
+                'outline_model_name' => !empty($outline_model['name']) ? $outline_model['name'] : '',
+                'outline_target_h2_min' => $outline_h2_range['min'],
+                'outline_target_h2_max' => $outline_h2_range['max'],
+                'outline_target_h2_count' => $runtime_h2_count,
+                'content_length_class' => $content_length_class,
+                'content_length_label' => !empty($content_length_range['label']) ? $content_length_range['label'] : '',
+                'content_length_min_words' => isset($content_length_range['min_words']) ? intval($content_length_range['min_words']) : 0,
+                'content_length_max_words' => isset($content_length_range['max_words']) ? intval($content_length_range['max_words']) : 0,
+                'content_length_target_words' => $content_length_target_words,
+                'content_length_target_h2_count' => $content_length_target_h2_count,
+                'outline_block_quantities' => $runtime_block_quantities,
+            );
+            $runtime_context['outline_model_text'] = self::format_outline_model_for_prompt($outline_model, $runtime_context);
+
+            return $runtime_context;
+        }
+
+        public static function format_outline_model_for_prompt($outline_model, $runtime_context = array())
+        {
+            if (!is_array($outline_model) || empty($outline_model['key'])) {
+                return '';
+            }
+
+            $runtime_context = is_array($runtime_context) ? $runtime_context : array();
+            $lines = array();
+            $name = !empty($outline_model['name']) ? Alpha_RSS_AI_Generator_Helper::normalize_prompt_context_text($outline_model['name']) : '';
+            $description = !empty($outline_model['description']) ? Alpha_RSS_AI_Generator_Helper::normalize_prompt_context_text($outline_model['description']) : '';
+            $content_length_class = !empty($runtime_context['content_length_class']) ? self::normalize_content_length_class($runtime_context['content_length_class']) : '';
+            if ($content_length_class !== '') {
+                $content_length_range = self::get_content_length_range($content_length_class);
+                $content_length_label = !empty($content_length_range['label']) ? $content_length_range['label'] : ucfirst($content_length_class);
+                $content_length_min_words = isset($content_length_range['min_words']) ? intval($content_length_range['min_words']) : 0;
+                $content_length_max_words = isset($content_length_range['max_words']) ? intval($content_length_range['max_words']) : 0;
+                $lines[] = 'Extensao alvo do conteudo: ' . $content_length_label . ' (' . $content_length_min_words . '-' . $content_length_max_words . ' palavras)';
+            }
+            if (!empty($runtime_context['content_length_target_words'])) {
+                $lines[] = 'Meta de palavras deste item: ' . intval($runtime_context['content_length_target_words']);
+            }
+            if (!empty($runtime_context['content_length_target_h2_count'])) {
+                $lines[] = 'H2 sugeridos pela extensao: ' . intval($runtime_context['content_length_target_h2_count']);
+            }
+            $target_h2_range = self::get_outline_model_target_h2_range($outline_model);
+            $runtime_h2_count = isset($runtime_context['outline_target_h2_count']) ? max(1, intval($runtime_context['outline_target_h2_count'])) : 0;
+            $runtime_block_quantities = !empty($runtime_context['outline_block_quantities']) && is_array($runtime_context['outline_block_quantities']) ? $runtime_context['outline_block_quantities'] : array();
+
+            if ($name !== '') {
+                $lines[] = 'Nome do modelo: ' . $name;
+            }
+            if ($description !== '') {
+                $lines[] = 'Descricao: ' . $description;
+            }
+            if ($target_h2_range['min'] === $target_h2_range['max']) {
+                $lines[] = 'Quantidade alvo de H2: ' . $target_h2_range['min'];
+            } else {
+                $lines[] = 'Quantidade alvo de H2: ' . $target_h2_range['min'] . '-' . $target_h2_range['max'];
+            }
+            if ($runtime_h2_count > 0) {
+                $lines[] = 'Quantidade sorteada de H2 para este item: ' . $runtime_h2_count;
+            }
+
+            if (!empty($outline_model['blocks']) && is_array($outline_model['blocks'])) {
+                $lines[] = 'Estrutura do outline:';
+                foreach ($outline_model['blocks'] as $index => $block) {
+                    $block = self::normalize_outline_block_definition($block);
+                    $label = !empty($block['label']) ? $block['label'] : self::get_outline_block_label($block['type']);
+                    $notes = !empty($block['notes']) ? ' - ' . Alpha_RSS_AI_Generator_Helper::normalize_prompt_context_text($block['notes']) : '';
+                    $prompt_label = $label;
+                    if ($block['type'] === 'intro_without_h2') {
+                        $prompt_label = 'Abertura direta';
+                        $notes .= ' - Escreva apenas a abertura em texto corrido, sem H2 e sem usar a palavra Introducao.';
+                    } elseif ($block['type'] === 'intro_with_title') {
+                        $prompt_label = 'Abertura com titulo';
+                    } elseif ($block['type'] === 'intro') {
+                        $prompt_label = 'Abertura';
+                    } elseif ($block['type'] === 'table') {
+                        $prompt_label = 'Tabela';
+                        $notes .= ' - Use uma tabela HTML quando houver comparacoes, classificacoes ou muitos itens estruturados.';
+                    }
+                    $runtime_block = isset($runtime_block_quantities[$index]) && is_array($runtime_block_quantities[$index]) ? $runtime_block_quantities[$index] : array();
+                    $block_range = self::get_outline_block_quantity_range($block);
+                    $block_quantity = isset($runtime_block['quantity']) ? max(1, intval($runtime_block['quantity'])) : 0;
+
+                    if ($block['type'] === 'h2') {
+                        $repeat_count = $runtime_h2_count > 0 ? $runtime_h2_count : ($target_h2_range['min'] > 0 ? $target_h2_range['min'] : 1);
+                        $lines[] = ($index + 1) . '. ' . $prompt_label . ' (repetir ' . $repeat_count . 'x)' . $notes;
+                        continue;
+                    }
+
+                    if ($block_range['min'] > 1 || $block_range['max'] > 1 || $block_quantity > 1) {
+                        $quantity_text = $block_range['min'] . '-' . $block_range['max'];
+                        if ($block_range['min'] === $block_range['max']) {
+                            $quantity_text = (string) $block_range['min'];
+                        }
+                        if ($block_quantity > 0) {
+                            $quantity_text .= ' (sorteado ' . $block_quantity . 'x)';
+                        }
+                        $lines[] = ($index + 1) . '. ' . $prompt_label . ' (quantidade ' . $quantity_text . ')' . $notes;
+                        continue;
+                    }
+
+                    $lines[] = ($index + 1) . '. ' . $prompt_label . $notes;
+                }
+            }
+
+            return implode("\n", $lines);
         }
 
         public static function normalize_generation_language_value($value)
@@ -432,6 +949,32 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
             return $source_type === 'rss' || self::generator_uses_keyword_list_url_reference_mode($generator);
+        }
+
+        public static function generator_uses_source_content_images($generator)
+        {
+            if (isset($generator['source_content_images_enabled'])) {
+                return !empty($generator['source_content_images_enabled']);
+            }
+
+            if (isset($generator['source_content_media_enabled'])) {
+                return !empty($generator['source_content_media_enabled']);
+            }
+
+            return true;
+        }
+
+        public static function generator_uses_source_content_links($generator)
+        {
+            if (isset($generator['source_content_links_enabled'])) {
+                return !empty($generator['source_content_links_enabled']);
+            }
+
+            if (isset($generator['source_content_media_enabled'])) {
+                return !empty($generator['source_content_media_enabled']);
+            }
+
+            return true;
         }
 
         public static function get_generator_source_context_filters($generator)
@@ -528,12 +1071,31 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($content_prompt_template === '' || self::content_prompt_template_looks_like_legacy_default($content_prompt_template)) {
                 $content_prompt_template = self::get_default_content_prompt_template_visible();
             }
+            $generator['content_length_class'] = isset($generator['content_length_class']) ? self::normalize_content_length_class((string) $generator['content_length_class']) : self::get_default_content_length_class();
+            $generator['outline_model_key'] = isset($generator['outline_model_key']) ? sanitize_key((string) $generator['outline_model_key']) : self::get_default_outline_model_key();
+            $available_outline_models = self::get_outline_models();
+            $available_outline_model_keys = array();
+            foreach ($available_outline_models as $outline_model) {
+                if (!empty($outline_model['key'])) {
+                    $available_outline_model_keys[] = (string) $outline_model['key'];
+                }
+            }
+            if ($generator['outline_model_key'] === '' || (!empty($available_outline_model_keys) && !in_array($generator['outline_model_key'], $available_outline_model_keys, true))) {
+                $generator['outline_model_key'] = self::get_default_outline_model_key();
+            }
 
             $generator['keyword_list_mode'] = $keyword_list_mode;
             $generator['image_source_mode'] = $image_source_mode;
             $generator['image_selector_class'] = isset($generator['image_selector_class']) ? sanitize_text_field((string) $generator['image_selector_class']) : '';
             $generator['link_selector_class'] = isset($generator['link_selector_class']) ? sanitize_text_field((string) $generator['link_selector_class']) : '';
             $generator['content_image_size'] = isset($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
+            $generator['content_length_class'] = self::normalize_content_length_class(isset($generator['content_length_class']) ? $generator['content_length_class'] : self::get_default_content_length_class());
+            $generator['source_content_images_enabled'] = isset($generator['source_content_images_enabled'])
+                ? (!empty($generator['source_content_images_enabled']) ? 1 : 0)
+                : (isset($generator['source_content_media_enabled']) ? (!empty($generator['source_content_media_enabled']) ? 1 : 0) : 1);
+            $generator['source_content_links_enabled'] = isset($generator['source_content_links_enabled'])
+                ? (!empty($generator['source_content_links_enabled']) ? 1 : 0)
+                : (isset($generator['source_content_media_enabled']) ? (!empty($generator['source_content_media_enabled']) ? 1 : 0) : 1);
             $generator['source_link_phrases'] = isset($generator['source_link_phrases']) ? sanitize_textarea_field((string) $generator['source_link_phrases']) : '';
             $source_context_filters = array(
                 'exclude_phrases' => array(),
@@ -1373,6 +1935,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'pexels_enabled' => 1,
                 'pexels_query' => !empty($settings['pexels_query']) ? sanitize_text_field($settings['pexels_query']) : self::get_default_pexels_query(),
                 'source_video_enabled' => !empty($settings['source_video_enabled']) ? 1 : 0,
+                'source_content_images_enabled' => isset($settings['source_content_images_enabled']) ? (!empty($settings['source_content_images_enabled']) ? 1 : 0) : 1,
+                'source_content_links_enabled' => isset($settings['source_content_links_enabled']) ? (!empty($settings['source_content_links_enabled']) ? 1 : 0) : 1,
                 'video_selector_class' => !empty($settings['video_selector_class']) ? sanitize_text_field($settings['video_selector_class']) : '',
                 'image_selector_class' => !empty($settings['image_selector_class']) ? sanitize_text_field($settings['image_selector_class']) : '',
                 'link_selector_class' => !empty($settings['link_selector_class']) ? sanitize_text_field($settings['link_selector_class']) : '',
@@ -1553,6 +2117,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['model'] = isset($raw['model']) ? sanitize_text_field(wp_unslash($raw['model'])) : $settings['default_model'];
             $payload['temperature'] = isset($raw['temperature']) ? floatval($raw['temperature']) : floatval($settings['default_temperature']);
             $payload['max_tokens'] = isset($raw['max_tokens']) ? max(256, intval($raw['max_tokens'])) : intval($settings['default_max_tokens']);
+            $payload['content_length_class'] = isset($raw['content_length_class']) ? self::normalize_content_length_class(sanitize_key(wp_unslash($raw['content_length_class']))) : self::get_default_content_length_class();
             $payload['posts_per_run'] = isset($raw['posts_per_run']) ? max(1, intval($raw['posts_per_run'])) : 1;
             $payload['schedule_type'] = isset($raw['schedule_type']) ? sanitize_key($raw['schedule_type']) : 'interval';
             $payload['interval_minutes'] = isset($raw['interval_minutes']) ? max(1, intval($raw['interval_minutes'])) : 180;
@@ -1572,6 +2137,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['pexels_enabled'] = self::image_source_mode_uses_pexels($payload['image_source_mode']) ? 1 : 0;
             $payload['pexels_query'] = isset($raw['pexels_query']) ? sanitize_text_field(wp_unslash($raw['pexels_query'])) : self::get_default_pexels_query();
             $payload['source_video_enabled'] = !empty($raw['source_video_enabled']) ? 1 : 0;
+            $payload['source_content_images_enabled'] = isset($raw['source_content_images_enabled'])
+                ? (!empty($raw['source_content_images_enabled']) ? 1 : 0)
+                : (isset($raw['source_content_media_enabled']) ? (!empty($raw['source_content_media_enabled']) ? 1 : 0) : 1);
+            $payload['source_content_links_enabled'] = isset($raw['source_content_links_enabled'])
+                ? (!empty($raw['source_content_links_enabled']) ? 1 : 0)
+                : (isset($raw['source_content_media_enabled']) ? (!empty($raw['source_content_media_enabled']) ? 1 : 0) : 1);
             $payload['video_selector_class'] = isset($raw['video_selector_class']) ? sanitize_text_field(wp_unslash($raw['video_selector_class'])) : '';
             $payload['image_selector_class'] = isset($raw['image_selector_class']) ? sanitize_text_field(wp_unslash($raw['image_selector_class'])) : '';
             $payload['link_selector_class'] = isset($raw['link_selector_class']) ? sanitize_text_field(wp_unslash($raw['link_selector_class'])) : '';
@@ -1583,6 +2154,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['content_prompt_template'] = isset($raw['content_prompt_template']) ? wp_kses_post(wp_unslash($raw['content_prompt_template'])) : '';
             if (trim($payload['content_prompt_template']) === '' || self::content_prompt_template_looks_like_legacy_default($payload['content_prompt_template'])) {
                 $payload['content_prompt_template'] = self::get_default_content_prompt_template_visible();
+            }
+            $payload['outline_model_key'] = isset($raw['outline_model_key']) ? sanitize_key(wp_unslash($raw['outline_model_key'])) : self::get_default_outline_model_key();
+            $available_outline_models = self::get_outline_models();
+            $available_outline_model_keys = array();
+            foreach ($available_outline_models as $outline_model) {
+                if (!empty($outline_model['key'])) {
+                    $available_outline_model_keys[] = (string) $outline_model['key'];
+                }
+            }
+            if ($payload['outline_model_key'] === '' || (!empty($available_outline_model_keys) && !in_array($payload['outline_model_key'], $available_outline_model_keys, true))) {
+                $payload['outline_model_key'] = self::get_default_outline_model_key();
             }
             $payload['related_posts_enabled'] = !empty($raw['related_posts_enabled']) ? 1 : 0;
             $payload['related_posts_position'] = isset($raw['related_posts_position']) ? sanitize_key(wp_unslash($raw['related_posts_position'])) : 'end';
@@ -3608,13 +4190,16 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $alt_text = 'Imagem';
             }
 
-            $class_names = array(
+            $figure_class_names = array(
                 'wp-block-image',
-                sanitize_html_class((string) $align),
                 'size-' . sanitize_html_class($size),
             );
 
-            return '<figure class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($class_names))))) . '"><img src="' . esc_url($image_url) . '" alt="' . esc_attr($alt_text) . '" /></figure>';
+            $img_class_names = array(
+                'wp-image-' . $attachment_id,
+            );
+
+            return '<figure class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($figure_class_names))))) . '"><img src="' . esc_url($image_url) . '" alt="' . esc_attr($alt_text) . '" class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($img_class_names))))) . '" /></figure>';
         }
 
         public static function download_and_set_featured_image_from_url($post_id, $image_url, $title, $source_label = 'source', $query = '', $credit = '')
@@ -4586,6 +5171,18 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!empty($item['source_video_source'])) {
                 update_post_meta($post_id, '_arc_source_video_source', sanitize_text_field($item['source_video_source']));
             }
+            if (isset($item['outline_target_h2_min'])) {
+                update_post_meta($post_id, '_arc_outline_target_h2_min', intval($item['outline_target_h2_min']));
+            }
+            if (isset($item['outline_target_h2_max'])) {
+                update_post_meta($post_id, '_arc_outline_target_h2_max', intval($item['outline_target_h2_max']));
+            }
+            if (isset($item['outline_target_h2_count'])) {
+                update_post_meta($post_id, '_arc_outline_target_h2_count', intval($item['outline_target_h2_count']));
+            }
+            if (!empty($item['outline_block_quantities']) && is_array($item['outline_block_quantities'])) {
+                update_post_meta($post_id, '_arc_outline_block_quantities', wp_json_encode($item['outline_block_quantities'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
             if (!empty($item['date'])) {
                 update_post_meta($post_id, '_arc_source_timestamp', sanitize_text_field($item['date']));
             }
@@ -4959,9 +5556,24 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $item = self::resolve_item_media_for_generation($generator, $item);
             }
 
+            $outline_context = self::resolve_outline_generation_context($generator, $item);
+            if (!empty($outline_context) && is_array($outline_context)) {
+                $item = array_merge($item, $outline_context);
+            }
+
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
             if (is_wp_error($article)) {
                 return $article;
+            }
+
+            $title_outline_count = Alpha_RSS_AI_Generator_Helper::extract_outline_target_h2_count_from_title(
+                !empty($article['title']) ? $article['title'] : '',
+                !empty($item['source_title']) ? $item['source_title'] : (!empty($item['title']) ? $item['title'] : '')
+            );
+            if ($title_outline_count > 0) {
+                $item['outline_target_h2_min'] = $title_outline_count;
+                $item['outline_target_h2_max'] = $title_outline_count;
+                $item['outline_target_h2_count'] = $title_outline_count;
             }
 
             $is_keyword_list = !empty($generator['source_type']) && $generator['source_type'] === 'keyword_list';
@@ -5007,12 +5619,16 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])) {
                 $content_image_size = !empty($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
+                $use_source_content_images = self::generator_uses_source_content_images($generator);
+                $use_source_content_links = self::generator_uses_source_content_links($generator);
                 $article['content_html'] = Alpha_RSS_AI_Generator_Helper::inject_outline_section_media_into_content(
                     $article['content_html'],
                     $item['source_page_outline_sections'],
                     $post_id,
                     $content_image_size,
-                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : ''
+                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
+                    $use_source_content_images,
+                    $use_source_content_links
                 );
                 if ($article['content_html'] !== '') {
                     $update_content = wp_update_post(array(
@@ -5475,6 +6091,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'model' => $payload['model'],
                 'temperature' => $payload['temperature'],
                 'max_tokens' => $payload['max_tokens'],
+                'content_length_class' => $payload['content_length_class'],
                 'posts_per_run' => $payload['posts_per_run'],
                 'schedule_type' => $payload['schedule_type'],
                 'interval_minutes' => $payload['interval_minutes'],
@@ -5485,12 +6102,15 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'pexels_enabled' => $payload['pexels_enabled'],
                 'pexels_query' => $payload['pexels_query'],
                 'source_video_enabled' => $payload['source_video_enabled'],
+                'source_content_images_enabled' => $payload['source_content_images_enabled'],
+                'source_content_links_enabled' => $payload['source_content_links_enabled'],
                 'video_selector_class' => $payload['video_selector_class'],
                 'image_selector_class' => $payload['image_selector_class'],
                 'link_selector_class' => $payload['link_selector_class'],
                 'content_image_size' => $payload['content_image_size'],
                 'source_link_phrases' => $payload['source_link_phrases'],
                 'source_context_filters_json' => $payload['source_context_filters_json'],
+                'outline_model_key' => $payload['outline_model_key'],
                 'seo_enabled' => $payload['seo_enabled'],
                 'generation_language' => $payload['generation_language'],
                 'prompt_template' => $payload['prompt_template'],
@@ -5560,6 +6180,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'model' => $generator['model'],
                 'temperature' => $generator['temperature'],
                 'max_tokens' => $generator['max_tokens'],
+                'content_length_class' => isset($generator['content_length_class']) ? $generator['content_length_class'] : self::get_default_content_length_class(),
                 'posts_per_run' => $generator['posts_per_run'],
                 'schedule_type' => $generator['schedule_type'],
                 'interval_minutes' => $generator['interval_minutes'],
@@ -5570,6 +6191,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'pexels_enabled' => $generator['pexels_enabled'],
                 'pexels_query' => $generator['pexels_query'],
                 'source_video_enabled' => $generator['source_video_enabled'],
+                'source_content_images_enabled' => isset($generator['source_content_images_enabled']) ? $generator['source_content_images_enabled'] : 1,
+                'source_content_links_enabled' => isset($generator['source_content_links_enabled']) ? $generator['source_content_links_enabled'] : 1,
                 'video_selector_class' => isset($generator['video_selector_class']) ? $generator['video_selector_class'] : '',
                 'image_selector_class' => isset($generator['image_selector_class']) ? $generator['image_selector_class'] : '',
                 'link_selector_class' => isset($generator['link_selector_class']) ? $generator['link_selector_class'] : '',
@@ -5582,6 +6205,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'seo_enabled' => $generator['seo_enabled'],
                 'generation_language' => $generator['generation_language'],
                 'prompt_template' => $generator['prompt_template'],
+                'outline_model_key' => isset($generator['outline_model_key']) ? $generator['outline_model_key'] : self::get_default_outline_model_key(),
                 'related_posts_enabled' => isset($generator['related_posts_enabled']) ? $generator['related_posts_enabled'] : 0,
                 'related_posts_position' => isset($generator['related_posts_position']) ? $generator['related_posts_position'] : 'end',
                 'related_posts_interval' => isset($generator['related_posts_interval']) ? $generator['related_posts_interval'] : 4,

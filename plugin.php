@@ -14,6 +14,12 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_STYLE_URL')) {
 if (!defined('ALPHA_RSS_AI_GENERATOR_SCRIPT_URL')) {
     define('ALPHA_RSS_AI_GENERATOR_SCRIPT_URL', plugin_dir_url(__FILE__) . 'assets/js/scripts.js');
 }
+if (!defined('ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_PATH')) {
+    define('ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_PATH', plugin_dir_path(__FILE__) . 'assets/js/swal-bridge.js');
+}
+if (!defined('ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_URL')) {
+    define('ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_URL', plugin_dir_url(__FILE__) . 'assets/js/swal-bridge.js');
+}
 
 if (!function_exists('alpha_rss_ai_generator_enqueue_assets')) {
     function alpha_rss_ai_generator_enqueue_assets() {
@@ -28,6 +34,31 @@ if (!function_exists('alpha_rss_ai_generator_enqueue_assets')) {
                 ALPHA_RSS_AI_GENERATOR_STYLE_URL,
                 array(),
                 filemtime(ALPHA_RSS_AI_GENERATOR_STYLE_PATH)
+            );
+        }
+
+        wp_enqueue_style(
+            'alpha-rss-ai-generator-swal',
+            'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css',
+            array(),
+            '11.0.0'
+        );
+
+        wp_enqueue_script(
+            'alpha-rss-ai-generator-sweetalert2',
+            'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js',
+            array(),
+            '11.0.0',
+            false
+        );
+
+        if (file_exists(ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_PATH)) {
+            wp_enqueue_script(
+                'alpha-rss-ai-generator-swal-bridge',
+                ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_URL,
+                array('alpha-rss-ai-generator-sweetalert2'),
+                filemtime(ALPHA_RSS_AI_GENERATOR_SWAL_BRIDGE_PATH),
+                false
             );
         }
 

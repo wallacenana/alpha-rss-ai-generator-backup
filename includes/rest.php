@@ -85,6 +85,14 @@ class Alpha_RSS_AI_Generator_REST
                 ),
             ),
         ));
+
+        register_rest_route('alpha-rss-ai-generator/v1', '/generators/(?P<id>\d+)/generate', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => array($this, 'rest_generate_generator_item'),
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
     }
 
     public function rest_preview_keyword_list(WP_REST_Request $request)
@@ -589,5 +597,60 @@ class Alpha_RSS_AI_Generator_REST
                 'counts' => $counts,
             ));
         }
+    }
+
+    public function rest_generate_generator_item(WP_REST_Request $request)
+    {
+        $generator_id = intval($request->get_param('id'));
+        if (!$generator_id) {
+            return new WP_Error('arc_generator_invalid', 'Gerador invalido', array('status' => 400));
+        }
+
+        $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
+        if (!$generator) {
+            return new WP_Error('arc_generator_missing', 'Gerador nao encontrado', array('status' => 404));
+        }
+
+        $payload = $request->get_json_params();
+        if (!is_array($payload)) {
+            $payload = array();
+        }
+
+        $item_guid = '';
+        if (isset($payload['item_guid'])) {
+            $item_guid = sanitize_text_field(wp_unslash((string) $payload['item_guid']));
+        } elseif ($request->get_param('item_guid') !== null) {
+            $item_guid = sanitize_text_field(wp_unslash((string) $request->get_param('item_guid')));
+        }
+
+        if ($item_guid === '') {
+            return new WP_Error('arc_item_missing', 'Nenhum item foi selecionado.', array('status' => 400));
+        }
+
+        $result = Alpha_RSS_AI_Generator::run_generator_item($generator, $item_guid);
+        if (is_wp_error($result)) {
+            $status = 400;
+            $error_data = $result->get_error_data();
+            if (is_array($error_data) && !empty($error_data['status'])) {
+                $status = intval($error_data['status']);
+            }
+
+            return new WP_REST_Response(array(
+                'success' => false,
+                'message' => $result->get_error_message(),
+                'code' => $result->get_error_code(),
+            ), $status);
+        }
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'Item gerado com sucesso.',
+            'post_id' => intval($result['post_id']),
+            'item_guid' => isset($result['item_guid']) ? $result['item_guid'] : $item_guid,
+            'item_title' => isset($result['item_title']) ? $result['item_title'] : '',
+            'view_link' => isset($result['view_link']) ? $result['view_link'] : '',
+            'edit_link' => isset($result['edit_link']) ? $result['edit_link'] : '',
+            'permalink' => isset($result['permalink']) ? $result['permalink'] : '',
+        ));
     }
 }
