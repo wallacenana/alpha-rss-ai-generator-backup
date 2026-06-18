@@ -5327,9 +5327,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             update_post_meta($post_id, '_arc_generator_id', intval($generator['id']));
 
-            if (!empty($generator['seo_enabled'])) {
-                self::sync_seo_meta($post_id, $generator, $article, $item);
-            }
+            self::sync_seo_meta($post_id, $generator, $article, $item);
         }
 
         /**

@@ -1087,6 +1087,113 @@ class Alpha_RSS_AI_Generator_Helper
         return array_values($cleaned);
     }
 
+    public static function strip_generated_cta_markup_from_html($html, $phrases = array())
+    {
+        $html = trim((string) $html);
+        if ($html === '') {
+            return '';
+        }
+
+        $phrases = self::parse_source_link_cta_phrases($phrases);
+        $phrase_pattern = !empty($phrases)
+            ? implode('|', array_map(function ($phrase) {
+                return preg_quote($phrase, '~');
+            }, $phrases))
+            : '(^$)';
+
+        $patterns = array(
+            '~<!--\s*arc-outline-media:link:start\s*-->.*?<!--\s*arc-outline-media:link:end\s*-->~is',
+            '~<div\b[^>]*class=["\'][^"\']*\bwp-block-buttons\b[^"\']*["\'][^>]*>.*?</div>~isu',
+            '~<div\b[^>]*class=["\'][^"\']*\bwp-block-button\b[^"\']*["\'][^>]*>.*?</div>~isu',
+            '~<p\b[^>]*>\s*(?:<strong\b[^>]*>\s*)?(?:<a\b[^>]*>)?\s*(?:' . $phrase_pattern . ')\s*(?:</a>\s*)?(?:</strong>\s*)?</p>~isu',
+        );
+
+        $html = preg_replace($patterns, '', $html);
+        $html = preg_replace('~\n{3,}~', "\n\n", $html);
+
+        return trim((string) $html);
+    }
+
+    public static function strip_generated_cta_blocks_from_parsed_blocks($blocks, $phrases = array())
+    {
+        if (!is_array($blocks) || empty($blocks)) {
+            return array();
+        }
+
+        $phrases = self::parse_source_link_cta_phrases($phrases);
+        $phrase_pattern = !empty($phrases)
+            ? implode('|', array_map(function ($phrase) {
+                return preg_quote($phrase, '~');
+            }, $phrases))
+            : '(^$)';
+
+        $cleaned = array();
+        foreach ($blocks as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+
+            if (!empty($block['innerBlocks']) && is_array($block['innerBlocks'])) {
+                $block['innerBlocks'] = self::strip_generated_cta_blocks_from_parsed_blocks($block['innerBlocks'], $phrases);
+            }
+
+            $block_name = !empty($block['blockName']) ? (string) $block['blockName'] : '';
+            if (in_array($block_name, array('core/button', 'core/buttons'), true)) {
+                continue;
+            }
+
+            $block_html = self::extract_block_html($block);
+            if ($block_html !== '') {
+                if (preg_match('~\bwp-block-buttons\b|\bwp-block-button\b|\bwp-block-button__link\b~i', $block_html)) {
+                    continue;
+                }
+
+                $stripped_html = self::strip_generated_cta_markup_from_html($block_html, $phrases);
+
+                if ($stripped_html === '' && preg_match('~\bwp-block-button\b|<a\b[^>]*>(?:\s*)?(?:' . $phrase_pattern . ')\b~iu', $block_html)) {
+                    continue;
+                }
+
+                if ($stripped_html !== $block_html) {
+                    if (isset($block['innerHTML'])) {
+                        $block['innerHTML'] = $stripped_html;
+                    }
+                    if (isset($block['innerContent']) && is_array($block['innerContent'])) {
+                        $block['innerContent'] = array($stripped_html);
+                    }
+                }
+            }
+
+            $cleaned[] = $block;
+        }
+
+        return array_values($cleaned);
+    }
+
+    public static function strip_generated_cta_blocks_from_content($content, $phrases = array())
+    {
+        $content = trim((string) $content);
+        if ($content === '') {
+            return '';
+        }
+
+        if (!function_exists('parse_blocks') || !function_exists('serialize_blocks')) {
+            return self::strip_generated_cta_markup_from_html($content, $phrases);
+        }
+
+        $blocks = parse_blocks($content);
+        if (empty($blocks) || !is_array($blocks)) {
+            return self::strip_generated_cta_markup_from_html($content, $phrases);
+        }
+
+        $blocks = self::strip_generated_cta_blocks_from_parsed_blocks($blocks, $phrases);
+        if (empty($blocks)) {
+            return '';
+        }
+
+        return serialize_blocks($blocks);
+    }
+
     public static function pick_best_outline_section_link_candidate($section)
     {
         if (!is_array($section)) {
@@ -1640,10 +1747,6 @@ class Alpha_RSS_AI_Generator_Helper
             return $content;
         }
 
-        if (stripos($content, 'arc-outline-media:') !== false) {
-            return $content;
-        }
-
         if (!is_array($outline_sections) || empty($outline_sections) || !function_exists('parse_blocks') || !function_exists('serialize_blocks')) {
             return $content;
         }
@@ -1707,6 +1810,13 @@ class Alpha_RSS_AI_Generator_Helper
 
             if ($section_image_html !== '') {
                 $section_blocks = self::strip_generated_image_blocks_from_parsed_blocks($section_blocks);
+                if (empty($section_blocks)) {
+                    continue;
+                }
+            }
+
+            if ($section_link_html !== '') {
+                $section_blocks = self::strip_generated_cta_blocks_from_parsed_blocks($section_blocks, $link_phrases);
                 if (empty($section_blocks)) {
                     continue;
                 }
