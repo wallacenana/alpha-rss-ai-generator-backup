@@ -434,6 +434,7 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
                         { value: 'intro_with_title', label: 'Introducao com titulo' },
                         { value: 'intro_without_h2', label: 'Introducao sem H2' },
                         { value: 'h2', label: 'H2' },
+                        { value: 'h3', label: 'H3' },
                         { value: 'paragraph', label: 'Paragrafo' },
                         { value: 'list', label: 'Lista' },
                         { value: 'bullet', label: 'Bullet' },
@@ -512,9 +513,10 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
                         }
                         lines.push('Quantidade alvo de H2: ' + targetH2Label);
                         lines.push('Estrutura do outline:');
+                        var targetH2RepeatLabel = targetH2Min === targetH2Max ? String(Math.max(1, targetH2Min || 1)) : (Math.max(1, targetH2Min || 1) + '-' + Math.max(1, targetH2Max || 1));
                         if (!currentBlocks.length) {
                             lines.push('1. Introducao sem H2');
-                            lines.push('2. H2 (repetir ' + Math.max(1, targetH2Min || 1) + 'x)');
+                            lines.push('2. H2 (repetir ' + targetH2RepeatLabel + 'x)');
                             lines.push('3. Paragrafo (quantidade 1x)');
                         } else {
                             currentBlocks.forEach(function(block, index) {
@@ -523,7 +525,7 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
                                     prefix += ' - ' + block.notes;
                                 }
                                 if (block.type === 'h2') {
-                                    prefix += ' (repetir ' + Math.max(1, targetH2Min || 1) + 'x)';
+                                    prefix += ' (repetir ' + targetH2RepeatLabel + 'x)';
                                 } else {
                                     var quantityMin = parseInt(block.quantity_min || '1', 10) || 1;
                                     var quantityMax = parseInt(block.quantity_max || '1', 10) || 1;

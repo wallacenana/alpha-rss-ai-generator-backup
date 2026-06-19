@@ -193,10 +193,10 @@
     }
 
     function initSelect2Fields() {
-        if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) {
+        var $ = window.jQuery;
+        if (!$ || !$.fn || !$.fn.select2) {
             return;
         }
-        var $ = window.jQuery;
         var $modal = $('#arc-generator-modal');
         var selectors = [
             '#arc-generator-modal select[name="category_ids[]"]',

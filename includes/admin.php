@@ -51,7 +51,7 @@ class Alpha_RSS_AI_Generator_Admin
         $editing_generator = $edit_id > 0 ? Alpha_RSS_AI_Generator::get_generator($edit_id) : array();
 
         $post_types = get_post_types(array('public' => true), 'objects');
-        $users = get_users(array('orderby' => 'display_name', 'order' => 'ASC', 'fields' => array('ID', 'display_name', 'user_login')));
+        $users = Alpha_RSS_AI_Generator::get_content_author_users();
         $categories = get_categories(array('hide_empty' => false));
         $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
 
@@ -444,7 +444,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="large" <?php selected($editing_content_length_class, 'large'); ?>>Grande (1000-2500 palavras)</option>
                                         <option value="extra_large" <?php selected($editing_content_length_class, 'extra_large'); ?>>Extra grande (2500-5000 palavras)</option>
                                     </select>
-                                    <p class="mt-1 text-xs text-slate-500">O backend calcula o alvo de H2 a partir dessa faixa. H3 contam dentro da mesma sessao.</p>
+                                    <p class="mt-1 text-xs text-slate-500">O backend calcula o alvo de H2 a partir dessa faixa.</p>
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Posts por execução</label>
@@ -932,10 +932,10 @@ class Alpha_RSS_AI_Generator_Admin
                     }
 
                     function initSelect2Fields() {
-                        if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) {
+                        var $ = window.jQuery;
+                        if (!$ || !$.fn || !$.fn.select2) {
                             return;
                         }
-                        var $ = window.jQuery;
                         var $modal = $('#arc-generator-modal');
                         var selectors = [
                             '#arc-generator-modal select[name="category_ids[]"]',
@@ -1578,7 +1578,7 @@ class Alpha_RSS_AI_Generator_Admin
         unset($keyword_list);
 
         $post_types = get_post_types(array('public' => true), 'objects');
-        $users = get_users(array('orderby' => 'display_name', 'order' => 'ASC', 'fields' => array('ID', 'display_name', 'user_login')));
+        $users = Alpha_RSS_AI_Generator::get_content_author_users();
         $categories = get_categories(array('hide_empty' => false));
         $tags = get_terms(array(
             'taxonomy' => 'post_tag',

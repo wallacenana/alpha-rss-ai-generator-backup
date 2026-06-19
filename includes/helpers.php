@@ -1840,7 +1840,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Estrutura do outline: ' . $outline_model_text,
             'Regra: siga o modelo de outline na ordem definida e nao invente blocos fora da estrutura.',
             'Regra: quando o artigo for lista, ranking ou selecao, o titulo final deve refletir a quantidade total da lista quando houver numero definido.',
-            'Regra: a extensao do conteudo deve seguir a faixa escolhida e cada H3 conta dentro da mesma faixa de palavras da sessao.',
+            'Regra: a extensao do conteudo deve seguir a faixa escolhida e o numero total de H2 definido para este item.',
         ));
 
         return $prompt;
@@ -1940,7 +1940,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Estrutura do outline: {{outline_model_text}}',
             'Regra: siga o modelo de outline na ordem definida e nao invente blocos fora da estrutura.',
             'Regra: se o titulo gerado trouxer uma quantidade, use exatamente o mesmo numero no outline e no corpo.',
-            'Regra: a extensao do conteudo deve seguir a faixa escolhida e cada H3 conta dentro da mesma faixa de palavras da sessao.',
+            'Regra: a extensao do conteudo deve seguir a faixa escolhida e o numero total de H2 definido para este item.',
             'Regra: o bloco Abertura direta e apenas um texto de abertura, sem H2 e sem usar a palavra Introducao.',
             'Dados da linha: {{row_data}}',
             'Site: {{site_name}}',

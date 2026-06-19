@@ -593,6 +593,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'intro_with_title' => 'Introducao com titulo',
                 'intro_without_h2' => 'Introducao sem H2',
                 'h2' => 'H2',
+                'h3' => 'H3',
                 'paragraph' => 'Paragrafo',
                 'list' => 'Lista',
                 'bullet' => 'Bullet',
@@ -610,7 +611,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $block = is_array($block) ? $block : array();
             $type = isset($block['type']) ? sanitize_key((string) $block['type']) : 'paragraph';
-            $allowed_types = array('intro', 'intro_with_title', 'intro_without_h2', 'h2', 'paragraph', 'list', 'bullet', 'table', 'image', 'button', 'conclusion');
+            $allowed_types = array('intro', 'intro_with_title', 'intro_without_h2', 'h2', 'h3', 'paragraph', 'list', 'bullet', 'table', 'image', 'button', 'conclusion');
             if (!in_array($type, $allowed_types, true)) {
                 $type = 'paragraph';
             }
@@ -742,9 +743,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $runtime_h2_count = intval($item['outline_target_h2_count']);
             }
             if ($runtime_h2_count <= 0) {
-                $runtime_h2_count = $content_length_target_h2_count > 0
-                    ? $content_length_target_h2_count
-                    : self::pick_outline_quantity($outline_h2_range['min'], $outline_h2_range['max'], $outline_h2_range['min']);
+                $runtime_h2_count = self::pick_outline_quantity(
+                    $outline_h2_range['min'],
+                    $outline_h2_range['max'],
+                    $outline_h2_range['min']
+                );
             }
 
             $blocks = !empty($outline_model['blocks']) && is_array($outline_model['blocks']) ? $outline_model['blocks'] : array();
@@ -854,8 +857,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     $block_quantity = isset($runtime_block['quantity']) ? max(1, intval($runtime_block['quantity'])) : 0;
 
                     if ($block['type'] === 'h2') {
-                        $repeat_count = $runtime_h2_count > 0 ? $runtime_h2_count : ($target_h2_range['min'] > 0 ? $target_h2_range['min'] : 1);
-                        $lines[] = ($index + 1) . '. ' . $prompt_label . ' (repetir ' . $repeat_count . 'x)' . $notes;
+                        if ($runtime_h2_count > 0) {
+                            $lines[] = ($index + 1) . '. ' . $prompt_label . ' (repetir ' . $runtime_h2_count . 'x)' . $notes;
+                        } else {
+                            $repeat_label = $target_h2_range['min'] === $target_h2_range['max']
+                                ? (string) $target_h2_range['min']
+                                : ($target_h2_range['min'] . '-' . $target_h2_range['max']);
+                            $lines[] = ($index + 1) . '. ' . $prompt_label . ' (repetir ' . $repeat_label . 'x)' . $notes;
+                        }
                         continue;
                     }
 
@@ -975,6 +984,39 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             return true;
+        }
+
+        public static function get_content_author_users()
+        {
+            return get_users(array(
+                'role__in' => array('administrator', 'editor'),
+                'orderby' => 'display_name',
+                'order' => 'ASC',
+                'fields' => array('ID', 'display_name', 'user_login'),
+            ));
+        }
+
+        public static function normalize_content_author_id($author_id, $fallback_to_current = true)
+        {
+            $author_id = intval($author_id);
+            if ($author_id > 0) {
+                $user = get_user_by('id', $author_id);
+                if ($user && array_intersect(array('administrator', 'editor'), (array) $user->roles)) {
+                    return $author_id;
+                }
+            }
+
+            if ($fallback_to_current) {
+                $current_user_id = get_current_user_id();
+                if ($current_user_id > 0) {
+                    $current_user = get_user_by('id', $current_user_id);
+                    if ($current_user && array_intersect(array('administrator', 'editor'), (array) $current_user->roles)) {
+                        return $current_user_id;
+                    }
+                }
+            }
+
+            return 0;
         }
 
         public static function get_generator_source_context_filters($generator)
@@ -1916,7 +1958,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'status' => 'active',
                 'post_type' => $post_type,
                 'post_status' => $post_status,
-                'author_id' => isset($settings['author_id']) ? intval($settings['author_id']) : 0,
+                'author_id' => self::normalize_content_author_id(isset($settings['author_id']) ? intval($settings['author_id']) : 0),
                 'category_ids' => wp_json_encode(array_values(array_filter(array_map('intval', $category_ids)))),
                 'tags_default' => wp_json_encode(array_values(array_filter(array_map('sanitize_text_field', $tags_default)))),
                 'custom_taxonomies' => $custom_taxonomies,
@@ -2104,7 +2146,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['status'] = isset($raw['status']) ? sanitize_key($raw['status']) : 'active';
             $payload['post_type'] = isset($raw['post_type']) ? sanitize_key($raw['post_type']) : 'post';
             $payload['post_status'] = isset($raw['post_status']) ? sanitize_key($raw['post_status']) : 'draft';
-            $payload['author_id'] = isset($raw['author_id']) ? intval($raw['author_id']) : 0;
+            $payload['author_id'] = self::normalize_content_author_id(isset($raw['author_id']) ? intval($raw['author_id']) : 0);
             $payload['category_ids'] = wp_json_encode(self::parse_list_field(isset($raw['category_ids']) ? $raw['category_ids'] : ''));
             $payload['tags_default'] = wp_json_encode(self::parse_list_field(isset($raw['tags_default']) ? $raw['tags_default'] : ''));
             $payload['custom_taxonomies'] = wp_json_encode(self::parse_key_value_lines(isset($raw['custom_taxonomies']) ? wp_unslash($raw['custom_taxonomies']) : ''));
@@ -5015,7 +5057,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $post_type = post_type_exists($generator['post_type']) ? $generator['post_type'] : 'post';
             $post_status = in_array($generator['post_status'], array('publish', 'draft', 'pending', 'private', 'future'), true) ? $generator['post_status'] : 'draft';
-            $author_id = intval($generator['author_id']);
+            $author_id = self::normalize_content_author_id(isset($generator['author_id']) ? intval($generator['author_id']) : 0);
             if ($author_id <= 0) {
                 $author_id = get_current_user_id();
             }
@@ -6205,6 +6247,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'seo_enabled' => $generator['seo_enabled'],
                 'generation_language' => $generator['generation_language'],
                 'prompt_template' => $generator['prompt_template'],
+                'content_prompt_template' => isset($generator['content_prompt_template']) ? $generator['content_prompt_template'] : '',
                 'outline_model_key' => isset($generator['outline_model_key']) ? $generator['outline_model_key'] : self::get_default_outline_model_key(),
                 'related_posts_enabled' => isset($generator['related_posts_enabled']) ? $generator['related_posts_enabled'] : 0,
                 'related_posts_position' => isset($generator['related_posts_position']) ? $generator['related_posts_position'] : 'end',
