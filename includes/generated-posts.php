@@ -42,6 +42,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             return strlen($text) > $limit ? substr($text, 0, $limit - 3) . '...' : $text;
         }
 
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- read-only admin query state.
         private static function get_request_param($key, $default = '')
         {
             if (!isset($_GET[$key])) {
@@ -58,6 +59,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
 
         private static function get_filtered_query($paged, $per_page, $generator_id = 0, $search = '')
         {
+            // phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- admin listing filters on generated posts rely on meta_query.
             $args = array(
                 'post_type' => 'any',
                 'post_status' => array('publish', 'draft', 'pending', 'private', 'future'),
@@ -87,6 +89,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             }
 
             return new WP_Query($args);
+            // phpcs:enable WordPress.DB.SlowDBQuery.slow_db_query_meta_query
         }
 
         private static function get_generator_name($generator_id)
@@ -353,6 +356,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $use_source_image = $treat_like_rss && Alpha_RSS_AI_Generator::image_source_mode_uses_source_image($image_source_mode);
             $use_pexels = Alpha_RSS_AI_Generator::image_source_mode_uses_pexels($image_source_mode);
             $use_dalle = Alpha_RSS_AI_Generator::image_source_mode_uses_dalle($image_source_mode);
+            $use_runware = Alpha_RSS_AI_Generator::image_source_mode_uses_runware($image_source_mode);
 
             if ($use_source_image && $has_source_image) {
                 $source_image_set = (bool) Alpha_RSS_AI_Generator::maybe_set_source_featured_image($post_id, $item, $article);
@@ -371,6 +375,13 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 if (is_wp_error($dalle_result)) {
                     if ($is_keyword_list && !$is_keyword_list_url_reference) {
                         return $dalle_result;
+                    }
+                }
+            } elseif ($needs_fallback_image && $use_runware) {
+                $runware_result = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_runware($post_id, $generator, $item, $article, $is_keyword_list);
+                if (is_wp_error($runware_result)) {
+                    if ($is_keyword_list && !$is_keyword_list_url_reference) {
+                        return $runware_result;
                     }
                 }
             }
@@ -533,6 +544,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             }
             echo '</p></div>';
         }
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 
         private static function render_post_status_badge($status)
         {
@@ -569,19 +581,6 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $selected_generator_name = $generator_id > 0 ? self::get_generator_name($generator_id) : '';
 
             ?>
-            <script>
-                window.tailwind = window.tailwind || {};
-                window.tailwind.config = {
-                    theme: {
-                        extend: {
-                            boxShadow: {
-                                soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
-                            }
-                        }
-                    }
-                };
-            </script>
-            <script src="https://cdn.tailwindcss.com"></script>
             <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
                 <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -721,7 +720,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                             <div class="text-sm text-slate-500">Página <?php echo esc_html($paged); ?> de <?php echo esc_html($total_pages); ?></div>
                             <div class="pagination-links">
                                 <?php
-                                echo paginate_links(array(
+                                echo wp_kses_post(paginate_links(array(
                                     'base' => add_query_arg(array(
                                         'page' => self::PAGE_SLUG,
                                         'paged' => '%#%',
@@ -733,7 +732,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                     'total' => $total_pages,
                                     'prev_text' => '&laquo;',
                                     'next_text' => '&raquo;',
-                                ));
+                                )));
                                 ?>
                             </div>
                         </div>

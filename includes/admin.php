@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 if (!defined('ABSPATH')) {
     exit;
@@ -46,7 +46,7 @@ class Alpha_RSS_AI_Generator_Admin
         $settings = Alpha_RSS_AI_Generator::get_settings();
         $generators = Alpha_RSS_AI_Generator::get_generators(200);
         $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
-        $outline_models = Alpha_RSS_AI_Generator::get_outline_models();
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only edit state from admin URL.
         $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
         $editing_generator = $edit_id > 0 ? Alpha_RSS_AI_Generator::get_generator($edit_id) : array();
 
@@ -56,19 +56,6 @@ class Alpha_RSS_AI_Generator_Admin
         $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
 
 ?>
-        <script>
-            window.tailwind = window.tailwind || {};
-            window.tailwind.config = {
-                theme: {
-                    extend: {
-                        boxShadow: {
-                            soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
-                        }
-                    }
-                }
-            };
-        </script>
-        <script src="https://cdn.tailwindcss.com"></script>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -79,7 +66,12 @@ class Alpha_RSS_AI_Generator_Admin
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" data-open-settings-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Configurações globais</button>
                     <button type="button" data-open-runs-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Execuções recentes</button>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-outline-models')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Modelos de outline</a>
+                    <button type="button" data-open-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Importar gerador</button>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <?php wp_nonce_field('arc_export_generators', 'arc_export_generators_nonce'); ?>
+                        <input type="hidden" name="action" value="arc_export_generators" />
+                        <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Exportar geradores</button>
+                    </form>
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
             </div>
@@ -120,15 +112,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         $generator_status_label = Alpha_RSS_AI_Generator::get_generator_status_label($generator['status']);
                                         $schedule_label = Alpha_RSS_AI_Generator::get_schedule_type_label($generator['schedule_type']);
                                         $language_label = Alpha_RSS_AI_Generator::normalize_generation_language_value(isset($generator['generation_language']) ? $generator['generation_language'] : Alpha_RSS_AI_Generator::get_default_generation_language());
-                                        $outline_model_label = '';
-                                        if (!empty($generator['outline_model_key'])) {
-                                            foreach ($outline_models as $outline_model_candidate) {
-                                                if (!empty($outline_model_candidate['key']) && (string) $outline_model_candidate['key'] === (string) $generator['outline_model_key']) {
-                                                    $outline_model_label = !empty($outline_model_candidate['name']) ? $outline_model_candidate['name'] : $outline_model_candidate['key'];
-                                                    break;
-                                                }
-                                            }
-                                        }
+                                        
                                         ?>
                                         <tr class="align-top">
                                             <td class="px-6 py-4">
@@ -149,9 +133,6 @@ class Alpha_RSS_AI_Generator_Admin
                                                         <?php echo esc_html($generator['feed_url']); ?>
                                                     <?php endif; ?>
                                                 </div>
-                                                <?php if ($outline_model_label !== ''): ?>
-                                                    <div class="mt-1 text-xs text-slate-500">Outline: <?php echo esc_html($outline_model_label); ?></div>
-                                                <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4">
                                                 <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold <?php echo $generator['status'] === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'; ?>">
@@ -182,6 +163,12 @@ class Alpha_RSS_AI_Generator_Admin
                                                         class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">
                                                         Escolher item
                                                     </button>
+                                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                                                        <?php wp_nonce_field('arc_export_generator', 'arc_export_generator_nonce'); ?>
+                                                        <input type="hidden" name="action" value="arc_export_generator" />
+                                                        <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
+                                                        <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Exportar</button>
+                                                    </form>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                                         <?php wp_nonce_field('arc_duplicate_generator', 'arc_duplicate_nonce'); ?>
                                                         <input type="hidden" name="action" value="arc_duplicate_generator" />
@@ -227,6 +214,14 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
                                     <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Runware</label>
+                                    <input type="password" name="runware_api_key" value="<?php echo esc_attr(isset($settings['runware_api_key']) ? $settings['runware_api_key'] : ''); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Modelo do Runware</label>
+                                    <input type="text" name="runware_model" value="<?php echo esc_attr(isset($settings['runware_model']) ? $settings['runware_model'] : 'runware:400@1'); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
@@ -337,6 +332,42 @@ class Alpha_RSS_AI_Generator_Admin
                                 <input type="hidden" name="item_guid" value="" />
                             </form>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="arc-generator-import-modal" class="fixed inset-0 z-50 hidden">
+                <div id="arc-generator-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+                <div class="relative mx-auto flex min-h-full max-w-3xl items-center px-4 py-8 sm:px-6 lg:px-8">
+                    <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h2 class="text-xl font-semibold text-slate-950">Importar gerador</h2>
+                                <p class="mt-1 text-sm text-slate-500">Envie um JSON exportado de um gerador. O arquivo pode conter um item único ou uma lista de itens.</p>
+                            </div>
+                            <button type="button" data-close-generator-import-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
+                        </div>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
+                            <?php wp_nonce_field('arc_import_generator', 'arc_import_generator_nonce'); ?>
+                            <input type="hidden" name="action" value="arc_import_generators" />
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo JSON</label>
+                                    <input type="file" name="generator_json_file" accept=".json,application/json" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white file:transition hover:file:bg-slate-800" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Ou cole o JSON aqui</label>
+                                    <textarea name="generator_json_inline" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder='{"generator": {...}}'></textarea>
+                                </div>
+                            </div>
+                            <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                                <p class="text-sm text-slate-500">O import reaproveita os mesmos campos do formulário do gerador, incluindo prompts, outline e taxonomias.</p>
+                                <div class="flex items-center gap-3">
+                                    <button type="button" data-close-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
+                                    <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Importar JSON</button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -479,8 +510,10 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="rss">Fonte do RSS</option>
                                         <option value="rss_or_pexels">Fonte do RSS ou Pexels</option>
                                         <option value="rss_or_dalle">Fonte do RSS ou Dall-e</option>
+                                        <option value="rss_or_runware">Fonte do RSS ou Runware</option>
                                         <option value="pexels">Pexels</option>
                                         <option value="dalle">Dall-e</option>
+                                        <option value="runware">Runware</option>
                                     </select>
                                     <p class="mt-1 text-xs text-slate-500">Escolha se o gerador usa a imagem da fonte, um fallback visual ou a geração por IA. No modo de planilha com URL de referência, os modos de RSS ficam disponíveis; no modo só palavras-chave, o sistema adapta a escolha.</p>
                                 </div>
@@ -591,23 +624,23 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div class="hidden md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
-                                            <label class="block text-sm font-semibold text-slate-800">SugestÃµes de posts</label>
-                                            <p class="mt-1 text-xs text-slate-500">Adicione blocos de posts relacionados no meio ou no fim do conteÃºdo. As frases do marcador podem variar entre linhas diferentes.</p>
+                                            <label class="block text-sm font-semibold text-slate-800">SugestÃƒÂµes de posts</label>
+                                            <p class="mt-1 text-xs text-slate-500">Adicione blocos de posts relacionados no meio ou no fim do conteÃƒÂºdo. As frases do marcador podem variar entre linhas diferentes.</p>
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">Ativar sugestÃµes</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Ativar sugestÃƒÂµes</label>
                                             <select name="related_posts_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:w-44">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃ£o</option>
+                                                <option value="0">NÃƒÂ£o</option>
                                             </select>
                                         </div>
                                     </div>
                                     <div class="mt-4 grid gap-4 md:grid-cols-2">
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">PosiÃ§Ã£o</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">PosiÃƒÂ§ÃƒÂ£o</label>
                                             <select name="related_posts_position" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                                <option value="end">No final do conteÃºdo</option>
-                                                <option value="paragraphs">A cada X parÃ¡grafos</option>
+                                                <option value="end">No final do conteÃƒÂºdo</option>
+                                                <option value="paragraphs">A cada X parÃƒÂ¡grafos</option>
                                                 <option value="words">A cada X palavras</option>
                                             </select>
                                         </div>
@@ -616,7 +649,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             <input type="number" min="1" name="related_posts_interval" value="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">MÃ­nimo de H2</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">MÃƒÂ­nimo de H2</label>
                                             <input type="number" min="0" name="related_posts_min_h2" value="1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
                                         <div>
@@ -627,14 +660,14 @@ class Alpha_RSS_AI_Generator_Admin
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Apenas mesma categoria</label>
                                             <select name="related_posts_same_category_only" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃ£o</option>
+                                                <option value="0">NÃƒÂ£o</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Permitir fallback</label>
                                             <select name="related_posts_allow_fallback" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃ£o</option>
+                                                <option value="0">NÃƒÂ£o</option>
                                             </select>
                                         </div>
                                         <div>
@@ -647,8 +680,8 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                         <div class="md:col-span-2">
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Frases do marcador</label>
-                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="VocÃª tambÃ©m pode gostar de:\nLeia tambÃ©m:\nVeja tambÃ©m:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
-                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestÃ£o.</p>
+                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="VocÃƒÂª tambÃƒÂ©m pode gostar de:\nLeia tambÃƒÂ©m:\nVeja tambÃƒÂ©m:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
+                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestÃƒÂ£o.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -681,14 +714,6 @@ class Alpha_RSS_AI_Generator_Admin
                                     </div>
                                 </div>
                                 <div class="md:col-span-2">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Taxonomias personalizadas</label>
-                                    <textarea name="custom_taxonomies" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomy=term1,term2"></textarea>
-                                </div>
-                                <div class="md:col-span-2">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Campos meta personalizados</label>
-                                    <textarea name="custom_meta" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
-                                </div>
-                                <div class="md:col-span-2">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
                                     <textarea name="prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_prompt_template()); ?></textarea>
                                     <p class="mt-1 text-xs text-slate-500">Esse campo controla a etapa SEO do gerador. O corpo do artigo e criado depois no backend. Use variáveis como {{keyword}}, {{source_title}}, {{source_url}}, {{final_slug}}, {{source_excerpt}}, {{source_content}}, {{row_data}}, {{site_name}}, {{generator_name}}, {{generation_language}} e {{pexels_tags}}.</p>
@@ -697,19 +722,6 @@ class Alpha_RSS_AI_Generator_Admin
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteúdo</label>
                                     <textarea name="content_prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible()); ?></textarea>
                                     <p class="mt-1 text-xs text-slate-500">Esse prompt e visivel e editavel. O backend adiciona as variaveis automaticamente na geracao do conteudo.</p>
-                                </div>
-                                <div class="md:col-span-2">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Modelo de outline</label>
-                                    <select name="outline_model_key" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="">Selecione um modelo</option>
-                                        <?php foreach ($outline_models as $outline_model): ?>
-                                            <?php $outline_model_h2_range = Alpha_RSS_AI_Generator::get_outline_model_target_h2_range($outline_model); ?>
-                                            <option value="<?php echo esc_attr(isset($outline_model['key']) ? $outline_model['key'] : ''); ?>" <?php selected(isset($editing_generator['outline_model_key']) ? $editing_generator['outline_model_key'] : Alpha_RSS_AI_Generator::get_default_outline_model_key(), isset($outline_model['key']) ? $outline_model['key'] : ''); ?>>
-                                                <?php echo esc_html((isset($outline_model['name']) ? $outline_model['name'] : '') . ' · ' . ($outline_model_h2_range['min'] === $outline_model_h2_range['max'] ? $outline_model_h2_range['min'] : ($outline_model_h2_range['min'] . '-' . $outline_model_h2_range['max'])) . ' H2'); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <p class="mt-1 text-xs text-slate-500">Esse modelo define a estrutura visual usada como guia pelo backend na etapa de conteudo.</p>
                                 </div>
                             </div>
 
@@ -724,10 +736,6 @@ class Alpha_RSS_AI_Generator_Admin
                     </div>
                 </div>
             </div>
-
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
-            
-            <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
             <script>
                 (function() {
@@ -753,7 +761,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'jitter_minutes' => '30',
                                         'daily_start' => '08:00',
                                         'daily_end' => '22:00',
-                                        'image_source_mode' => '',
+                                        'image_source_mode' => !empty($settings['image_source_mode']) ? sanitize_key((string) $settings['image_source_mode']) : Alpha_RSS_AI_Generator::get_default_image_source_mode('keyword_list', 'keywords'),
                                         'pexels_query' => Alpha_RSS_AI_Generator::get_default_pexels_query(),
                                         'source_video_enabled' => '0',
                                         'source_content_images_enabled' => '1',
@@ -776,7 +784,6 @@ class Alpha_RSS_AI_Generator_Admin
                                         'prompt_template' => Alpha_RSS_AI_Generator::get_default_prompt_template(),
                                         'content_prompt_template' => Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible(),
                                         'keyword_prompt_template' => Alpha_RSS_AI_Generator::get_default_keyword_prompt_template(),
-                                        'outline_model_key' => Alpha_RSS_AI_Generator::get_default_outline_model_key(),
                                         'related_posts_enabled' => '0',
                                         'related_posts_position' => 'end',
                                         'related_posts_interval' => '4',
@@ -816,7 +823,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
                     window.AlphaRssAiGenerator = window.AlphaRssAiGenerator || {};
                     window.AlphaRssAiGenerator.generators = generators;
-                    window.AlphaRssAiGenerator.outlineModels = <?php echo wp_json_encode(array_values($outline_models)); ?>;
                     window.AlphaRssAiGenerator.defaults = defaults;
                     window.AlphaRssAiGenerator.editId = editId;
                     window.AlphaRssAiGenerator.apiBase = apiBase;
@@ -867,7 +873,7 @@ class Alpha_RSS_AI_Generator_Admin
 
                     function normalizeImageSourceModeForType(sourceType, keywordListMode, value) {
                         var mode = String(value || '').trim();
-                        var allowed = ['rss', 'rss_or_pexels', 'rss_or_dalle', 'pexels', 'dalle'];
+                        var allowed = ['rss', 'rss_or_pexels', 'rss_or_dalle', 'rss_or_runware', 'pexels', 'dalle', 'runware'];
                         if (allowed.indexOf(mode) === -1) {
                             return getDefaultImageSourceModeForType(sourceType, keywordListMode);
                         }
@@ -877,6 +883,9 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             if (mode === 'rss_or_dalle') {
                                 return 'dalle';
+                            }
+                            if (mode === 'rss_or_runware') {
+                                return 'runware';
                             }
                         }
                         return mode;
@@ -1251,7 +1260,6 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('custom_meta', defaults.custom_meta);
                         setValue('prompt_template', defaults.prompt_template);
                         setValue('content_prompt_template', defaults.content_prompt_template);
-                        setValue('outline_model_key', defaults.outline_model_key);
                         syncSourceFields();
                         if (titleEl) {
                             titleEl.textContent = 'Adicionar gerador';
@@ -1310,7 +1318,6 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('custom_meta', objectToLines(parseObjectValue(generator.custom_meta)));
                         setValue('prompt_template', normalizePromptForSourceType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.prompt_template || ((generator.source_type === 'keyword_list' && (generator.keyword_list_mode || defaults.keyword_list_mode) !== 'url_reference') ? defaults.keyword_prompt_template : defaults.prompt_template)));
                         setValue('content_prompt_template', generator.content_prompt_template || defaults.content_prompt_template);
-                        setValue('outline_model_key', generator.outline_model_key || defaults.outline_model_key);
                         syncSourceFields();
 
                         if (titleEl) {
@@ -1589,27 +1596,10 @@ class Alpha_RSS_AI_Generator_Admin
         if (is_wp_error($tags)) {
             $tags = array();
         }
-        $public_taxonomies = get_taxonomies(array('public' => true), 'objects');
-        if (!is_array($public_taxonomies)) {
-            $public_taxonomies = array();
-        }
         $api_base = rest_url('alpha-rss-ai-generator/v1');
         $rest_nonce = wp_create_nonce('wp_rest');
 
-    ?>
-        <script>
-            window.tailwind = window.tailwind || {};
-            window.tailwind.config = {
-                theme: {
-                    extend: {
-                        boxShadow: {
-                            soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
-                        }
-                    }
-                }
-            };
-        </script>
-        <script src="https://cdn.tailwindcss.com"></script>
+?>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -1951,6 +1941,19 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <input id="arc-keyword-generate-model" type="text" value="<?php echo esc_attr($global_settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div>
+                                                <label class="mb-1 block text-sm font-medium text-slate-700">Provedor da imagem</label>
+                                                <select id="arc-keyword-generate-image-source-mode" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                    <?php $keyword_generate_image_source_mode = !empty($settings['image_source_mode']) ? sanitize_key((string) $settings['image_source_mode']) : Alpha_RSS_AI_Generator::get_default_image_source_mode('keyword_list', 'keywords'); ?>
+                                                    <option value="rss" <?php echo selected($keyword_generate_image_source_mode, 'rss', false); ?>>Fonte do RSS</option>
+                                                    <option value="rss_or_pexels" <?php echo selected($keyword_generate_image_source_mode, 'rss_or_pexels', false); ?>>Fonte do RSS ou Pexels</option>
+                                                    <option value="rss_or_dalle" <?php echo selected($keyword_generate_image_source_mode, 'rss_or_dalle', false); ?>>Fonte do RSS ou Dall-e</option>
+                                                    <option value="rss_or_runware" <?php echo selected($keyword_generate_image_source_mode, 'rss_or_runware', false); ?>>Fonte do RSS ou Runware</option>
+                                                    <option value="pexels" <?php echo selected($keyword_generate_image_source_mode, 'pexels', false); ?>>Pexels</option>
+                                                    <option value="dalle" <?php echo selected($keyword_generate_image_source_mode, 'dalle', false); ?>>Dall-e</option>
+                                                    <option value="runware" <?php echo selected($keyword_generate_image_source_mode, 'runware', false); ?>>Runware</option>
+                                                </select>
+                                            </div>
+                                            <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Temperatura</label>
                                                 <input id="arc-keyword-generate-temperature" type="number" step="0.1" min="0" max="2" value="<?php echo esc_attr($global_settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
@@ -1963,8 +1966,8 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <input id="arc-keyword-generate-pexels-query" type="text" value="<?php echo esc_attr(Alpha_RSS_AI_Generator::get_default_pexels_query()); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 md:col-span-2">
-                                                <div class="text-sm font-medium text-amber-900">Pexels obrigatório</div>
-                                                <p class="mt-1 text-xs text-amber-700">Listas por planilha sempre usam imagens do Pexels. Imagens do site de origem são ignoradas.</p>
+                                                <div class="text-sm font-medium text-amber-900">Imagem no conteúdo e thumbnail</div>
+                                                <p class="mt-1 text-xs text-amber-700">O provedor escolhido define a thumbnail e também a imagem que pode entrar no corpo do post quando o conteúdo não trouxer imagem própria.</p>
                                             </div>
                                             <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
                                                 <input id="arc-keyword-generate-source-video-enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
@@ -2011,31 +2014,6 @@ class Alpha_RSS_AI_Generator_Admin
                                     </div>
 
                                     <div class="grid gap-6 md:grid-cols-2">
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50">
-                                            <div class="border-b border-slate-200 px-4 py-3">
-                                                <h3 class="text-sm font-semibold text-slate-950">Taxonomias personalizadas</h3>
-                                            </div>
-                                            <div class="px-4 py-4">
-                                                <textarea id="arc-keyword-generate-taxonomies" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomia=term1,term2"></textarea>
-                                                <p class="mt-2 text-xs text-slate-500">Use uma linha por taxonomia. Ex.: `series=principal,secundaria`.</p>
-                                                <?php
-                                                $public_taxonomy_labels = array();
-                                                foreach ($public_taxonomies as $public_taxonomy) {
-                                                    $public_taxonomy_labels[] = !empty($public_taxonomy->labels->name) ? $public_taxonomy->labels->name : $public_taxonomy->name;
-                                                }
-                                                ?>
-                                                <p class="mt-2 text-xs text-slate-500">Taxonomias públicas detectadas: <?php echo esc_html(!empty($public_taxonomy_labels) ? implode(', ', $public_taxonomy_labels) : '-'); ?></p>
-                                            </div>
-                                        </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50">
-                                            <div class="border-b border-slate-200 px-4 py-3">
-                                                <h3 class="text-sm font-semibold text-slate-950">Metadados personalizados</h3>
-                                            </div>
-                                            <div class="px-4 py-4">
-                                                <textarea id="arc-keyword-generate-meta" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
-                                                <p class="mt-2 text-xs text-slate-500">Use uma linha por meta. Ex.: `_seo_title=Meu título`.</p>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2115,6 +2093,7 @@ class Alpha_RSS_AI_Generator_Admin
                     var generateAuthorSelect = document.getElementById('arc-keyword-generate-author');
                     var generateLanguageInput = document.getElementById('arc-keyword-generate-language');
                     var generateModelInput = document.getElementById('arc-keyword-generate-model');
+                    var generateImageSourceModeSelect = document.getElementById('arc-keyword-generate-image-source-mode');
                     var generateTemperatureInput = document.getElementById('arc-keyword-generate-temperature');
                     var generateMaxTokensInput = document.getElementById('arc-keyword-generate-max-tokens');
                     var generatePexelsQueryInput = document.getElementById('arc-keyword-generate-pexels-query');
@@ -2122,8 +2101,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var generateSeoEnabledInput = document.getElementById('arc-keyword-generate-seo-enabled');
                     var generateCategoriesSelect = document.getElementById('arc-keyword-generate-categories');
                     var generateTagsSelect = document.getElementById('arc-keyword-generate-tags');
-                    var generateTaxonomiesTextarea = document.getElementById('arc-keyword-generate-taxonomies');
-                    var generateMetaTextarea = document.getElementById('arc-keyword-generate-meta');
                     var currentGenerateList = null;
                     var currentGenerateAvailableCount = null;
                     var currentGenerateCountReady = false;
@@ -2387,6 +2364,7 @@ class Alpha_RSS_AI_Generator_Admin
                             author_id: generateAuthorSelect ? generateAuthorSelect.value : '0',
                             generation_language: generateLanguageInput ? generateLanguageInput.value : '',
                             model: generateModelInput ? generateModelInput.value : '',
+                            image_source_mode: generateImageSourceModeSelect ? generateImageSourceModeSelect.value : '',
                             temperature: generateTemperatureInput ? generateTemperatureInput.value : '',
                             max_tokens: generateMaxTokensInput ? generateMaxTokensInput.value : '',
                             pexels_query: generatePexelsQueryInput ? generatePexelsQueryInput.value : '',
@@ -2395,8 +2373,6 @@ class Alpha_RSS_AI_Generator_Admin
                             seo_enabled: generateSeoEnabledInput && generateSeoEnabledInput.checked ? 1 : 0,
                             category_ids: getSelectMultiValues(generateCategoriesSelect),
                             tags_default: getSelectMultiValues(generateTagsSelect),
-                            custom_taxonomies: generateTaxonomiesTextarea ? generateTaxonomiesTextarea.value : '',
-                            custom_meta: generateMetaTextarea ? generateMetaTextarea.value : ''
                         };
                     }
 
@@ -2489,12 +2465,15 @@ class Alpha_RSS_AI_Generator_Admin
                         currentGenerateAvailableCount = currentGenerateList && currentGenerateList.counts ? parseInt(currentGenerateList.counts.pending_rows || 0, 10) || 0 : 0;
                         currentGenerateCountReady = false;
                         currentGenerateLastLink = '';
+                        if (generateImageSourceModeSelect) {
+                            generateImageSourceModeSelect.value = defaults.image_source_mode || generateImageSourceModeSelect.value || 'rss_or_pexels';
+                        }
 
                         if (generateModalTitle) {
                             generateModalTitle.textContent = 'Gerar em lote';
                         }
                         if (generateModalSubtitle) {
-                            generateModalSubtitle.textContent = (currentGenerateList.list_name || '-') + ' · ' + (currentGenerateList.original_filename || '-');
+                            generateModalSubtitle.textContent = (currentGenerateList.list_name || '-') + ' Â· ' + (currentGenerateList.original_filename || '-');
                         }
                         if (generateListName) {
                             generateListName.textContent = currentGenerateList.list_name || '-';
@@ -2704,7 +2683,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 details.push('slug: ' + escapeHtml(log.final_slug));
                             }
                             if (details.length) {
-                                message += '<div class="mt-1 text-xs text-rose-600">' + details.join(' · ') + '</div>';
+                                message += '<div class="mt-1 text-xs text-rose-600">' + details.join(' Â· ') + '</div>';
                             }
                             html.push('<td class="px-3 py-2 text-rose-900">' + message + '</td>');
                             html.push('</tr>');
@@ -2756,7 +2735,7 @@ class Alpha_RSS_AI_Generator_Admin
 
                         var headers = payload.headers || [];
                         setColumnMapValues(payload.detected_column_map || {}, headers);
-                        previewSummary.textContent = (payload.file && payload.file.name ? payload.file.name + ' · ' : '') + (payload.row_count || 0) + ' linha(s) lida(s)';
+                        previewSummary.textContent = (payload.file && payload.file.name ? payload.file.name + ' Â· ' : '') + (payload.row_count || 0) + ' linha(s) lida(s)';
                         previewTable.innerHTML = renderPreviewTable(headers, payload.rows || []);
                         previewPanel.classList.remove('hidden');
                         openModalCount = Math.max(openModalCount, 0);
@@ -2964,7 +2943,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 listModalTitle.textContent = currentDetailList ? currentDetailList.list_name : 'Detalhe da lista';
                             }
                             if (listModalSubtitle) {
-                                listModalSubtitle.textContent = currentDetailList ? (currentDetailList.original_filename + ' · ' + (currentDetailList.file_type || '').toUpperCase()) : '';
+                                listModalSubtitle.textContent = currentDetailList ? (currentDetailList.original_filename + ' Â· ' + (currentDetailList.file_type || '').toUpperCase()) : '';
                             }
                             if (listModalCounts) {
                                 listModalCounts.innerHTML = renderCounts(counts);
@@ -3272,6 +3251,7 @@ class Alpha_RSS_AI_Generator_Admin
 <?php
     }
 
+    // phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only notice state from admin URL.
     public static function render_notice()
     {
         if (empty($_GET['arc_notice'])) {
@@ -3288,6 +3268,7 @@ class Alpha_RSS_AI_Generator_Admin
         }
         echo '</p></div>';
     }
+    // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
     public static function get_post_status_label($status)
     {

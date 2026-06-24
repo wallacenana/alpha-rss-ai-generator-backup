@@ -138,6 +138,11 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($text);
     }
 
+    public static function normalize_plain_text($value)
+    {
+        return self::normalize_prompt_context_text($value);
+    }
+
     public static function bulk_parse_spreadsheet_file($file_path)
     {
         if (!class_exists('\PhpOffice\PhpSpreadsheet\IOFactory')) {
@@ -523,7 +528,7 @@ class Alpha_RSS_AI_Generator_Helper
             'video_url' => '',
             'video_embed_html' => '',
             'video_source' => '',
-        ); 
+        );
 
         $url = esc_url_raw(trim((string) $url));
         if ($url === '') {
@@ -1313,6 +1318,92 @@ class Alpha_RSS_AI_Generator_Helper
         return trim(implode("\n", $html_parts));
     }
 
+    public static function content_has_image_markup($content)
+    {
+        $content = trim((string) $content);
+        if ($content === '') {
+            return false;
+        }
+
+        if (preg_match('~<figure\b[^>]*class=["\'][^"\']*\bwp-block-image\b[^"\']*["\'][^>]*>.*?</figure>~is', $content)) {
+            return true;
+        }
+
+        if (preg_match('~<img\b[^>]*>~is', $content)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static function inject_attachment_image_into_content($content, $attachment_id, $post_id = 0, $image_size = 'medium', $preferred_h2_index = 0)
+    {
+        $content = trim((string) $content);
+        $attachment_id = intval($attachment_id);
+        if ($attachment_id <= 0) {
+            return $content;
+        }
+
+        $image_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, '', 'alignnone');
+        if ($image_html === '') {
+            return $content;
+        }
+
+        if ($content === '') {
+            return $image_html;
+        }
+
+        if (!function_exists('parse_blocks') || !function_exists('serialize_blocks')) {
+            return $content;
+        }
+
+        $blocks = parse_blocks($content);
+        if (empty($blocks) || !is_array($blocks)) {
+            return trim($content . "\n\n" . $image_html);
+        }
+
+        $heading_positions = array();
+        foreach ($blocks as $index => $block) {
+            $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
+            if ($block_name !== 'core/heading') {
+                continue;
+            }
+
+            $level = 2;
+            if (is_array($block) && isset($block['attrs']['level'])) {
+                $level = intval($block['attrs']['level']);
+            }
+            if ($level === 2) {
+                $heading_positions[] = $index;
+            }
+        }
+
+        $insert_index = count($blocks);
+        if (!empty($heading_positions)) {
+            $target_h2_index = intval($preferred_h2_index);
+            if ($target_h2_index <= 0) {
+                $target_h2_index = (int) ceil(count($heading_positions) / 2);
+            }
+            $target_h2_index = max(1, min($target_h2_index, count($heading_positions)));
+            $target_block_index = $heading_positions[$target_h2_index - 1];
+            $insert_index = $target_block_index + 1;
+        } elseif (!empty($blocks)) {
+            $insert_index = 1;
+        }
+
+        $image_block = array(
+            'blockName' => 'core/html',
+            'attrs' => array(),
+            'innerBlocks' => array(),
+            'innerHTML' => $image_html,
+            'innerContent' => array($image_html),
+        );
+
+        array_splice($blocks, $insert_index, 0, array($image_block));
+
+        return serialize_blocks($blocks);
+    }
+
     public static function inject_outline_section_media_into_content($content, $outline_sections, $post_id = 0, $image_size = 'medium', $link_phrases = array(), $use_images = true, $use_links = true)
     {
         $content = trim((string) $content);
@@ -1680,7 +1771,6 @@ class Alpha_RSS_AI_Generator_Helper
         if ($source_url === '') {
             $source_url = isset($item['permalink']) ? trim((string) $item['permalink']) : '';
         }
-        $source_permalink = isset($item['permalink']) ? trim((string) $item['permalink']) : '';
         $source_page_outline = isset($item['source_page_outline']) ? trim((string) $item['source_page_outline']) : '';
         $source_excerpt = isset($item['excerpt']) ? self::normalize_prompt_context_text($item['excerpt']) : '';
         $source_content = isset($item['content']) ? self::normalize_prompt_context_text($item['content']) : '';
@@ -1688,7 +1778,6 @@ class Alpha_RSS_AI_Generator_Helper
         $source_page_excerpt = isset($item['source_page_excerpt']) ? self::normalize_prompt_context_text($item['source_page_excerpt']) : '';
         $source_page_content = isset($item['source_page_content']) ? self::normalize_prompt_context_text($item['source_page_content']) : '';
         $site_name = self::normalize_prompt_context_text(get_bloginfo('name'));
-        $generator_name = !empty($generator['name']) ? self::normalize_prompt_context_text($generator['name']) : '';
         $generation_language = !empty($generator['generation_language'])
             ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language'])
             : Alpha_RSS_AI_Generator::get_default_generation_language();
@@ -1701,12 +1790,6 @@ class Alpha_RSS_AI_Generator_Helper
         }
         if ($source_page_title !== '') {
             $lines[] = 'Titulo da pagina de origem: ' . $source_page_title;
-        }
-        if ($source_url !== '') {
-            $lines[] = 'URL de origem: ' . $source_url;
-        }
-        if ($source_permalink !== '') {
-            $lines[] = 'Link do item: ' . $source_permalink;
         }
         if ($source_page_outline !== '') {
             $lines[] = 'Estrutura da pagina de origem:';
@@ -1727,9 +1810,6 @@ class Alpha_RSS_AI_Generator_Helper
         if ($site_name !== '') {
             $lines[] = 'Site: ' . $site_name;
         }
-        if ($generator_name !== '') {
-            $lines[] = 'Gerador: ' . $generator_name;
-        }
         if ($generation_language !== '') {
             $lines[] = 'Idioma final: ' . $generation_language;
         }
@@ -1737,8 +1817,209 @@ class Alpha_RSS_AI_Generator_Helper
         return implode("\n", $lines);
     }
 
+    public static function build_outline_context_base($generator)
+    {
+        $generator = is_array($generator) ? $generator : array();
+        $content_length_class = !empty($generator['content_length_class']) ? Alpha_RSS_AI_Generator::normalize_content_length_class($generator['content_length_class']) : Alpha_RSS_AI_Generator::get_default_content_length_class();
+        $content_length_range = Alpha_RSS_AI_Generator::get_content_length_range($content_length_class);
+        $outline_model = Alpha_RSS_AI_Generator::get_generator_outline_model($generator);
+        $outline_model_text = Alpha_RSS_AI_Generator::format_outline_model_for_prompt($outline_model, array(
+            'content_length_class' => $content_length_class,
+            'outline_target_h2_min' => !empty($outline_model['target_h2_min']) ? intval($outline_model['target_h2_min']) : 0,
+            'outline_target_h2_max' => !empty($outline_model['target_h2_max']) ? intval($outline_model['target_h2_max']) : 0,
+            'outline_target_h2_count' => !empty($outline_model['target_h2_count']) ? intval($outline_model['target_h2_count']) : 0,
+        ));
+
+        return array(
+            'content_length_class' => $content_length_class,
+            'content_length_range' => $content_length_range,
+            'outline_model' => $outline_model,
+            'outline_model_key' => !empty($outline_model['key']) ? (string) $outline_model['key'] : '',
+            'outline_model_name' => !empty($outline_model['name']) ? (string) $outline_model['name'] : '',
+            'outline_model_text' => $outline_model_text,
+            'outline_target_h2_min' => !empty($outline_model['target_h2_min']) ? intval($outline_model['target_h2_min']) : 0,
+            'outline_target_h2_max' => !empty($outline_model['target_h2_max']) ? intval($outline_model['target_h2_max']) : 0,
+            'outline_target_h2_count' => !empty($outline_model['target_h2_count']) ? intval($outline_model['target_h2_count']) : 0,
+        );
+    }
+
+    public static function format_outline_analysis_for_prompt($outline_context)
+    {
+        $outline_context = is_array($outline_context) ? $outline_context : array();
+        $lines = array();
+        $content_type = !empty($outline_context['content_type']) ? sanitize_text_field((string) $outline_context['content_type']) : '';
+        $funnel_level = !empty($outline_context['funnel_level']) ? sanitize_text_field((string) $outline_context['funnel_level']) : '';
+        $tone = !empty($outline_context['tone']) ? sanitize_text_field((string) $outline_context['tone']) : '';
+        if ($content_type !== '') {
+            $lines[] = 'Tipo de conteudo: ' . $content_type;
+        }
+        if ($funnel_level !== '') {
+            $lines[] = 'Nivel de funil: ' . $funnel_level;
+        }
+        if ($tone !== '') {
+            $lines[] = 'Tom: ' . $tone;
+        }
+
+        if (!empty($outline_context['outline_sections']) && is_array($outline_context['outline_sections'])) {
+            $lines[] = 'Estrutura sugerida:';
+            $index = 1;
+            foreach ($outline_context['outline_sections'] as $section) {
+                if (!is_array($section)) {
+                    continue;
+                }
+                $title = !empty($section['h2']) ? sanitize_text_field((string) $section['h2']) : (!empty($section['title']) ? sanitize_text_field((string) $section['title']) : '');
+                if ($title === '') {
+                    $title = 'Secao ' . $index;
+                }
+                $purpose = !empty($section['purpose']) ? sanitize_text_field((string) $section['purpose']) : '';
+                $word_budget = isset($section['word_budget']) ? intval($section['word_budget']) : 0;
+                $block_type = !empty($section['type']) ? sanitize_key((string) $section['type']) : '';
+                $line = $index . '. ' . $title;
+                if ($block_type !== '') {
+                    $line .= ' [' . $block_type . ']';
+                }
+                if ($word_budget > 0) {
+                    $line .= ' ~' . $word_budget . ' palavras';
+                }
+                if ($purpose !== '') {
+                    $line .= ' - ' . $purpose;
+                }
+                $lines[] = $line;
+                $index++;
+            }
+        }
+
+        if (!empty($outline_context['outline_notes'])) {
+            $lines[] = 'Notas: ' . sanitize_textarea_field((string) $outline_context['outline_notes']);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    public static function build_outline_analysis_prompt($generator, $item, $seo_article = array(), $outline_context = array())
+    {
+        $generator = is_array($generator) ? $generator : array();
+        $item = is_array($item) ? $item : array();
+        $seo_article = is_array($seo_article) ? $seo_article : array();
+        $outline_context = is_array($outline_context) ? $outline_context : self::build_outline_context_base($generator);
+
+        $source_excerpt = isset($item['excerpt']) ? self::normalize_prompt_context_text($item['excerpt']) : '';
+        $source_content = isset($item['content']) ? self::normalize_prompt_context_text($item['content']) : '';
+        if (strlen($source_excerpt) > 2000) {
+            $source_excerpt = substr($source_excerpt, 0, 2000);
+        }
+        if (strlen($source_content) > 5000) {
+            $source_content = substr($source_content, 0, 5000);
+        }
+        $generated_title = isset($seo_article['title']) ? self::normalize_prompt_context_text($seo_article['title']) : '';
+        $generated_focus_keyword = isset($seo_article['focus_keyword']) ? self::normalize_prompt_context_text($seo_article['focus_keyword']) : '';
+        $generated_meta_description = isset($seo_article['meta_description']) ? self::normalize_prompt_context_text($seo_article['meta_description']) : '';
+        $generation_language = !empty($generator['generation_language'])
+            ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language'])
+            : Alpha_RSS_AI_Generator::get_default_generation_language();
+        $outline_model_text = !empty($outline_context['outline_model_text']) ? (string) $outline_context['outline_model_text'] : Alpha_RSS_AI_Generator::format_outline_model_for_prompt(Alpha_RSS_AI_Generator::get_generator_outline_model($generator), $outline_context);
+        $selected_tags = Alpha_RSS_AI_Generator::get_generator_selected_tags($generator);
+        $selected_tags_csv = !empty($selected_tags) ? implode(', ', $selected_tags) : '';
+
+        $prompt = array(
+            'Voce e um editor estrutural interno.',
+            'Analise a fonte e devolva somente JSON valido com um outline editorial que sirva de guia para a geracao do conteudo.',
+            'Nao crie o corpo do artigo aqui.',
+            'Nao force uma quantidade fixa de H2; ajuste a estrutura conforme o conteudo e a densidade do assunto.',
+            'Se o titulo ou a fonte sugerirem outro ritmo, ajuste a estrutura sem repetir secoes sem necessidade.',
+            'Escreva em ' . $generation_language . '.',
+            'Retorne apenas JSON valido com estas chaves: content_type, funnel_level, tone, outline_notes, outline_sections.',
+            'outline_sections deve ser um array de objetos com: type, h2, purpose, notes.',
+            'Se precisar, pode incluir blocos de intro, h2, h3, paragraph, list, bullet, table, image, button e conclusion.',
+            'O objetivo e preservar os fatos e reorganizar a materia em uma estrutura mais clara e fluida.',
+            'Você deve gerar o outline, ou seja, a estrutura do post, então todos os itens devem ter h2, que vai servir principalmente de base para a estrutura do conteúdo',
+            'Crie títulos agressivos, fora da caixa, mas que falem o que o conteúdo quer dizer',
+            'Cada h2 precisa falar com o tipo do conteúdo, por exemplo "guia completo", não casa com noticia curta, não tem como colocar um negócio desses no nosso conteúdo',
+            'Seja inteligente, proibido copiar ordem ou estrutura da fonte, acredito que você tenha potencial para criar algo melhor, por exemplo, a nossa fonte está repetindo 3 formas de consultar algo, não tem pq ter 3 h3 pra isso',
+            'Lembre-se do mais importante, a quantidade de headers, vai depender exclusivamente do tipo do conteúdo, uma noticia, por exemplo, não precisa ter 10 h2, apenas 2 a 4 seriam suficientes',
+            'Não repita títulos, cada informação deve ser nova, o h1 tbm faz parte do conteúdo, então não repita o que ele diz',
+            'A conclusão é "um proximo passo" que a pessoa tem que dar, ou seja, a atitude que a pessoa tem que tomar, pense nisso para gerar um título de conclusão incrível',
+            'Não confunda outline com conteúdo, você deve gerar bons h2, nunca com sensionalismo, garantia, marketeiro, cara de propaganda, "Fique atento" é uma merda de um sensacionalismo marketeiro, quero títulos jornalisticos, nunca nada disso em nenhum h2 ou h3',
+            'Poibido título com cara de CTA: confirma, saiba, veja, entenda',
+            'Conteudo da fonte: ' . $source_content,
+            'Resumo da fonte: ' . $source_excerpt,
+            'Titulo gerado: ' . $generated_title,
+            'Focus keyword: ' . $generated_focus_keyword,
+            'Meta description: ' . $generated_meta_description,
+            'Modelo de outline base:',
+            $outline_model_text,
+            'Palavras-chave selecionadas: ' . $selected_tags_csv,
+            'Site: ' . get_bloginfo('name'),
+        );
+
+        $prompt = implode("\n", $prompt);
+
+        return $prompt;
+    }
+
+    public static function normalize_outline_analysis_context($analysis, $outline_context = array())
+    {
+        $outline_context = is_array($outline_context) ? $outline_context : array();
+        $analysis = is_array($analysis) ? $analysis : array();
+
+        $outline_context['content_type'] = !empty($analysis['content_type']) ? sanitize_key((string) $analysis['content_type']) : (!empty($outline_context['content_type']) ? sanitize_key((string) $outline_context['content_type']) : 'article');
+        $outline_context['funnel_level'] = !empty($analysis['funnel_level']) ? sanitize_key((string) $analysis['funnel_level']) : (!empty($outline_context['funnel_level']) ? sanitize_key((string) $outline_context['funnel_level']) : 'mid');
+        $outline_context['tone'] = !empty($analysis['tone']) ? sanitize_text_field((string) $analysis['tone']) : (!empty($outline_context['tone']) ? sanitize_text_field((string) $outline_context['tone']) : '');
+        $outline_context['outline_notes'] = !empty($analysis['outline_notes']) ? sanitize_textarea_field((string) $analysis['outline_notes']) : '';
+        $sections = array();
+        $raw_sections = array();
+        if (!empty($analysis['outline_sections']) && is_array($analysis['outline_sections'])) {
+            $raw_sections = $analysis['outline_sections'];
+        } elseif (!empty($analysis['sections']) && is_array($analysis['sections'])) {
+            $raw_sections = $analysis['sections'];
+        }
+
+        foreach ($raw_sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $sections[] = array(
+                'type' => !empty($section['type']) ? sanitize_key((string) $section['type']) : 'paragraph',
+                'h2' => !empty($section['h2']) ? sanitize_text_field((string) $section['h2']) : (!empty($section['title']) ? sanitize_text_field((string) $section['title']) : ''),
+                'purpose' => !empty($section['purpose']) ? sanitize_text_field((string) $section['purpose']) : '',
+                'word_budget' => isset($section['word_budget']) ? intval($section['word_budget']) : 0,
+                'notes' => !empty($section['notes']) ? sanitize_text_field((string) $section['notes']) : '',
+            );
+        }
+
+        $outline_context['outline_sections'] = $sections;
+        $outline_context['outline_text'] = self::format_outline_analysis_for_prompt($outline_context);
+
+        return $outline_context;
+    }
+
+    public static function build_outline_context_from_source($generator, $item, $seo_article = array(), $outline_context = array())
+    {
+        $outline_context = is_array($outline_context) && !empty($outline_context) ? $outline_context : self::build_outline_context_base($generator);
+        $outline_prompt = self::build_outline_analysis_prompt($generator, $item, $seo_article, $outline_context);
+        $outline_response = Alpha_RSS_AI_Generator::request_openai_json($generator, $outline_prompt, array(
+            'stage' => 'outline',
+            'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+            'item_title' => !empty($item['source_title']) ? $item['source_title'] : '',
+            'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
+            'allow_missing_content_html' => 1,
+            'preserve_extra_fields' => 1,
+        ));
+
+        if (is_wp_error($outline_response)) {
+            $outline_context['outline_error'] = $outline_response->get_error_message();
+            $outline_context['outline_text'] = self::format_outline_analysis_for_prompt($outline_context);
+            return $outline_context;
+        }
+
+        $outline_context = self::normalize_outline_analysis_context($outline_response, $outline_context);
+
+        return $outline_context;
+    }
+
     public static function build_prompt($generator, $item, $outline_context = array())
     {
+        $outline_context = is_array($outline_context) ? $outline_context : array();
         $template = trim((string) $generator['prompt_template']);
         $source_type = isset($generator['source_type']) ? sanitize_key($generator['source_type']) : 'rss';
         $keyword_list_mode = isset($generator['keyword_list_mode']) ? sanitize_key($generator['keyword_list_mode']) : Alpha_RSS_AI_Generator::get_default_keyword_list_mode();
@@ -1762,34 +2043,11 @@ class Alpha_RSS_AI_Generator_Helper
         $final_slug = isset($item['final_slug']) ? $item['final_slug'] : '';
         $selected_tags = Alpha_RSS_AI_Generator::get_generator_selected_tags($generator);
         $selected_tags_csv = !empty($selected_tags) ? implode(', ', $selected_tags) : '';
-        $outline_context = !empty($outline_context) && is_array($outline_context) ? $outline_context : Alpha_RSS_AI_Generator::resolve_outline_generation_context($generator, $item);
-        $outline_model = !empty($outline_context['outline_model']) && is_array($outline_context['outline_model']) ? $outline_context['outline_model'] : Alpha_RSS_AI_Generator::get_generator_outline_model($generator);
-        $outline_model_text = !empty($outline_context['outline_model_text']) ? $outline_context['outline_model_text'] : Alpha_RSS_AI_Generator::format_outline_model_for_prompt($outline_model);
-        $outline_target_h2_min = !empty($outline_context['outline_target_h2_min']) ? intval($outline_context['outline_target_h2_min']) : 0;
-        $outline_target_h2_max = !empty($outline_context['outline_target_h2_max']) ? intval($outline_context['outline_target_h2_max']) : 0;
-        $outline_target_h2_count = !empty($outline_context['outline_target_h2_count']) ? intval($outline_context['outline_target_h2_count']) : 0;
-        $outline_block_quantities = !empty($outline_context['outline_block_quantities']) && is_array($outline_context['outline_block_quantities']) ? $outline_context['outline_block_quantities'] : array();
-        $outline_block_quantities_text = array();
-        foreach ($outline_block_quantities as $index => $block_quantity) {
-            if (!is_array($block_quantity)) {
-                continue;
-            }
-            $label = !empty($block_quantity['label']) ? $block_quantity['label'] : 'Bloco ' . ($index + 1);
-            $quantity_min = isset($block_quantity['quantity_min']) ? intval($block_quantity['quantity_min']) : 1;
-            $quantity_max = isset($block_quantity['quantity_max']) ? intval($block_quantity['quantity_max']) : 1;
-            $quantity = isset($block_quantity['quantity']) ? intval($block_quantity['quantity']) : 1;
-            $quantity_range_text = $quantity_min === $quantity_max ? (string) $quantity_min : ($quantity_min . '-' . $quantity_max);
-            $outline_block_quantities_text[] = $label . ': ' . $quantity_range_text . ' (sorteado ' . $quantity . 'x)';
-        }
-        $outline_block_quantities_text = implode(' | ', $outline_block_quantities_text);
-        $outline_list_item_count = $outline_target_h2_count > 0 ? $outline_target_h2_count : ($outline_target_h2_min > 0 ? $outline_target_h2_min : 0);
         $content_length_class = !empty($outline_context['content_length_class']) ? Alpha_RSS_AI_Generator::normalize_content_length_class($outline_context['content_length_class']) : Alpha_RSS_AI_Generator::get_default_content_length_class();
         $content_length_range = Alpha_RSS_AI_Generator::get_content_length_range($content_length_class);
         $content_length_label = !empty($content_length_range['label']) ? $content_length_range['label'] : ucfirst($content_length_class);
         $content_length_min_words = isset($content_length_range['min_words']) ? intval($content_length_range['min_words']) : 0;
         $content_length_max_words = isset($content_length_range['max_words']) ? intval($content_length_range['max_words']) : 0;
-        $content_length_target_words = !empty($outline_context['content_length_target_words']) ? intval($outline_context['content_length_target_words']) : 0;
-        $content_length_target_h2_count = !empty($outline_context['content_length_target_h2_count']) ? intval($outline_context['content_length_target_h2_count']) : 0;
 
         $replacements = array(
             '{{feed_title}}' => $item['feed_title'],
@@ -1811,43 +2069,33 @@ class Alpha_RSS_AI_Generator_Helper
             '{{generator_name}}' => $generator['name'],
             '{{generation_language}}' => !empty($generator['generation_language']) ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language']) : Alpha_RSS_AI_Generator::get_default_generation_language(),
             '{{selected_tags}}' => $selected_tags_csv,
-            '{{outline_target_h2_min}}' => $outline_target_h2_min,
-            '{{outline_target_h2_max}}' => $outline_target_h2_max,
-            '{{outline_target_h2_count}}' => $outline_target_h2_count,
-            '{{outline_list_item_count}}' => $outline_list_item_count,
-            '{{outline_block_quantities}}' => $outline_block_quantities_text,
-            '{{outline_model_text}}' => $outline_model_text,
             '{{content_length_class}}' => $content_length_class,
             '{{content_length_label}}' => $content_length_label,
             '{{content_length_min_words}}' => $content_length_min_words,
             '{{content_length_max_words}}' => $content_length_max_words,
-            '{{content_length_target_words}}' => $content_length_target_words,
-            '{{content_length_target_h2_count}}' => $content_length_target_h2_count,
         );
 
         $prompt = strtr($template, $replacements);
         $prompt .= "\n\n" . self::build_source_context_block($generator, $item);
-        $prompt .= "\n\n" . implode("\n", array(
-            'Contexto do outline:',
-            'Modelo de outline: ' . (!empty($outline_model['name']) ? $outline_model['name'] : ''),
-            'Faixa do modelo de H2: ' . $outline_target_h2_min . '-' . $outline_target_h2_max,
-            'Quantidade alvo de H2: ' . $outline_target_h2_count,
-            'Quantidade total da lista/ranking: ' . $outline_list_item_count,
-            'Extensao alvo do conteudo: ' . $content_length_label . ' (' . $content_length_min_words . '-' . $content_length_max_words . ' palavras)',
-            'Meta de palavras deste item: ' . $content_length_target_words,
-            'H2 sugeridos pela extensao: ' . $content_length_target_h2_count,
-            'Quantidades sorteadas por bloco: ' . $outline_block_quantities_text,
-            'Estrutura do outline: ' . $outline_model_text,
-            'Regra: siga o modelo de outline na ordem definida e nao invente blocos fora da estrutura.',
-            'Regra: quando o artigo for lista, ranking ou selecao, o titulo final deve refletir a quantidade total da lista quando houver numero definido.',
-            'Regra: a extensao do conteudo deve seguir a faixa escolhida e o numero total de H2 definido para este item.',
-        ));
+
+        $outline_context_block = array('## CONTEXTO DE ESTRUTURA');
+        if (!empty($outline_context['outline_model_name'])) {
+            $outline_context_block[] = 'Modelo de outline: ' . $outline_context['outline_model_name'];
+        }
+        if (!empty($outline_context['outline_model_text'])) {
+            $outline_context_block[] = 'Referencia do modelo de outline:';
+            $outline_context_block[] = $outline_context['outline_model_text'];
+        }
+        $prompt .= "\n\n" . implode("\n", $outline_context_block);
+        
+        $prompt_preview = preg_replace('/\s+/', ' ', wp_strip_all_tags($prompt));
+        $prompt_preview = function_exists('mb_substr') ? mb_substr($prompt_preview, 0, 1400) : substr($prompt_preview, 0, 1400);
 
         return $prompt;
     }
 
-        public static function build_content_prompt($generator, $item, $seo_article = array(), $outline_context = array())
-        {
+    public static function build_content_prompt($generator, $item, $seo_article = array(), $outline_context = array())
+    {
         $visible_template = isset($generator['content_prompt_template']) ? trim((string) $generator['content_prompt_template']) : '';
         if ($visible_template === '') {
             $visible_template = Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible();
@@ -1870,81 +2118,30 @@ class Alpha_RSS_AI_Generator_Helper
         $generated_focus_keyword = isset($seo_article['focus_keyword']) ? $seo_article['focus_keyword'] : '';
         $generated_meta_description = isset($seo_article['meta_description']) ? $seo_article['meta_description'] : '';
         $generated_title_outline_count = self::extract_outline_target_h2_count_from_title($generated_title, $source_title);
-        $outline_context = !empty($outline_context) && is_array($outline_context) ? $outline_context : Alpha_RSS_AI_Generator::resolve_outline_generation_context($generator, $item);
-        $outline_model = !empty($outline_context['outline_model']) && is_array($outline_context['outline_model']) ? $outline_context['outline_model'] : Alpha_RSS_AI_Generator::get_generator_outline_model($generator);
-        $outline_model_text = !empty($outline_context['outline_model_text']) ? $outline_context['outline_model_text'] : Alpha_RSS_AI_Generator::format_outline_model_for_prompt($outline_model);
-        $outline_target_h2_min = !empty($outline_context['outline_target_h2_min']) ? intval($outline_context['outline_target_h2_min']) : 0;
-        $outline_target_h2_max = !empty($outline_context['outline_target_h2_max']) ? intval($outline_context['outline_target_h2_max']) : 0;
-        $outline_target_h2_count = !empty($outline_context['outline_target_h2_count']) ? intval($outline_context['outline_target_h2_count']) : 0;
-        $outline_block_quantities = !empty($outline_context['outline_block_quantities']) && is_array($outline_context['outline_block_quantities']) ? $outline_context['outline_block_quantities'] : array();
-        if ($generated_title_outline_count > 0) {
-            $outline_target_h2_min = $generated_title_outline_count;
-            $outline_target_h2_max = $generated_title_outline_count;
-            $outline_target_h2_count = $generated_title_outline_count;
-            $outline_context['outline_target_h2_min'] = $generated_title_outline_count;
-            $outline_context['outline_target_h2_max'] = $generated_title_outline_count;
-            $outline_context['outline_target_h2_count'] = $generated_title_outline_count;
-            $outline_context['outline_model_text'] = Alpha_RSS_AI_Generator::format_outline_model_for_prompt($outline_model, $outline_context);
-            $outline_model_text = $outline_context['outline_model_text'];
-        }
-        $outline_block_quantities_text = array();
-        foreach ($outline_block_quantities as $index => $block_quantity) {
-            if (!is_array($block_quantity)) {
-                continue;
-            }
-            $label = !empty($block_quantity['label']) ? $block_quantity['label'] : 'Bloco ' . ($index + 1);
-            $quantity_min = isset($block_quantity['quantity_min']) ? intval($block_quantity['quantity_min']) : 1;
-            $quantity_max = isset($block_quantity['quantity_max']) ? intval($block_quantity['quantity_max']) : 1;
-            $quantity = isset($block_quantity['quantity']) ? intval($block_quantity['quantity']) : 1;
-            $quantity_range_text = $quantity_min === $quantity_max ? (string) $quantity_min : ($quantity_min . '-' . $quantity_max);
-            $outline_block_quantities_text[] = $label . ': ' . $quantity_range_text . ' (sorteado ' . $quantity . 'x)';
-        }
-        $outline_block_quantities_text = implode(' | ', $outline_block_quantities_text);
-        $outline_list_item_count = $outline_target_h2_count > 0 ? $outline_target_h2_count : ($outline_target_h2_min > 0 ? $outline_target_h2_min : 0);
-        $content_length_class = !empty($outline_context['content_length_class']) ? Alpha_RSS_AI_Generator::normalize_content_length_class($outline_context['content_length_class']) : Alpha_RSS_AI_Generator::get_default_content_length_class();
-        $content_length_range = Alpha_RSS_AI_Generator::get_content_length_range($content_length_class);
-        $content_length_label = !empty($content_length_range['label']) ? $content_length_range['label'] : ucfirst($content_length_class);
-        $content_length_min_words = isset($content_length_range['min_words']) ? intval($content_length_range['min_words']) : 0;
-        $content_length_max_words = isset($content_length_range['max_words']) ? intval($content_length_range['max_words']) : 0;
-        $content_length_target_words = !empty($outline_context['content_length_target_words']) ? intval($outline_context['content_length_target_words']) : 0;
-        $content_length_target_h2_count = !empty($outline_context['content_length_target_h2_count']) ? intval($outline_context['content_length_target_h2_count']) : 0;
+        $outline_text = !empty($outline_context['outline_text']) ? (string) $outline_context['outline_text'] : '';
+        $outline_model_text = !empty($outline_context['outline_model_text']) ? (string) $outline_context['outline_model_text'] : '';
+        $outline_model_name = !empty($outline_context['outline_model_name']) ? (string) $outline_context['outline_model_name'] : '';
 
         $hidden_context = array(
             'Contexto interno:',
             'Titulo do feed: {{feed_title}}',
             'Título gerado: {{generated_title}}',
-            'Focus keyword: {{generated_focus_keyword}}',
+            'kw: {{generated_focus_keyword}}',
             'Meta description: {{generated_meta_description}}',
             'Título do item: {{source_title}}',
-            'Keyword: {{keyword}}',
-            'URL de origem: {{source_url}}',
-            'Link do item: {{source_permalink}}',
             'Mídias e CTAs da fonte: o sistema vai inserir a imagem baixada e o link localmente; não escreva imagens, figures ou CTAs manuais no texto.',
             'Titulo da pagina de origem: {{source_page_title}}',
             'Resumo da pagina de origem: {{source_page_excerpt}}',
             'Conteudo da pagina de origem: {{source_page_content}}',
-            'Estrutura da pagina de origem: {{source_page_outline}}',
             'Resumo da fonte: {{source_excerpt}}',
             'Conteúdo da fonte: {{source_content}}',
             'Slug final: {{generated_slug}}',
             'Palavras-chave selecionadas: {{selected_tags}}',
+            'Numero sugerido no titulo (apenas indicio): {{generated_title_outline_count}}',
             'Modelo de outline: {{outline_model_name}}',
-            'Faixa do modelo de H2: {{outline_target_h2_min}}-{{outline_target_h2_max}}',
-            'Quantidade alvo de H2: {{outline_target_h2_count}}',
-            'Quantidade total da lista/ranking: {{outline_list_item_count}}',
-            'Quantidade identificada no titulo gerado: {{generated_title_outline_count}}',
-            'Extensao alvo do conteudo: {{content_length_label}} ({{content_length_min_words}}-{{content_length_max_words}} palavras)',
-            'Meta de palavras deste item: {{content_length_target_words}}',
-            'H2 sugeridos pela extensao: {{content_length_target_h2_count}}',
-            'Quantidades sorteadas por bloco: {{outline_block_quantities}}',
-            'Estrutura do outline: {{outline_model_text}}',
-            'Regra: siga o modelo de outline na ordem definida e nao invente blocos fora da estrutura.',
-            'Regra: se o titulo gerado trouxer uma quantidade, use exatamente o mesmo numero no outline e no corpo.',
-            'Regra: a extensao do conteudo deve seguir a faixa escolhida e o numero total de H2 definido para este item.',
-            'Regra: o bloco Abertura direta e apenas um texto de abertura, sem H2 e sem usar a palavra Introducao.',
-            'Dados da linha: {{row_data}}',
+            'Outline interno gerado pelo backend:',
+            '{{outline_text}}',
             'Site: {{site_name}}',
-            'Gerador: {{generator_name}}',
             'Idioma final: {{generation_language}}',
         );
 
@@ -1974,22 +2171,16 @@ class Alpha_RSS_AI_Generator_Helper
             '{{generated_focus_keyword}}' => $generated_focus_keyword,
             '{{generated_meta_description}}' => $generated_meta_description,
             '{{generated_title_outline_count}}' => $generated_title_outline_count,
-            '{{outline_model_name}}' => !empty($outline_model['name']) ? $outline_model['name'] : '',
-            '{{outline_target_h2_min}}' => $outline_target_h2_min,
-            '{{outline_target_h2_max}}' => $outline_target_h2_max,
-            '{{outline_target_h2_count}}' => $outline_target_h2_count,
-            '{{outline_list_item_count}}' => $outline_list_item_count,
-            '{{outline_block_quantities}}' => $outline_block_quantities_text,
+            '{{outline_model_name}}' => $outline_model_name,
             '{{outline_model_text}}' => $outline_model_text,
-            '{{content_length_class}}' => $content_length_class,
-            '{{content_length_label}}' => $content_length_label,
-            '{{content_length_min_words}}' => $content_length_min_words,
-            '{{content_length_max_words}}' => $content_length_max_words,
-            '{{content_length_target_words}}' => $content_length_target_words,
-            '{{content_length_target_h2_count}}' => $content_length_target_h2_count,
+            '{{outline_text}}' => $outline_text,
         );
 
-        return strtr($template, $replacements);
+        $prompt = strtr($template, $replacements);
+        $prompt_preview = preg_replace('/\s+/', ' ', wp_strip_all_tags($prompt));
+        $prompt_preview = function_exists('mb_substr') ? mb_substr($prompt_preview, 0, 1400) : substr($prompt_preview, 0, 1400);
+
+        return $prompt;
     }
 
     public static function count_heading_level_in_html($html, $level = 2)
@@ -2014,6 +2205,10 @@ class Alpha_RSS_AI_Generator_Helper
             return $article;
         }
 
+        if (empty($outline_context['force_exact_h2_count'])) {
+            return $article;
+        }
+
         $target_h2_count = 0;
         if (isset($outline_context['outline_target_h2_count'])) {
             $target_h2_count = intval($outline_context['outline_target_h2_count']);
@@ -2028,15 +2223,6 @@ class Alpha_RSS_AI_Generator_Helper
             $target_h2_count = $title_h2_count;
         }
 
-        if ($target_h2_count <= 0) {
-            return $article;
-        }
-
-        $current_h2_count = self::count_heading_level_in_html($article['content_html'], 2);
-        if ($current_h2_count === $target_h2_count) {
-            return $article;
-        }
-
         $outline_model_text = !empty($outline_context['outline_model_text']) ? (string) $outline_context['outline_model_text'] : '';
         $outline_model_name = !empty($outline_context['outline_model_name']) ? (string) $outline_context['outline_model_name'] : '';
         $outline_h2_min = isset($outline_context['outline_target_h2_min']) ? intval($outline_context['outline_target_h2_min']) : $target_h2_count;
@@ -2049,6 +2235,16 @@ class Alpha_RSS_AI_Generator_Helper
                 'outline_target_h2_max' => $title_h2_count,
                 'outline_target_h2_count' => $title_h2_count,
             )));
+        }
+
+        $current_h2_count = self::count_heading_level_in_html($article['content_html'], 2);
+
+        if ($target_h2_count <= 0) {
+            return $article;
+        }
+
+        if ($current_h2_count === $target_h2_count) {
+            return $article;
         }
         $generated_excerpt = !empty($article['excerpt']) ? (string) $article['excerpt'] : '';
         $generated_meta_description = !empty($article['meta_description']) ? (string) $article['meta_description'] : '';
@@ -2066,8 +2262,8 @@ class Alpha_RSS_AI_Generator_Helper
             'Contexto do outline:',
             'Nome do modelo: ' . $outline_model_name,
             'Faixa do modelo de H2: ' . $outline_h2_min . '-' . $outline_h2_max,
-            'Quantidade alvo de H2: ' . $target_h2_count,
-            'Quantidade total da lista/ranking: ' . $target_h2_count,
+            'Quantidade aproximada de H2: ' . $target_h2_count,
+            'Quantidade aproximada da lista/ranking: ' . $target_h2_count,
             'Estrutura do outline: ' . $outline_model_text,
             '',
             'Dados do artigo:',
@@ -2106,8 +2302,8 @@ class Alpha_RSS_AI_Generator_Helper
 
     public static function call_openai($generator, $item)
     {
-        $outline_context = Alpha_RSS_AI_Generator::resolve_outline_generation_context($generator, $item);
-        $seo_prompt = self::build_prompt($generator, $item, $outline_context);
+        $outline_base_context = self::build_outline_context_base($generator);
+        $seo_prompt = self::build_prompt($generator, $item, $outline_base_context);
         $seo_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $seo_prompt, array(
             'stage' => 'seo',
             'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
@@ -2122,6 +2318,7 @@ class Alpha_RSS_AI_Generator_Helper
             return $seo_article;
         }
 
+        $outline_context = self::build_outline_context_from_source($generator, $item, $seo_article, $outline_base_context);
         $content_prompt = self::build_content_prompt($generator, $item, $seo_article, $outline_context);
         $content_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $content_prompt, array(
             'stage' => 'content',
@@ -2136,14 +2333,21 @@ class Alpha_RSS_AI_Generator_Helper
             return $content_article;
         }
 
-        $content_article = self::repair_outline_h2_count_if_needed($generator, $item, $content_article, $outline_context);
-
         $seo_article['content_html'] = !empty($content_article['content_html']) ? $content_article['content_html'] : (isset($seo_article['content_html']) ? $seo_article['content_html'] : '');
         if (!empty($seo_article['content_html'])) {
             $seo_article['content_html'] = self::strip_generated_image_markup_from_html($seo_article['content_html']);
         }
         if (empty($seo_article['excerpt']) && !empty($content_article['excerpt'])) {
             $seo_article['excerpt'] = $content_article['excerpt'];
+        }
+        if (!empty($outline_context) && is_array($outline_context)) {
+            $seo_article['outline_context'] = $outline_context;
+            $seo_article['outline_text'] = !empty($outline_context['outline_text']) ? $outline_context['outline_text'] : '';
+            $seo_article['outline_sections'] = !empty($outline_context['outline_sections']) ? $outline_context['outline_sections'] : array();
+            $seo_article['outline_target_h2_min'] = !empty($outline_context['outline_target_h2_min']) ? intval($outline_context['outline_target_h2_min']) : 0;
+            $seo_article['outline_target_h2_max'] = !empty($outline_context['outline_target_h2_max']) ? intval($outline_context['outline_target_h2_max']) : 0;
+            $seo_article['outline_target_h2_count'] = !empty($outline_context['outline_target_h2_count']) ? intval($outline_context['outline_target_h2_count']) : 0;
+            $seo_article['outline_block_quantities'] = !empty($outline_context['outline_block_quantities']) ? $outline_context['outline_block_quantities'] : array();
         }
 
         return $seo_article;
@@ -2313,6 +2517,113 @@ class Alpha_RSS_AI_Generator_Helper
         return $html;
     }
 
+    public static function build_content_plan_markup($links = array(), $content_model_type = 'pillar', $phrase = 'Você também pode gostar de:')
+    {
+        $links = is_array($links) ? array_values($links) : array();
+        $content_model_type = sanitize_key((string) $content_model_type);
+        if ($content_model_type === '') {
+            $content_model_type = 'pillar';
+        }
+
+        $items = array();
+        foreach ($links as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+
+            $url = !empty($link['url']) ? esc_url((string) $link['url']) : '';
+            if ($url === '') {
+                continue;
+            }
+
+            $label = '';
+            if (!empty($link['anchor_phrase'])) {
+                $label = self::normalize_plain_text((string) $link['anchor_phrase']);
+            }
+            if ($label === '' && !empty($link['title'])) {
+                $label = self::normalize_plain_text((string) $link['title']);
+            }
+            if ($label === '') {
+                $label = $url;
+            }
+
+            $items[] = '<li class="arc-content-plan__item"><a class="arc-content-plan__link" href="' . $url . '" target="_blank" rel="noopener noreferrer" data-arc-content-plan-link="1">' . esc_html($label) . '</a></li>';
+        }
+
+        if (empty($items)) {
+            return '';
+        }
+
+        $phrase = trim((string) $phrase);
+        if ($phrase === '') {
+            $phrase = 'Você também pode gostar de:';
+        }
+
+        $html = '<div class="arc-content-plan-links arc-content-plan-links--' . esc_attr($content_model_type) . '" data-arc-content-plan="1">';
+        $html .= '<p class="arc-content-plan__phrase"><strong>' . esc_html($phrase) . '</strong></p>';
+        $html .= '<ul class="arc-content-plan__list">' . implode('', $items) . '</ul>';
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    public static function inject_content_plan_links_into_content($content, $links, $content_model_type = 'pillar', $phrase = 'Você também pode gostar de:')
+    {
+        $content = trim((string) $content);
+        $links = is_array($links) ? array_values($links) : array();
+
+        if ($content === '' || empty($links)) {
+            return $content;
+        }
+
+        if (strpos($content, 'arc-content-plan') !== false) {
+            return $content;
+        }
+
+        $injected = false;
+        foreach ($links as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+
+            $url = !empty($link['url']) ? esc_url((string) $link['url']) : '';
+            if ($url === '') {
+                continue;
+            }
+
+            $needle = '';
+            if (!empty($link['anchor_phrase'])) {
+                $needle = self::normalize_plain_text((string) $link['anchor_phrase']);
+            }
+            if ($needle === '' && !empty($link['title'])) {
+                $needle = self::normalize_plain_text((string) $link['title']);
+            }
+            if ($needle === '') {
+                continue;
+            }
+
+            $replacement = '<a class="arc-content-plan__link" href="' . $url . '" target="_blank" rel="noopener noreferrer" data-arc-content-plan-link="1">' . esc_html($needle) . '</a>';
+            $pattern = '/' . preg_quote($needle, '/') . '/u';
+            $count = 0;
+            $updated_content = preg_replace($pattern, $replacement, $content, 1, $count);
+            if ($count > 0 && is_string($updated_content) && $updated_content !== '') {
+                $content = $updated_content;
+                $injected = true;
+            }
+        }
+
+        if ($injected) {
+            return $content;
+        }
+
+        $markup = self::build_content_plan_markup($links, $content_model_type, $phrase);
+        if ($markup === '') {
+            return $content;
+        }
+
+        return $content === '' ? $markup : $content . "\n\n" . $markup;
+    }
+
     protected static function extract_block_html($block)
     {
         if (!is_array($block)) {
@@ -2402,8 +2713,9 @@ class Alpha_RSS_AI_Generator_Helper
         })));
     }
 
-    public static function get_related_posts_candidates($post_id, $generator, $needed_total = 0)
-    {
+        // phpcs:disable WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in, WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- related posts intentionally exclude the current post and constrain by category.
+        public static function get_related_posts_candidates($post_id, $generator, $needed_total = 0)
+        {
         $post_id = intval($post_id);
         $needed_total = max(1, intval($needed_total));
         $settings = self::normalize_related_posts_settings($generator);
@@ -2493,10 +2805,11 @@ class Alpha_RSS_AI_Generator_Helper
             $collect($fallback_posts, $results, $seen, $post_id, $needed_total);
         }
 
-        return array_slice($results, 0, $needed_total);
-    }
+            return array_slice($results, 0, $needed_total);
+        }
+        // phpcs:enable WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in, WordPress.DB.SlowDBQuery.slow_db_query_tax_query
 
-    public static function inject_related_posts_into_content($content, $post_id, $generator)
+        public static function inject_related_posts_into_content($content, $post_id, $generator)
     {
         $settings = self::normalize_related_posts_settings($generator);
         if (empty($settings['enabled'])) {
