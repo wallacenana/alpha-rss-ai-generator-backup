@@ -1,9 +1,9 @@
 <?php
 /*
 Plugin Name: Alpha RSS AI Generator
-Description: Geradores RSS com reescrita via OpenAI, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
+Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
 Version: 1.8.2
-Author: OpenAI
+Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
 
