@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 if (!defined('ABSPATH')) {
     exit;
@@ -46,7 +46,6 @@ class Alpha_RSS_AI_Generator_Admin
         $settings = Alpha_RSS_AI_Generator::get_settings();
         $generators = Alpha_RSS_AI_Generator::get_generators(200);
         $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only edit state from admin URL.
         $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
         $editing_generator = $edit_id > 0 ? Alpha_RSS_AI_Generator::get_generator($edit_id) : array();
 
@@ -56,6 +55,19 @@ class Alpha_RSS_AI_Generator_Admin
         $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
 
 ?>
+        <script>
+            window.tailwind = window.tailwind || {};
+            window.tailwind.config = {
+                theme: {
+                    extend: {
+                        boxShadow: {
+                            soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
+                        }
+                    }
+                }
+            };
+        </script>
+        <script src="https://cdn.tailwindcss.com"></script>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -214,14 +226,6 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
                                     <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Runware</label>
-                                    <input type="password" name="runware_api_key" value="<?php echo esc_attr(isset($settings['runware_api_key']) ? $settings['runware_api_key'] : ''); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Modelo do Runware</label>
-                                    <input type="text" name="runware_model" value="<?php echo esc_attr(isset($settings['runware_model']) ? $settings['runware_model'] : 'runware:400@1'); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
@@ -510,10 +514,8 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="rss">Fonte do RSS</option>
                                         <option value="rss_or_pexels">Fonte do RSS ou Pexels</option>
                                         <option value="rss_or_dalle">Fonte do RSS ou Dall-e</option>
-                                        <option value="rss_or_runware">Fonte do RSS ou Runware</option>
                                         <option value="pexels">Pexels</option>
                                         <option value="dalle">Dall-e</option>
-                                        <option value="runware">Runware</option>
                                     </select>
                                     <p class="mt-1 text-xs text-slate-500">Escolha se o gerador usa a imagem da fonte, um fallback visual ou a geração por IA. No modo de planilha com URL de referência, os modos de RSS ficam disponíveis; no modo só palavras-chave, o sistema adapta a escolha.</p>
                                 </div>
@@ -561,6 +563,11 @@ class Alpha_RSS_AI_Generator_Admin
                                         <input type="text" name="link_selector_class" placeholder="affiliate-single" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         <p class="mt-1 text-xs text-slate-500">Use a classe do wrapper ou do link que deve entrar no outline da página.</p>
                                     </div>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Seletor do conteúdo da página</label>
+                                    <input type="text" name="content_selector" placeholder="article-body, #article-body" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                    <p class="mt-1 text-xs text-slate-500">Use a classe ou o ID do bloco principal do artigo. Se vazio, a extração antiga continua como fallback.</p>
                                 </div>
                                 <div data-rss-image-size-field>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Tamanho das imagens no conteúdo</label>
@@ -624,23 +631,23 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div class="hidden md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
-                                            <label class="block text-sm font-semibold text-slate-800">SugestÃƒÂµes de posts</label>
-                                            <p class="mt-1 text-xs text-slate-500">Adicione blocos de posts relacionados no meio ou no fim do conteÃƒÂºdo. As frases do marcador podem variar entre linhas diferentes.</p>
+                                            <label class="block text-sm font-semibold text-slate-800">SugestÃµes de posts</label>
+                                            <p class="mt-1 text-xs text-slate-500">Adicione blocos de posts relacionados no meio ou no fim do conteÃºdo. As frases do marcador podem variar entre linhas diferentes.</p>
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">Ativar sugestÃƒÂµes</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Ativar sugestÃµes</label>
                                             <select name="related_posts_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:w-44">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃƒÂ£o</option>
+                                                <option value="0">NÃ£o</option>
                                             </select>
                                         </div>
                                     </div>
                                     <div class="mt-4 grid gap-4 md:grid-cols-2">
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">PosiÃƒÂ§ÃƒÂ£o</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">PosiÃ§Ã£o</label>
                                             <select name="related_posts_position" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                                <option value="end">No final do conteÃƒÂºdo</option>
-                                                <option value="paragraphs">A cada X parÃƒÂ¡grafos</option>
+                                                <option value="end">No final do conteÃºdo</option>
+                                                <option value="paragraphs">A cada X parÃ¡grafos</option>
                                                 <option value="words">A cada X palavras</option>
                                             </select>
                                         </div>
@@ -649,7 +656,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             <input type="number" min="1" name="related_posts_interval" value="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">MÃƒÂ­nimo de H2</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">MÃ­nimo de H2</label>
                                             <input type="number" min="0" name="related_posts_min_h2" value="1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
                                         <div>
@@ -660,14 +667,14 @@ class Alpha_RSS_AI_Generator_Admin
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Apenas mesma categoria</label>
                                             <select name="related_posts_same_category_only" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃƒÂ£o</option>
+                                                <option value="0">NÃ£o</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Permitir fallback</label>
                                             <select name="related_posts_allow_fallback" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃƒÂ£o</option>
+                                                <option value="0">NÃ£o</option>
                                             </select>
                                         </div>
                                         <div>
@@ -680,8 +687,8 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                         <div class="md:col-span-2">
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Frases do marcador</label>
-                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="VocÃƒÂª tambÃƒÂ©m pode gostar de:\nLeia tambÃƒÂ©m:\nVeja tambÃƒÂ©m:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
-                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestÃƒÂ£o.</p>
+                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="VocÃª tambÃ©m pode gostar de:\nLeia tambÃ©m:\nVeja tambÃ©m:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
+                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestÃ£o.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -713,6 +720,17 @@ class Alpha_RSS_AI_Generator_Admin
                                         <p class="mt-1 text-xs text-slate-500">Comece a digitar para buscar e selecione quantas tags quiser.</p>
                                     </div>
                                 </div>
+                                <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-internal-links-field>
+                                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <label class="block text-sm font-semibold text-slate-800">Links internos manuais</label>
+                                            <p class="mt-1 text-xs text-slate-500">O PHP aplica estes links depois da geração. Cada item informa a palavra, a URL e quantas vezes ela deve ser linkada.</p>
+                                        </div>
+                                        <button type="button" data-add-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
+                                    </div>
+                                    <div class="mt-4 space-y-3" data-internal-links-rows></div>
+                                    <textarea name="internal_links_json" class="hidden" data-internal-links-json></textarea>
+                                </div>
                                 <div class="md:col-span-2">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
                                     <textarea name="prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_prompt_template()); ?></textarea>
@@ -736,6 +754,10 @@ class Alpha_RSS_AI_Generator_Admin
                     </div>
                 </div>
             </div>
+
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+            
+            <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
             <script>
                 (function() {
@@ -761,7 +783,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'jitter_minutes' => '30',
                                         'daily_start' => '08:00',
                                         'daily_end' => '22:00',
-                                        'image_source_mode' => !empty($settings['image_source_mode']) ? sanitize_key((string) $settings['image_source_mode']) : Alpha_RSS_AI_Generator::get_default_image_source_mode('keyword_list', 'keywords'),
+                                        'image_source_mode' => '',
                                         'pexels_query' => Alpha_RSS_AI_Generator::get_default_pexels_query(),
                                         'source_video_enabled' => '0',
                                         'source_content_images_enabled' => '1',
@@ -769,6 +791,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'video_selector_class' => '',
                                         'image_selector_class' => '',
                                         'link_selector_class' => '',
+                                        'content_selector' => '',
                                         'content_image_size' => 'medium',
                                         'source_link_phrases' => Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases(),
                                         'source_context_exclude_phrases' => '',
@@ -779,8 +802,6 @@ class Alpha_RSS_AI_Generator_Admin
                                         'generation_language' => Alpha_RSS_AI_Generator::get_default_generation_language(),
                                         'category_ids' => array(),
                                         'tags_default' => array(),
-                                        'custom_taxonomies' => '',
-                                        'custom_meta' => '',
                                         'prompt_template' => Alpha_RSS_AI_Generator::get_default_prompt_template(),
                                         'content_prompt_template' => Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible(),
                                         'keyword_prompt_template' => Alpha_RSS_AI_Generator::get_default_keyword_prompt_template(),
@@ -793,6 +814,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'related_posts_allow_fallback' => '1',
                                         'related_posts_style' => 'list',
                                         'related_posts_phrases' => Alpha_RSS_AI_Generator::get_default_related_posts_phrases(),
+                                        'internal_links_json' => '[]',
                                     )); ?>;
                     var editId = <?php echo intval($edit_id); ?>;
                     var settingsModal = document.getElementById('arc-settings-modal');
@@ -815,6 +837,10 @@ class Alpha_RSS_AI_Generator_Admin
                     var form = document.getElementById('arc-generator-form');
                     var titleEl = document.getElementById('arc-generator-modal-title');
                     var submitEl = document.getElementById('arc-generator-submit');
+                    var internalLinksField = form.querySelector('[data-internal-links-field]');
+                    var internalLinksRows = form.querySelector('[data-internal-links-rows]');
+                    var internalLinksJson = form.querySelector('[data-internal-links-json]');
+                    var internalLinksAddButton = form.querySelector('[data-add-internal-link]');
                     var feedUrlField = form.querySelector('[data-feed-url-field]');
                     var listIdField = form.querySelector('[data-list-id-field]');
                     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
@@ -827,7 +853,6 @@ class Alpha_RSS_AI_Generator_Admin
                     window.AlphaRssAiGenerator.editId = editId;
                     window.AlphaRssAiGenerator.apiBase = apiBase;
                     window.AlphaRssAiGenerator.restNonce = restNonce;
-                    return;
                     var openModalCount = 0;
                     var manualRunCurrentGeneratorId = '';
                     var manualRunCurrentGeneratorName = '';
@@ -873,7 +898,7 @@ class Alpha_RSS_AI_Generator_Admin
 
                     function normalizeImageSourceModeForType(sourceType, keywordListMode, value) {
                         var mode = String(value || '').trim();
-                        var allowed = ['rss', 'rss_or_pexels', 'rss_or_dalle', 'rss_or_runware', 'pexels', 'dalle', 'runware'];
+                        var allowed = ['rss', 'rss_or_pexels', 'rss_or_dalle', 'pexels', 'dalle'];
                         if (allowed.indexOf(mode) === -1) {
                             return getDefaultImageSourceModeForType(sourceType, keywordListMode);
                         }
@@ -883,9 +908,6 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             if (mode === 'rss_or_dalle') {
                                 return 'dalle';
-                            }
-                            if (mode === 'rss_or_runware') {
-                                return 'runware';
                             }
                         }
                         return mode;
@@ -1027,6 +1049,137 @@ class Alpha_RSS_AI_Generator_Admin
                             } catch (e) {}
                         }
                         return {};
+                    }
+
+                    function parseInternalLinkRules(value) {
+                        if (Array.isArray(value)) {
+                            return value;
+                        }
+                        if (typeof value === 'string' && value !== '') {
+                            try {
+                                var parsed = JSON.parse(value);
+                                if (Array.isArray(parsed)) {
+                                    return parsed;
+                                }
+                            } catch (e) {}
+                        }
+                        return [];
+                    }
+
+                    function normalizeInternalLinkRule(rule) {
+                        rule = rule || {};
+                        function toFlag(value) {
+                            if (value === true || value === 1 || value === '1' || value === 'true' || value === 'on') {
+                                return '1';
+                            }
+                            return '0';
+                        }
+                        return {
+                            quantity: Math.max(1, parseInt(rule.quantity, 10) || 1),
+                            phrase: String(rule.phrase || rule.word || rule.keyword || rule.anchor_text || '').trim(),
+                            url: String(rule.url || rule.link || rule.target_url || '').trim(),
+                            target_blank: toFlag(rule.target_blank),
+                            nofollow: toFlag(rule.nofollow),
+                            sponsored: toFlag(rule.sponsored),
+                            ugc: toFlag(rule.ugc)
+                        };
+                    }
+
+                    function collectInternalLinkRules() {
+                        if (!internalLinksRows) {
+                            return [];
+                        }
+
+                        var rules = [];
+                        internalLinksRows.querySelectorAll('[data-internal-link-row]').forEach(function(row) {
+                            var quantityEl = row.querySelector('[data-internal-link-quantity]');
+                            var phraseEl = row.querySelector('[data-internal-link-phrase]');
+                            var urlEl = row.querySelector('[data-internal-link-url]');
+                            var targetBlankEl = row.querySelector('[data-internal-link-target-blank]');
+                            var nofollowEl = row.querySelector('[data-internal-link-nofollow]');
+                            var sponsoredEl = row.querySelector('[data-internal-link-sponsored]');
+                            var ugcEl = row.querySelector('[data-internal-link-ugc]');
+
+                            var rule = normalizeInternalLinkRule({
+                                quantity: quantityEl ? quantityEl.value : 1,
+                                phrase: phraseEl ? phraseEl.value : '',
+                                url: urlEl ? urlEl.value : '',
+                                target_blank: targetBlankEl && targetBlankEl.checked ? 1 : 0,
+                                nofollow: nofollowEl && nofollowEl.checked ? 1 : 0,
+                                sponsored: sponsoredEl && sponsoredEl.checked ? 1 : 0,
+                                ugc: ugcEl && ugcEl.checked ? 1 : 0
+                            });
+
+                            if (!rule.phrase && !rule.url && rule.quantity === 1 && rule.target_blank === '0' && rule.nofollow === '0' && rule.sponsored === '0' && rule.ugc === '0') {
+                                return;
+                            }
+
+                            rules.push(rule);
+                        });
+
+                        return rules;
+                    }
+
+                    function syncInternalLinksField() {
+                        if (!internalLinksJson) {
+                            return;
+                        }
+                        internalLinksJson.value = JSON.stringify(collectInternalLinkRules());
+                    }
+
+                    function buildInternalLinkRowMarkup(rule) {
+                        rule = normalizeInternalLinkRule(rule);
+                        return [
+                            '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-internal-link-row>',
+                            '  <div class="grid gap-3 md:grid-cols-12">',
+                            '    <div class="md:col-span-2">',
+                            '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantidade</label>',
+                            '      <input type="number" min="1" value="' + escapeHtml(rule.quantity) + '" data-internal-link-quantity class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />',
+                            '    </div>',
+                            '    <div class="md:col-span-4">',
+                            '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Palavra</label>',
+                            '      <input type="text" value="' + escapeHtml(rule.phrase) + '" data-internal-link-phrase class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Netflix" />',
+                            '    </div>',
+                            '    <div class="md:col-span-4">',
+                            '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Link</label>',
+                            '      <input type="url" value="' + escapeHtml(rule.url) + '" data-internal-link-url class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="https://seusite.com/exemplo" />',
+                            '    </div>',
+                            '    <div class="md:col-span-2">',
+                            '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Atributos</label>',
+                            '      <div class="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">',
+                            '        <label class="flex items-center gap-2"><input type="checkbox" data-internal-link-target-blank ' + (rule.target_blank === '1' ? 'checked' : '') + ' /> target blank</label>',
+                            '        <label class="flex items-center gap-2"><input type="checkbox" data-internal-link-nofollow ' + (rule.nofollow === '1' ? 'checked' : '') + ' /> nofollow</label>',
+                            '        <label class="flex items-center gap-2"><input type="checkbox" data-internal-link-sponsored ' + (rule.sponsored === '1' ? 'checked' : '') + ' /> sponsored</label>',
+                            '        <label class="flex items-center gap-2"><input type="checkbox" data-internal-link-ugc ' + (rule.ugc === '1' ? 'checked' : '') + ' /> ugc</label>',
+                            '      </div>',
+                            '    </div>',
+                            '  </div>',
+                            '  <div class="mt-3 flex justify-end">',
+                            '    <button type="button" data-remove-internal-link class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100">Remover</button>',
+                            '  </div>',
+                            '</div>'
+                        ].join('');
+                    }
+
+                    function renderInternalLinkRows(rules) {
+                        if (!internalLinksRows) {
+                            return;
+                        }
+
+                        var normalizedRules = [];
+                        if (Array.isArray(rules)) {
+                            normalizedRules = rules.map(function(rule) {
+                                return normalizeInternalLinkRule(rule);
+                            });
+                        }
+                        if (!normalizedRules.length) {
+                            normalizedRules = [normalizeInternalLinkRule({})];
+                        }
+
+                        internalLinksRows.innerHTML = normalizedRules.map(function(rule) {
+                            return buildInternalLinkRowMarkup(rule);
+                        }).join('');
+                        syncInternalLinksField();
                     }
 
                     function objectToLines(objectValue) {
@@ -1241,6 +1394,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('pexels_query', defaults.pexels_query);
                         setValue('source_video_enabled', defaults.source_video_enabled);
                         setValue('video_selector_class', defaults.video_selector_class);
+                        setValue('content_selector', defaults.content_selector);
                         setValue('content_image_size', defaults.content_image_size);
                         setValue('source_link_phrases', defaults.source_link_phrases);
                         setValue('seo_enabled', defaults.seo_enabled);
@@ -1254,12 +1408,12 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('related_posts_allow_fallback', defaults.related_posts_allow_fallback);
                         setValue('related_posts_style', defaults.related_posts_style);
                         setValue('related_posts_phrases', defaults.related_posts_phrases);
+                        setValue('internal_links_json', defaults.internal_links_json);
                         setMultiSelect('category_ids[]', []);
                         setMultiSelect('tags_default[]', []);
-                        setValue('custom_taxonomies', defaults.custom_taxonomies);
-                        setValue('custom_meta', defaults.custom_meta);
                         setValue('prompt_template', defaults.prompt_template);
                         setValue('content_prompt_template', defaults.content_prompt_template);
+                        renderInternalLinkRows(parseInternalLinkRules(defaults.internal_links_json));
                         syncSourceFields();
                         if (titleEl) {
                             titleEl.textContent = 'Adicionar gerador';
@@ -1299,6 +1453,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('pexels_query', generator.pexels_query || defaults.pexels_query);
                         setValue('source_video_enabled', String(typeof generator.source_video_enabled !== 'undefined' ? generator.source_video_enabled : defaults.source_video_enabled));
                         setValue('video_selector_class', generator.video_selector_class || defaults.video_selector_class);
+                        setValue('content_selector', generator.content_selector || defaults.content_selector);
                         setValue('content_image_size', generator.content_image_size || defaults.content_image_size);
                         setValue('source_link_phrases', generator.source_link_phrases || defaults.source_link_phrases);
                         setValue('seo_enabled', String(typeof generator.seo_enabled !== 'undefined' ? generator.seo_enabled : defaults.seo_enabled));
@@ -1312,12 +1467,12 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('related_posts_allow_fallback', String(typeof generator.related_posts_allow_fallback !== 'undefined' ? generator.related_posts_allow_fallback : defaults.related_posts_allow_fallback));
                         setValue('related_posts_style', generator.related_posts_style || defaults.related_posts_style);
                         setValue('related_posts_phrases', generator.related_posts_phrases || defaults.related_posts_phrases);
+                        setValue('internal_links_json', generator.internal_links_json || defaults.internal_links_json);
                         setMultiSelect('category_ids[]', parseListValue(generator.category_ids));
                         setMultiSelect('tags_default[]', parseListValue(generator.tags_default));
-                        setValue('custom_taxonomies', objectToLines(parseObjectValue(generator.custom_taxonomies)));
-                        setValue('custom_meta', objectToLines(parseObjectValue(generator.custom_meta)));
                         setValue('prompt_template', normalizePromptForSourceType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.prompt_template || ((generator.source_type === 'keyword_list' && (generator.keyword_list_mode || defaults.keyword_list_mode) !== 'url_reference') ? defaults.keyword_prompt_template : defaults.prompt_template)));
                         setValue('content_prompt_template', generator.content_prompt_template || defaults.content_prompt_template);
+                        renderInternalLinkRows(parseInternalLinkRules(generator.internal_links_json || defaults.internal_links_json));
                         syncSourceFields();
 
                         if (titleEl) {
@@ -1335,6 +1490,42 @@ class Alpha_RSS_AI_Generator_Admin
                     var keywordListModeEl = byName('keyword_list_mode');
                     if (keywordListModeEl) {
                         keywordListModeEl.addEventListener('change', syncSourceFields);
+                    }
+
+                    if (internalLinksRows) {
+                        internalLinksRows.addEventListener('input', syncInternalLinksField);
+                        internalLinksRows.addEventListener('change', syncInternalLinksField);
+                        internalLinksRows.addEventListener('click', function(event) {
+                            var button = event.target && event.target.closest ? event.target.closest('[data-remove-internal-link]') : null;
+                            if (!button) {
+                                return;
+                            }
+                            var row = button.closest('[data-internal-link-row]');
+                            if (row) {
+                                row.remove();
+                                syncInternalLinksField();
+                            }
+                        });
+                    }
+
+                    if (internalLinksAddButton) {
+                        internalLinksAddButton.addEventListener('click', function() {
+                            var currentRules = collectInternalLinkRules();
+                            if (!currentRules.length && internalLinksRows) {
+                                var rowCount = internalLinksRows.querySelectorAll('[data-internal-link-row]').length;
+                                for (var i = 0; i < rowCount; i++) {
+                                    currentRules.push(normalizeInternalLinkRule({}));
+                                }
+                            }
+                            currentRules.push(normalizeInternalLinkRule({}));
+                            renderInternalLinkRows(currentRules);
+                        });
+                    }
+
+                    if (form) {
+                        form.addEventListener('submit', function() {
+                            syncInternalLinksField();
+                        });
                     }
 
                     initSelect2Fields();
@@ -1596,10 +1787,27 @@ class Alpha_RSS_AI_Generator_Admin
         if (is_wp_error($tags)) {
             $tags = array();
         }
+        $public_taxonomies = get_taxonomies(array('public' => true), 'objects');
+        if (!is_array($public_taxonomies)) {
+            $public_taxonomies = array();
+        }
         $api_base = rest_url('alpha-rss-ai-generator/v1');
         $rest_nonce = wp_create_nonce('wp_rest');
 
-?>
+    ?>
+        <script>
+            window.tailwind = window.tailwind || {};
+            window.tailwind.config = {
+                theme: {
+                    extend: {
+                        boxShadow: {
+                            soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
+                        }
+                    }
+                }
+            };
+        </script>
+        <script src="https://cdn.tailwindcss.com"></script>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -1843,8 +2051,6 @@ class Alpha_RSS_AI_Generator_Admin
                         </div>
 
                         <div class="max-h-[calc(92vh-82px)] overflow-y-auto p-6">
-                            <div id="arc-keyword-generate-status" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
-
                             <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
                                 <div class="space-y-6">
                                     <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1941,19 +2147,6 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <input id="arc-keyword-generate-model" type="text" value="<?php echo esc_attr($global_settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div>
-                                                <label class="mb-1 block text-sm font-medium text-slate-700">Provedor da imagem</label>
-                                                <select id="arc-keyword-generate-image-source-mode" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                                    <?php $keyword_generate_image_source_mode = !empty($settings['image_source_mode']) ? sanitize_key((string) $settings['image_source_mode']) : Alpha_RSS_AI_Generator::get_default_image_source_mode('keyword_list', 'keywords'); ?>
-                                                    <option value="rss" <?php echo selected($keyword_generate_image_source_mode, 'rss', false); ?>>Fonte do RSS</option>
-                                                    <option value="rss_or_pexels" <?php echo selected($keyword_generate_image_source_mode, 'rss_or_pexels', false); ?>>Fonte do RSS ou Pexels</option>
-                                                    <option value="rss_or_dalle" <?php echo selected($keyword_generate_image_source_mode, 'rss_or_dalle', false); ?>>Fonte do RSS ou Dall-e</option>
-                                                    <option value="rss_or_runware" <?php echo selected($keyword_generate_image_source_mode, 'rss_or_runware', false); ?>>Fonte do RSS ou Runware</option>
-                                                    <option value="pexels" <?php echo selected($keyword_generate_image_source_mode, 'pexels', false); ?>>Pexels</option>
-                                                    <option value="dalle" <?php echo selected($keyword_generate_image_source_mode, 'dalle', false); ?>>Dall-e</option>
-                                                    <option value="runware" <?php echo selected($keyword_generate_image_source_mode, 'runware', false); ?>>Runware</option>
-                                                </select>
-                                            </div>
-                                            <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Temperatura</label>
                                                 <input id="arc-keyword-generate-temperature" type="number" step="0.1" min="0" max="2" value="<?php echo esc_attr($global_settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
@@ -1966,8 +2159,8 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <input id="arc-keyword-generate-pexels-query" type="text" value="<?php echo esc_attr(Alpha_RSS_AI_Generator::get_default_pexels_query()); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 md:col-span-2">
-                                                <div class="text-sm font-medium text-amber-900">Imagem no conteúdo e thumbnail</div>
-                                                <p class="mt-1 text-xs text-amber-700">O provedor escolhido define a thumbnail e também a imagem que pode entrar no corpo do post quando o conteúdo não trouxer imagem própria.</p>
+                                                <div class="text-sm font-medium text-amber-900">Pexels obrigatório</div>
+                                                <p class="mt-1 text-xs text-amber-700">Listas por planilha sempre usam imagens do Pexels. Imagens do site de origem são ignoradas.</p>
                                             </div>
                                             <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
                                                 <input id="arc-keyword-generate-source-video-enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
@@ -2014,6 +2207,31 @@ class Alpha_RSS_AI_Generator_Admin
                                     </div>
 
                                     <div class="grid gap-6 md:grid-cols-2">
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50">
+                                            <div class="border-b border-slate-200 px-4 py-3">
+                                                <h3 class="text-sm font-semibold text-slate-950">Taxonomias personalizadas</h3>
+                                            </div>
+                                            <div class="px-4 py-4">
+                                                <textarea id="arc-keyword-generate-taxonomies" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomia=term1,term2"></textarea>
+                                                <p class="mt-2 text-xs text-slate-500">Use uma linha por taxonomia. Ex.: `series=principal,secundaria`.</p>
+                                                <?php
+                                                $public_taxonomy_labels = array();
+                                                foreach ($public_taxonomies as $public_taxonomy) {
+                                                    $public_taxonomy_labels[] = !empty($public_taxonomy->labels->name) ? $public_taxonomy->labels->name : $public_taxonomy->name;
+                                                }
+                                                ?>
+                                                <p class="mt-2 text-xs text-slate-500">Taxonomias públicas detectadas: <?php echo esc_html(!empty($public_taxonomy_labels) ? implode(', ', $public_taxonomy_labels) : '-'); ?></p>
+                                            </div>
+                                        </div>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50">
+                                            <div class="border-b border-slate-200 px-4 py-3">
+                                                <h3 class="text-sm font-semibold text-slate-950">Metadados personalizados</h3>
+                                            </div>
+                                            <div class="px-4 py-4">
+                                                <textarea id="arc-keyword-generate-meta" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
+                                                <p class="mt-2 text-xs text-slate-500">Use uma linha por meta. Ex.: `_seo_title=Meu título`.</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2076,7 +2294,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var generateBackdrop = document.getElementById('arc-keyword-generate-backdrop');
                     var generateModalTitle = document.getElementById('arc-keyword-generate-title');
                     var generateModalSubtitle = document.getElementById('arc-keyword-generate-subtitle');
-                    var generateModalStatus = document.getElementById('arc-keyword-generate-status');
                     var generateListName = document.getElementById('arc-keyword-generate-list-name');
                     var generateAvailableCount = document.getElementById('arc-keyword-generate-available-count');
                     var generateTargetCount = document.getElementById('arc-keyword-generate-target-count');
@@ -2093,7 +2310,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var generateAuthorSelect = document.getElementById('arc-keyword-generate-author');
                     var generateLanguageInput = document.getElementById('arc-keyword-generate-language');
                     var generateModelInput = document.getElementById('arc-keyword-generate-model');
-                    var generateImageSourceModeSelect = document.getElementById('arc-keyword-generate-image-source-mode');
                     var generateTemperatureInput = document.getElementById('arc-keyword-generate-temperature');
                     var generateMaxTokensInput = document.getElementById('arc-keyword-generate-max-tokens');
                     var generatePexelsQueryInput = document.getElementById('arc-keyword-generate-pexels-query');
@@ -2101,11 +2317,12 @@ class Alpha_RSS_AI_Generator_Admin
                     var generateSeoEnabledInput = document.getElementById('arc-keyword-generate-seo-enabled');
                     var generateCategoriesSelect = document.getElementById('arc-keyword-generate-categories');
                     var generateTagsSelect = document.getElementById('arc-keyword-generate-tags');
+                    var generateTaxonomiesTextarea = document.getElementById('arc-keyword-generate-taxonomies');
+                    var generateMetaTextarea = document.getElementById('arc-keyword-generate-meta');
                     var currentGenerateList = null;
                     var currentGenerateAvailableCount = null;
                     var currentGenerateCountReady = false;
                     var currentGenerateRunToken = 0;
-                    var currentGenerateLastLink = '';
                     var generateCountRequestTimer = null;
                     var generateFilterCounter = 0;
 
@@ -2150,31 +2367,6 @@ class Alpha_RSS_AI_Generator_Admin
                         }
                         target.className = classes;
                         target.textContent = message;
-                    }
-
-                    function setStatusHtml(target, message, link, linkLabel, type) {
-                        if (!target) {
-                            return;
-                        }
-                        if (!message) {
-                            target.className = 'hidden mb-4 rounded-xl border px-4 py-3 text-sm';
-                            target.textContent = '';
-                            return;
-                        }
-                        var classes = 'mb-4 rounded-xl border px-4 py-3 text-sm';
-                        if (type === 'error') {
-                            classes += ' border-rose-200 bg-rose-50 text-rose-700';
-                        } else if (type === 'success') {
-                            classes += ' border-emerald-200 bg-emerald-50 text-emerald-700';
-                        } else {
-                            classes += ' border-amber-200 bg-amber-50 text-amber-700';
-                        }
-                        var html = escapeHtml(message);
-                        if (link) {
-                            html += ' <a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">' + escapeHtml(linkLabel || 'Abrir conteúdo') + '</a>';
-                        }
-                        target.className = classes;
-                        target.innerHTML = html;
                     }
 
                     function api(path, options) {
@@ -2364,7 +2556,6 @@ class Alpha_RSS_AI_Generator_Admin
                             author_id: generateAuthorSelect ? generateAuthorSelect.value : '0',
                             generation_language: generateLanguageInput ? generateLanguageInput.value : '',
                             model: generateModelInput ? generateModelInput.value : '',
-                            image_source_mode: generateImageSourceModeSelect ? generateImageSourceModeSelect.value : '',
                             temperature: generateTemperatureInput ? generateTemperatureInput.value : '',
                             max_tokens: generateMaxTokensInput ? generateMaxTokensInput.value : '',
                             pexels_query: generatePexelsQueryInput ? generatePexelsQueryInput.value : '',
@@ -2373,6 +2564,8 @@ class Alpha_RSS_AI_Generator_Admin
                             seo_enabled: generateSeoEnabledInput && generateSeoEnabledInput.checked ? 1 : 0,
                             category_ids: getSelectMultiValues(generateCategoriesSelect),
                             tags_default: getSelectMultiValues(generateTagsSelect),
+                            custom_taxonomies: generateTaxonomiesTextarea ? generateTaxonomiesTextarea.value : '',
+                            custom_meta: generateMetaTextarea ? generateMetaTextarea.value : ''
                         };
                     }
 
@@ -2451,7 +2644,7 @@ class Alpha_RSS_AI_Generator_Admin
                             currentGenerateAvailableCount = currentGenerateAvailableCount === null ? 0 : currentGenerateAvailableCount;
                             currentGenerateCountReady = true;
                             updateGenerateTargetSummary();
-                            setStatus(generateModalStatus, error.message || 'Erro ao calcular a quantidade.', 'error');
+                            window.alert(error.message || 'Erro ao calcular a quantidade.');
                             return currentGenerateAvailableCount;
                         }
                     }
@@ -2464,16 +2657,11 @@ class Alpha_RSS_AI_Generator_Admin
                         currentGenerateList = listData;
                         currentGenerateAvailableCount = currentGenerateList && currentGenerateList.counts ? parseInt(currentGenerateList.counts.pending_rows || 0, 10) || 0 : 0;
                         currentGenerateCountReady = false;
-                        currentGenerateLastLink = '';
-                        if (generateImageSourceModeSelect) {
-                            generateImageSourceModeSelect.value = defaults.image_source_mode || generateImageSourceModeSelect.value || 'rss_or_pexels';
-                        }
-
                         if (generateModalTitle) {
                             generateModalTitle.textContent = 'Gerar em lote';
                         }
                         if (generateModalSubtitle) {
-                            generateModalSubtitle.textContent = (currentGenerateList.list_name || '-') + ' Â· ' + (currentGenerateList.original_filename || '-');
+                            generateModalSubtitle.textContent = (currentGenerateList.list_name || '-') + ' · ' + (currentGenerateList.original_filename || '-');
                         }
                         if (generateListName) {
                             generateListName.textContent = currentGenerateList.list_name || '-';
@@ -2487,7 +2675,6 @@ class Alpha_RSS_AI_Generator_Admin
                                 generateCountMessage.textContent = 'Esta lista ficou vazia após a limpeza de linhas inválidas. Reimporte um arquivo com URLs/slugs elegíveis para gerar.';
                             }
                         }
-                        setStatus(generateModalStatus, '', '');
                         openModal(generateModal);
                         window.setTimeout(function() {
                             if (generateRequestedInput) {
@@ -2516,7 +2703,6 @@ class Alpha_RSS_AI_Generator_Admin
                             return;
                         }
 
-                        setStatus(generateModalStatus, 'Carregando dados da lista...', 'warning');
                         try {
                             var result = await api('/keyword-lists/' + listId, {
                                 method: 'GET'
@@ -2526,7 +2712,7 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             openGenerateModalWithList(result.payload.list || null);
                         } catch (error) {
-                            setStatus(generateModalStatus, error.message || 'Erro ao carregar a lista.', 'error');
+                            window.alert(error.message || 'Erro ao carregar a lista.');
                         }
                     }
 
@@ -2551,12 +2737,11 @@ class Alpha_RSS_AI_Generator_Admin
                         var target = Math.min(requested, available);
 
                         if (target <= 0) {
-                            setStatus(generateModalStatus, 'Nenhum item elegível para gerar com os filtros atuais.', 'error');
+                            window.alert('Nenhum item elegível para gerar com os filtros atuais.');
                             return;
                         }
 
                         var generated = 0;
-                        var lastGeneratedLink = '';
                         var runLabel = generateRunButton ? generateRunButton.textContent : 'Gerar agora';
                         currentGenerateRunToken++;
                         var runToken = currentGenerateRunToken;
@@ -2572,7 +2757,6 @@ class Alpha_RSS_AI_Generator_Admin
                                     break;
                                 }
 
-                                setStatus(generateModalStatus, 'Gerando item ' + (generated + 1) + ' de ' + target + '...', 'warning');
                                 var result = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
                                     method: 'POST',
                                     headers: {
@@ -2593,29 +2777,16 @@ class Alpha_RSS_AI_Generator_Admin
                                 }
 
                                 var generatedResult = result.payload.result || {};
-                                lastGeneratedLink = generatedResult.view_link || generatedResult.permalink || generatedResult.edit_link || '';
-                                if (lastGeneratedLink) {
-                                    setStatusHtml(generateModalStatus, 'Item gerado com sucesso.', lastGeneratedLink, 'Abrir conteúdo', 'success');
-                                } else {
-                                    setStatus(generateModalStatus, 'Item gerado com sucesso.', 'success');
-                                }
-
                                 generated++;
                                 currentGenerateAvailableCount = Math.max(0, (currentGenerateAvailableCount || 0) - 1);
                                 updateGenerateTargetSummary();
                             }
 
-                            if (generated > 0) {
-                                if (lastGeneratedLink) {
-                                    setStatusHtml(generateModalStatus, 'Geração concluída. ' + generated + ' item(ns) criado(s).', lastGeneratedLink, 'Abrir último conteúdo', 'success');
-                                } else {
-                                    setStatus(generateModalStatus, 'Geração concluída. ' + generated + ' item(ns) criado(s).', 'success');
-                                }
-                            } else if (target > 0) {
-                                setStatus(generateModalStatus, 'Nenhum item foi gerado.', 'warning');
+                            if (generated <= 0 && target > 0) {
+                                window.alert('Nenhum item foi gerado.');
                             }
                         } catch (error) {
-                            setStatus(generateModalStatus, error.message || 'Erro ao gerar em lote.', 'error');
+                            window.alert(error.message || 'Erro ao gerar em lote.');
                         } finally {
                             if (generateRunButton) {
                                 generateRunButton.disabled = false;
@@ -2683,7 +2854,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 details.push('slug: ' + escapeHtml(log.final_slug));
                             }
                             if (details.length) {
-                                message += '<div class="mt-1 text-xs text-rose-600">' + details.join(' Â· ') + '</div>';
+                                message += '<div class="mt-1 text-xs text-rose-600">' + details.join(' · ') + '</div>';
                             }
                             html.push('<td class="px-3 py-2 text-rose-900">' + message + '</td>');
                             html.push('</tr>');
@@ -2735,7 +2906,7 @@ class Alpha_RSS_AI_Generator_Admin
 
                         var headers = payload.headers || [];
                         setColumnMapValues(payload.detected_column_map || {}, headers);
-                        previewSummary.textContent = (payload.file && payload.file.name ? payload.file.name + ' Â· ' : '') + (payload.row_count || 0) + ' linha(s) lida(s)';
+                        previewSummary.textContent = (payload.file && payload.file.name ? payload.file.name + ' · ' : '') + (payload.row_count || 0) + ' linha(s) lida(s)';
                         previewTable.innerHTML = renderPreviewTable(headers, payload.rows || []);
                         previewPanel.classList.remove('hidden');
                         openModalCount = Math.max(openModalCount, 0);
@@ -2943,7 +3114,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 listModalTitle.textContent = currentDetailList ? currentDetailList.list_name : 'Detalhe da lista';
                             }
                             if (listModalSubtitle) {
-                                listModalSubtitle.textContent = currentDetailList ? (currentDetailList.original_filename + ' Â· ' + (currentDetailList.file_type || '').toUpperCase()) : '';
+                                listModalSubtitle.textContent = currentDetailList ? (currentDetailList.original_filename + ' · ' + (currentDetailList.file_type || '').toUpperCase()) : '';
                             }
                             if (listModalCounts) {
                                 listModalCounts.innerHTML = renderCounts(counts);
@@ -3251,7 +3422,6 @@ class Alpha_RSS_AI_Generator_Admin
 <?php
     }
 
-    // phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only notice state from admin URL.
     public static function render_notice()
     {
         if (empty($_GET['arc_notice'])) {
@@ -3268,7 +3438,6 @@ class Alpha_RSS_AI_Generator_Admin
         }
         echo '</p></div>';
     }
-    // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
     public static function get_post_status_label($status)
     {

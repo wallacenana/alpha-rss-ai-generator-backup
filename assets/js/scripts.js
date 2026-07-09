@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
     var arcConfig = window.AlphaRssAiGenerator || {};
     var generators = Array.isArray(arcConfig.generators) ? arcConfig.generators : [];
     var defaults = arcConfig.defaults || {
@@ -37,7 +37,7 @@
         source_context_min_rating: '0',
         source_context_keep_unrated: '0',
         seo_enabled: '1',
-        generation_language: 'PortuguÃªs do Brasil',
+        generation_language: 'Português do Brasil',
         category_ids: [],
         tags_default: [],
         custom_taxonomies: '',
@@ -115,13 +115,13 @@
 
     function promptLooksLikeRss(text) {
         var value = String(text || '');
-        return value.indexOf('VocÃª Ã© um editor jornalÃ­stico especializado em reescrever conteÃºdo de RSS.') !== -1 ||
-            value.indexOf('VocÃª Ã© um jornalista de portal focado em SEO e no estilo GEO') !== -1 ||
+        return value.indexOf('Você é um editor jornalístico especializado em reescrever conteúdo de RSS.') !== -1 ||
+            value.indexOf('Você é um jornalista de portal focado em SEO e no estilo GEO') !== -1 ||
             value.indexOf('[DIRETRIZES DE ESCRITA E ESTILO (GEO)]') !== -1;
     }
 
     function promptLooksLikeKeyword(text) {
-        return String(text || '').indexOf('VocÃª Ã© um editor de conteÃºdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== -1;
+        return String(text || '').indexOf('Você é um editor de conteúdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== -1;
     }
 
     function getDefaultImageSourceModeForType(sourceType) {
@@ -130,7 +130,7 @@
 
     function normalizeImageSourceModeForType(sourceType, value) {
         var mode = String(value || '').trim();
-        var allowed = ['rss', 'rss_or_pexels', 'rss_or_dalle', 'rss_or_runware', 'pexels', 'dalle', 'runware'];
+        var allowed = ['rss', 'rss_or_pexels', 'rss_or_dalle', 'pexels', 'dalle'];
         if (allowed.indexOf(mode) === -1) {
             return getDefaultImageSourceModeForType(sourceType);
         }
@@ -140,9 +140,6 @@
             }
             if (mode === 'rss_or_dalle') {
                 return 'dalle';
-            }
-            if (mode === 'rss_or_runware') {
-                return 'runware';
             }
         }
         return mode;
@@ -430,7 +427,7 @@
                 '<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">',
                 '  <div class="min-w-0 flex-1">',
                 '    <div class="flex flex-wrap items-center gap-2">',
-                '      <h3 class="text-base font-semibold text-slate-950">' + escapeHtml(item.title || '(Sem tÃ­tulo)') + '</h3>',
+                '      <h3 class="text-base font-semibold text-slate-950">' + escapeHtml(item.title || '(Sem título)') + '</h3>',
                 '      ' + (date ? '<span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">' + date + '</span>' : ''),
                 '    </div>',
                 excerpt ? '    <p class="mt-2 text-sm leading-6 text-slate-600">' + excerpt + '</p>' : '',
@@ -539,7 +536,7 @@
             manualRunTitle.textContent = 'Escolher item';
         }
         if (manualRunSubtitle) {
-            manualRunSubtitle.textContent = 'Escolha um item disponÃ­vel para gerar um post Ãºnico.';
+            manualRunSubtitle.textContent = 'Escolha um item disponível para gerar um post único.';
         }
         setManualRunLoading(true);
 
@@ -566,7 +563,7 @@
             });
         }).then(function (result) {
             if (!result.ok || !result.payload || !result.payload.success) {
-                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'NÃ£o foi possÃ­vel carregar os itens do feed.');
+                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível carregar os itens do feed.');
             }
             var payload = result.payload;
             manualRunCurrentGeneratorName = payload.generator && payload.generator.name ? String(payload.generator.name) : '';
@@ -574,7 +571,7 @@
                 manualRunTitle.textContent = manualRunCurrentGeneratorName ? ('Escolher item: ' + manualRunCurrentGeneratorName) : 'Escolher item';
             }
             if (manualRunSubtitle) {
-                manualRunSubtitle.textContent = 'Escolha um item disponÃ­vel para gerar um post Ãºnico.';
+                manualRunSubtitle.textContent = 'Escolha um item disponível para gerar um post único.';
             }
             setManualRunItems(payload.items || []);
             if (!payload.items || !payload.items.length) {
@@ -784,7 +781,7 @@
             manualRunCurrentGeneratorId = generatorId;
             manualRunCurrentGeneratorName = generatorName;
             if (manualRunSubtitle) {
-                manualRunSubtitle.textContent = generatorName ? ('Carregando itens do gerador "' + generatorName + '"...') : 'Carregando itens disponÃ­veis...';
+                manualRunSubtitle.textContent = generatorName ? ('Carregando itens do gerador "' + generatorName + '"...') : 'Carregando itens disponíveis...';
             }
             if (manualRunTitle) {
                 manualRunTitle.textContent = 'Escolher item';
@@ -978,4 +975,3 @@
         applyDefaults();
     }
 })();
-

@@ -107,10 +107,21 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
             }
 
             $settings = self::get_settings();
-            // phpcs:disable WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- read-only admin notice state.
             $saved = isset($_GET['arc_notice']) && sanitize_key(wp_unslash($_GET['arc_notice'])) === 'saved';
-            // phpcs:enable WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
             ?>
+            <script>
+                window.tailwind = window.tailwind || {};
+                window.tailwind.config = {
+                    theme: {
+                        extend: {
+                            boxShadow: {
+                                soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
+                            }
+                        }
+                    }
+                };
+            </script>
+            <script src="https://cdn.tailwindcss.com"></script>
             <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
                 <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>

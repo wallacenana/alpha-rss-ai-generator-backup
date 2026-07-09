@@ -16,14 +16,14 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
 
         public static function get_default_models()
         {
-            return array();
+            return Alpha_RSS_AI_Generator::get_default_outline_models();
         }
 
         public static function get_models()
         {
             $models = get_option(self::OPTION_KEY, array());
             if (!is_array($models) || empty($models)) {
-                return array();
+                $models = self::get_default_models();
             }
 
             return Alpha_RSS_AI_Generator::normalize_outline_models($models);
@@ -31,10 +31,6 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
 
         public function admin_menu()
         {
-            if (empty(self::get_models())) {
-                return;
-            }
-
             add_submenu_page(
                 'alpha-rss-ai-generator',
                 'Modelos de outline',
@@ -55,12 +51,7 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
             ?>
             <div class="wrap">
                 <h1>Modelos de outline</h1>
-                <p>Nenhum modelo de outline padrao esta configurado. O outline passa a depender apenas da configuracao salva no gerador.</p>
-                <?php if (empty($models)): ?>
-                    <div class="notice notice-info inline">
-                        <p>Nao ha modelos de outline salvos no momento.</p>
-                    </div>
-                <?php else: ?>
+                <p>Os modelos padrao continuam ativos e agora servem como referencia para o outline dinamico gerado no backend.</p>
                 <table class="widefat striped" style="max-width: 1000px;">
                     <thead>
                         <tr>
@@ -81,7 +72,6 @@ if (!class_exists('Alpha_RSS_AI_Outline_Models')) {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-                <?php endif; ?>
             </div>
             <?php
         }

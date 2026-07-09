@@ -95,7 +95,6 @@ class Alpha_RSS_AI_Generator_REST
         ));
     }
 
-    // phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- authenticated REST endpoints read uploaded files and request payloads.
     public function rest_preview_keyword_list(WP_REST_Request $request)
     {
         if (empty($_FILES['file'])) {
@@ -138,14 +137,12 @@ class Alpha_RSS_AI_Generator_REST
             'headers' => $headers,
             'rows' => $preview_rows,
             'row_count' => count($rows),
-                'detected_column_map' => $column_map,
+            'detected_column_map' => $column_map,
         ));
     }
-
     public function rest_upload_keyword_list(WP_REST_Request $request)
     {
         global $wpdb;
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- authenticated admin import flow writes internal plugin tables.
 
         if (empty($_FILES['file'])) {
             return new WP_Error('arc_keyword_file_missing', 'Arquivo nao enviado', array('status' => 400));
@@ -371,7 +368,7 @@ class Alpha_RSS_AI_Generator_REST
         if ($inserted_rows <= 0) {
             $wpdb->delete(Alpha_RSS_AI_Generator::$table_lists, array('id' => $list_id), array('%d'));
             if (!empty($file_path) && file_exists($file_path)) {
-                wp_delete_file($file_path);
+                @unlink($file_path);
             }
 
             return new WP_REST_Response(array(
@@ -403,9 +400,7 @@ class Alpha_RSS_AI_Generator_REST
                 'logs' => $import_logs,
             ),
         ));
-        // phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
     }
-    // phpcs:enable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 
     public function rest_get_keyword_lists(WP_REST_Request $request)
     {
@@ -424,7 +419,6 @@ class Alpha_RSS_AI_Generator_REST
     public function rest_generate_keyword_list_item(WP_REST_Request $request)
     {
         global $wpdb;
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin generation flow reads and updates internal plugin tables.
 
         $list_id = intval($request->get_param('id'));
         if (!$list_id) {
@@ -432,10 +426,7 @@ class Alpha_RSS_AI_Generator_REST
         }
 
         $tables = Alpha_RSS_AI_Generator::bulk_tables();
-        $lists_table = esc_sql($tables['lists']);
-        // phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- internal plugin table name is runtime-built and sanitized above.
-        $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$lists_table} WHERE id = %d", $list_id), ARRAY_A);
-        // phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
+        $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$tables['lists']} WHERE id = %d", $list_id), ARRAY_A);
         if (!$list) {
             return new WP_Error('arc_keyword_list_missing', 'Lista nao encontrada', array('status' => 404));
         }
@@ -468,6 +459,9 @@ class Alpha_RSS_AI_Generator_REST
         }
 
         $temp_generator = Alpha_RSS_AI_Generator::bulk_build_manual_generator($list, $settings);
+        if (!Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($temp_generator)) {
+            $temp_generator['image_source_mode'] = 'pexels';
+        }
         $temp_generator = Alpha_RSS_AI_Generator::prepare_generator_record($temp_generator);
         $source_context_filters = Alpha_RSS_AI_Generator::get_generator_source_context_filters($temp_generator);
 
@@ -603,7 +597,6 @@ class Alpha_RSS_AI_Generator_REST
                 'counts' => $counts,
             ));
         }
-        // phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
     }
 
     public function rest_generate_generator_item(WP_REST_Request $request)
