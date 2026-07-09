@@ -76,9 +76,6 @@ class Alpha_RSS_AI_Generator_Helper
         set_transient($cache_key, $html, $cache_ttl);
         set_transient($day_cache_key, $html, DAY_IN_SECONDS);
 
-        $html_log = substr($html, 0, 3000);
-        $html_log = str_replace(array("\r", "\n"), array('\\r', '\\n'), $html_log);
-
         return $html;
     }
 
@@ -1448,7 +1445,32 @@ class Alpha_RSS_AI_Generator_Helper
                 if ($attachment_id > 0) {
                     return Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, $alt_text, 'alignnone');
                 }
-                break;
+            }
+        }
+
+        return '';
+    }
+
+    public static function extract_first_outline_section_image_url($outline_sections)
+    {
+        if (!is_array($outline_sections) || empty($outline_sections)) {
+            return '';
+        }
+
+        foreach ($outline_sections as $section) {
+            if (!is_array($section) || empty($section['images']) || !is_array($section['images'])) {
+                continue;
+            }
+
+            foreach ($section['images'] as $image) {
+                if (!is_array($image) || empty($image['url'])) {
+                    continue;
+                }
+
+                $image_url = trim((string) $image['url']);
+                if ($image_url !== '' && !Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($image_url, 'outline')) {
+                    return $image_url;
+                }
             }
         }
 

@@ -29,11 +29,24 @@ class Alpha_RSS_AI_Generator_Admin
         );
         add_submenu_page(
             'alpha-rss-ai-generator',
-            'Planilhas e palavras-chave',
-            'Planilhas e palavras-chave',
+            'Importação',
+            'Importação',
             'manage_options',
             'alpha-rss-ai-keyword-lists',
             array($this, 'render_keyword_lists_page')
+        );
+    }
+
+    public function admin_menu_late()
+    {
+        add_submenu_page(
+            'alpha-rss-ai-generator',
+            'Configurações globais',
+            'Configurações globais',
+            'manage_options',
+            'alpha-rss-ai-global-settings',
+            array($this, 'render_global_settings_page'),
+            999
         );
     }
 
@@ -56,11 +69,11 @@ class Alpha_RSS_AI_Generator_Admin
 
 ?>
         <style>
-            #wpbody-content > .notice,
-            #wpbody-content > .updated,
-            #wpbody-content > .error,
-            #wpbody-content > .notice-success,
-            #wpbody-content > .notice-warning {
+            #wpbody-content>.notice,
+            #wpbody-content>.updated,
+            #wpbody-content>.error,
+            #wpbody-content>.notice-success,
+            #wpbody-content>.notice-warning {
                 display: none !important;
             }
 
@@ -85,18 +98,21 @@ class Alpha_RSS_AI_Generator_Admin
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                    <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
-                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Geradores</h1>
-                    <p class="mt-2 max-w-3xl text-sm text-slate-600">Crie e gerencie geradores por RSS ou por listas importadas de palavras-chave, com mídia da fonte, fallback do Pexels, SEO e publicação automática.</p>
+                    <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
+                    <h1 class="mt-2 block w-full text-3xl font-semibold tracking-tight text-slate-950">Geradores</h1>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" data-open-settings-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Configurações globais</button>
-                    <button type="button" data-open-runs-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Execuções recentes</button>
-                    <button type="button" data-open-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Importar gerador</button>
+                    <button type="button" data-open-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Importar gerador" title="Importar gerador">
+                        <span class="dashicons dashicons-download text-[18px] leading-none"></span>
+                        <span class="sr-only">Importar gerador</span>
+                    </button>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <?php wp_nonce_field('arc_export_generators', 'arc_export_generators_nonce'); ?>
                         <input type="hidden" name="action" value="arc_export_generators" />
-                        <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Exportar geradores</button>
+                        <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Exportar geradores" title="Exportar geradores">
+                            <span class="dashicons dashicons-upload text-[18px] leading-none"></span>
+                            <span class="sr-only">Exportar geradores</span>
+                        </button>
                     </form>
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
@@ -138,7 +154,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         $generator_status_label = Alpha_RSS_AI_Generator::get_generator_status_label($generator['status']);
                                         $schedule_label = Alpha_RSS_AI_Generator::get_schedule_type_label($generator['schedule_type']);
                                         $language_label = Alpha_RSS_AI_Generator::normalize_generation_language_value(isset($generator['generation_language']) ? $generator['generation_language'] : Alpha_RSS_AI_Generator::get_default_generation_language());
-                                        
+
                                         ?>
                                         <tr class="align-top">
                                             <td class="px-6 py-4">
@@ -373,13 +389,9 @@ class Alpha_RSS_AI_Generator_Admin
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo JSON</label>
                                     <input type="file" name="generator_json_file" accept=".json,application/json" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white file:transition hover:file:bg-slate-800" />
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Ou cole o JSON aqui</label>
-                                    <textarea name="generator_json_inline" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder='{"generator": {...}}'></textarea>
-                                </div>
                             </div>
                             <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                                <p class="text-sm text-slate-500">O import reaproveita os mesmos campos do formulário do gerador, incluindo prompts, outline e taxonomias.</p>
+                                <p class="text-sm text-slate-500">Envie um arquivo JSON exportado de um gerador. O import reaproveita os mesmos campos do formulário do gerador, incluindo prompts, outline e taxonomias.</p>
                                 <div class="flex items-center gap-3">
                                     <button type="button" data-close-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
                                     <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Importar JSON</button>
@@ -770,7 +782,7 @@ class Alpha_RSS_AI_Generator_Admin
             </div>
 
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
-            
+
             <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
             <script>
@@ -1082,6 +1094,7 @@ class Alpha_RSS_AI_Generator_Admin
 
                     function normalizeInternalLinkRule(rule) {
                         rule = rule || {};
+
                         function toFlag(value) {
                             if (value === true || value === 1 || value === '1' || value === 'true' || value === 'on') {
                                 return '1';
@@ -1768,6 +1781,91 @@ class Alpha_RSS_AI_Generator_Admin
         return ob_get_clean();
     }
 
+    public function render_global_settings_page()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Acesso negado.');
+        }
+
+        $settings = Alpha_RSS_AI_Generator::get_settings();
+
+        ob_start();
+    ?>
+        <script>
+            window.tailwind = window.tailwind || {};
+            window.tailwind.config = {
+                theme: {
+                    extend: {
+                        boxShadow: {
+                            soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
+                        }
+                    }
+                }
+            };
+        </script>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
+            <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
+                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Configurações globais</h1>
+                    <p class="mt-2 max-w-3xl text-sm text-slate-600">Ajuste as credenciais e padrões usados por todos os geradores.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Voltar para geradores</a>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-keyword-lists')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Planilhas e palavras-chave</a>
+                </div>
+            </div>
+
+            <?php self::render_notice(); ?>
+
+            <section class="max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
+                <div class="border-b border-slate-200 px-6 py-4">
+                    <h2 class="text-lg font-semibold text-slate-950">Credenciais e padrões</h2>
+                    <p class="mt-1 text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
+                </div>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="p-6">
+                    <?php wp_nonce_field('arc_save_settings', 'arc_settings_nonce'); ?>
+                    <input type="hidden" name="action" value="arc_save_settings" />
+                    <div class="space-y-4">
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API da OpenAI</label>
+                            <input type="password" name="openai_api_key" value="<?php echo esc_attr($settings['openai_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
+                            <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
+                            <input type="text" name="default_model" value="<?php echo esc_attr($settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="mb-1 block text-sm font-medium text-slate-700">Temperatura padrão</label>
+                                <input type="number" step="0.1" min="0" max="2" name="default_temperature" value="<?php echo esc_attr($settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                            </div>
+                            <div>
+                                <label class="mb-1 block text-sm font-medium text-slate-700">Máximo de tokens</label>
+                                <input type="number" min="256" name="default_max_tokens" value="<?php echo esc_attr($settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
+                        <div class="flex items-center gap-3">
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</a>
+                            <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">Salvar configurações</button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+        </div>
+    <?php
+
+        echo ob_get_clean();
+    }
+
     public function render_keyword_lists_page()
     {
         $global_settings = Alpha_RSS_AI_Generator::get_settings();
@@ -1825,7 +1923,7 @@ class Alpha_RSS_AI_Generator_Admin
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                    <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
+                    <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
                     <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Planilhas e palavras-chave</h1>
                     <p class="mt-2 max-w-3xl text-sm text-slate-600">Importe CSV, XLS ou XLSX, escolha a coluna da palavra-chave e a coluna da slug final, e depois use essas listas nos geradores.</p>
                 </div>
@@ -1845,99 +1943,99 @@ class Alpha_RSS_AI_Generator_Admin
                             <button type="button" data-close-keyword-import-modal class="rounded-full bg-white/90 p-2 text-slate-500 shadow-soft transition hover:bg-white hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
                         <section class="w-full max-h-[calc(100vh-4rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-soft">
-                    <div class="border-b border-slate-200 px-6 py-4">
-                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <h2 class="text-lg font-semibold text-slate-950">Importar planilha</h2>
-                                <p class="mt-1 text-sm text-slate-500">Etapa 1: analise o arquivo e selecione as colunas antes de gravar a lista. Se existir a coluna <strong>Timestamp</strong>, ela será usada como data de publicação no WordPress.</p>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3 text-sm text-slate-500 sm:grid-cols-4">
-                                <div class="rounded-xl bg-slate-50 px-3 py-2">
-                                    <div class="text-xs uppercase tracking-wide text-slate-400">Listas</div>
-                                    <div class="font-semibold text-slate-900"><?php echo esc_html($summary['lists']); ?></div>
-                                </div>
-                                <div class="rounded-xl bg-slate-50 px-3 py-2">
-                                    <div class="text-xs uppercase tracking-wide text-slate-400">Linhas</div>
-                                    <div class="font-semibold text-slate-900"><?php echo esc_html($summary['rows']); ?></div>
-                                </div>
-                                <div class="rounded-xl bg-slate-50 px-3 py-2">
-                                    <div class="text-xs uppercase tracking-wide text-slate-400">Pendentes</div>
-                                    <div class="font-semibold text-slate-900"><?php echo esc_html($summary['pending']); ?></div>
-                                </div>
-                                <div class="rounded-xl bg-slate-50 px-3 py-2">
-                                    <div class="text-xs uppercase tracking-wide text-slate-400">Geradas</div>
-                                    <div class="font-semibold text-slate-900"><?php echo esc_html($summary['generated']); ?></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="p-6">
-                        <div class="grid gap-4 md:grid-cols-[1fr_220px]">
-                            <div>
-                                <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
-                                <input id="arc-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Semrush - Vestibulares" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo</label>
-                                <input id="arc-keyword-file" type="file" accept=".csv,.xls,.xlsx" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white file:transition hover:file:bg-slate-800" />
-                            </div>
-                        </div>
-
-                        <div class="mt-4 flex flex-wrap items-center gap-3">
-                            <button type="button" id="arc-keyword-analyze-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Analisar planilha</button>
-                            <button type="button" id="arc-keyword-clear-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Limpar</button>
-                            <div id="arc-keyword-upload-status" class="text-sm text-slate-500"></div>
-                        </div>
-
-                        <div id="arc-keyword-preview-panel" class="hidden mt-6 rounded-2xl border border-slate-200 bg-slate-50">
-                            <div class="border-b border-slate-200 px-5 py-4">
-                                <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="border-b border-slate-200 px-6 py-4">
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                        <h3 class="text-base font-semibold text-slate-950">Mapeamento das colunas</h3>
-                                        <p class="mt-1 text-sm text-slate-500">Escolha aqui a coluna da palavra-chave, da URL/slug e os campos extras da planilha.</p>
+                                        <h2 class="text-lg font-semibold text-slate-950">Importar planilha</h2>
+                                        <p class="mt-1 text-sm text-slate-500">Etapa 1: analise o arquivo e selecione as colunas antes de gravar a lista. Se existir a coluna <strong>Timestamp</strong>, ela será usada como data de publicação no WordPress.</p>
                                     </div>
-                                    <div id="arc-keyword-preview-summary" class="text-sm text-slate-500"></div>
+                                    <div class="grid grid-cols-2 gap-3 text-sm text-slate-500 sm:grid-cols-4">
+                                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                                            <div class="text-xs uppercase tracking-wide text-slate-400">Listas</div>
+                                            <div class="font-semibold text-slate-900"><?php echo esc_html($summary['lists']); ?></div>
+                                        </div>
+                                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                                            <div class="text-xs uppercase tracking-wide text-slate-400">Linhas</div>
+                                            <div class="font-semibold text-slate-900"><?php echo esc_html($summary['rows']); ?></div>
+                                        </div>
+                                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                                            <div class="text-xs uppercase tracking-wide text-slate-400">Pendentes</div>
+                                            <div class="font-semibold text-slate-900"><?php echo esc_html($summary['pending']); ?></div>
+                                        </div>
+                                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                                            <div class="text-xs uppercase tracking-wide text-slate-400">Geradas</div>
+                                            <div class="font-semibold text-slate-900"><?php echo esc_html($summary['generated']); ?></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div class="grid gap-4 border-b border-slate-200 px-5 py-5 md:grid-cols-2">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da keyword</label>
-                                    <select id="arc-keyword-column-keyword" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Coluna do título</label>
-                                    <select id="arc-keyword-column-title" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da URL</label>
-                                    <select id="arc-keyword-column-url" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da slug final</label>
-                                    <select id="arc-keyword-column-slug" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Coluna de conteúdo</label>
-                                    <select id="arc-keyword-column-content" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Coluna de tags</label>
-                                    <select id="arc-keyword-column-tags" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
-                                </div>
-                            </div>
-
-                            <div class="px-5 py-4">
-                                <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <button type="button" id="arc-keyword-import-btn" class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">Importar lista</button>
+                            <div class="p-6">
+                                <div class="grid gap-4 md:grid-cols-[1fr_220px]">
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
+                                        <input id="arc-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Semrush - Vestibulares" />
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo</label>
+                                        <input id="arc-keyword-file" type="file" accept=".csv,.xls,.xlsx" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white file:transition hover:file:bg-slate-800" />
                                     </div>
                                 </div>
-                                <div id="arc-keyword-preview-table" class="overflow-hidden rounded-2xl border border-slate-200 bg-white"></div>
+
+                                <div class="mt-4 flex flex-wrap items-center gap-3">
+                                    <button type="button" id="arc-keyword-analyze-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Analisar planilha</button>
+                                    <button type="button" id="arc-keyword-clear-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Limpar</button>
+                                    <div id="arc-keyword-upload-status" class="text-sm text-slate-500"></div>
+                                </div>
+
+                                <div id="arc-keyword-preview-panel" class="hidden mt-6 rounded-2xl border border-slate-200 bg-slate-50">
+                                    <div class="border-b border-slate-200 px-5 py-4">
+                                        <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                                            <div>
+                                                <h3 class="text-base font-semibold text-slate-950">Mapeamento das colunas</h3>
+                                                <p class="mt-1 text-sm text-slate-500">Escolha aqui a coluna da palavra-chave, da URL/slug e os campos extras da planilha.</p>
+                                            </div>
+                                            <div id="arc-keyword-preview-summary" class="text-sm text-slate-500"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid gap-4 border-b border-slate-200 px-5 py-5 md:grid-cols-2">
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da keyword</label>
+                                            <select id="arc-keyword-column-keyword" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna do título</label>
+                                            <select id="arc-keyword-column-title" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da URL</label>
+                                            <select id="arc-keyword-column-url" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da slug final</label>
+                                            <select id="arc-keyword-column-slug" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna de conteúdo</label>
+                                            <select id="arc-keyword-column-content" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna de tags</label>
+                                            <select id="arc-keyword-column-tags" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                        </div>
+                                    </div>
+
+                                    <div class="px-5 py-4">
+                                        <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <button type="button" id="arc-keyword-import-btn" class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">Importar lista</button>
+                                            </div>
+                                        </div>
+                                        <div id="arc-keyword-preview-table" class="overflow-hidden rounded-2xl border border-slate-200 bg-white"></div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
                         </section>
                     </div>
                 </div>

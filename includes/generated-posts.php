@@ -507,6 +507,13 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 'post_title' => $title,
                 'post_content' => $content_html,
                 'post_excerpt' => $excerpt,
+                'post_name' => !empty($post->post_name) ? $post->post_name : '',
+                'post_status' => !empty($post->post_status) ? $post->post_status : 'draft',
+                'post_type' => !empty($post->post_type) ? $post->post_type : 'post',
+                'post_author' => !empty($post->post_author) ? intval($post->post_author) : get_current_user_id(),
+                'post_parent' => !empty($post->post_parent) ? intval($post->post_parent) : 0,
+                'menu_order' => isset($post->menu_order) ? intval($post->menu_order) : 0,
+                'edit_date' => true,
             ), true);
 
             if (is_wp_error($update_result)) {
@@ -695,6 +702,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                         $source_keyword = (string) get_post_meta($post_id, '_arc_source_keyword', true);
                                         $source_url = (string) get_post_meta($post_id, '_arc_source_url', true);
                                         $source_permalink = (string) get_post_meta($post_id, '_arc_source_item_permalink', true);
+                                        $source_external_link = $source_permalink !== '' ? $source_permalink : $source_url;
                                         $source_label = $source_title !== '' ? $source_title : ($source_keyword !== '' ? $source_keyword : ($source_url !== '' ? $source_url : $source_permalink));
                                         $view_link = Alpha_RSS_AI_Generator::get_post_view_link($post_id);
                                         $edit_link = Alpha_RSS_AI_Generator::get_post_edit_link($post_id);
@@ -710,8 +718,16 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                 <div class="mt-1 text-xs text-slate-500"><?php echo esc_html($source_type !== '' ? $source_type : '-'); ?></div>
                                             </td>
                                             <td class="px-6 py-4">
-                                                <div class="max-w-md text-sm text-slate-700"><?php echo esc_html(self::truncate_text($source_label !== '' ? $source_label : '-', 120)); ?></div>
-                                                <div class="mt-1 max-w-md break-all text-xs text-slate-500"><?php echo esc_html(self::truncate_text($source_permalink !== '' ? $source_permalink : $source_url, 140)); ?></div>
+                                                <?php if ($source_external_link !== ''): ?>
+                                                    <a href="<?php echo esc_url($source_external_link); ?>" target="_blank" rel="noopener noreferrer" class="block max-w-md text-sm font-medium text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-600">
+                                                        <?php echo esc_html(self::truncate_text($source_label !== '' ? $source_label : '-', 120)); ?>
+                                                    </a>
+                                                    <a href="<?php echo esc_url($source_external_link); ?>" target="_blank" rel="noopener noreferrer" class="mt-1 block max-w-md break-all text-xs text-slate-500 hover:text-slate-700">
+                                                        <?php echo esc_html(self::truncate_text($source_external_link, 140)); ?>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <div class="max-w-md text-sm text-slate-700"><?php echo esc_html(self::truncate_text($source_label !== '' ? $source_label : '-', 120)); ?></div>
+                                                <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4">
                                                 <?php echo wp_kses_post(self::render_post_status_badge(get_post_status($post_id))); ?>
