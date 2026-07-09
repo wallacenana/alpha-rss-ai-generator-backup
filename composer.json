@@ -1,0 +1,8 @@
+{
+  "name": "openai/alpha-rss-ai-generator",
+  "description": "Alpha RSS AI Generator plugin dependencies",
+  "type": "project",
+  "require": {
+    "phpoffice/phpspreadsheet": "^2.0"
+  }
+}
