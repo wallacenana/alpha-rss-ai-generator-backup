@@ -5704,15 +5704,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $is_keyword_list = !empty($generator['source_type']) && $generator['source_type'] === 'keyword_list';
             $is_keyword_list_url_reference = self::generator_uses_keyword_list_url_reference_mode($generator);
             $treat_like_rss = !$is_keyword_list || $is_keyword_list_url_reference;
-            if ($is_keyword_list && !$is_keyword_list_url_reference) {
-                $item['source_image_url'] = '';
-            }
 
             if (!$use_source_page_context) {
                 $item = self::resolve_item_media_for_generation($generator, $item);
-                if ($is_keyword_list && !$is_keyword_list_url_reference) {
-                    $item['source_image_url'] = '';
-                }
             }
 
             if (!empty($item['final_slug'])) {
