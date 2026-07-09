@@ -339,8 +339,13 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             );
         }
 
-        private static function maybe_set_generated_thumbnail($post_id, $generator, $item, &$article)
+        private static function maybe_set_generated_thumbnail($post_id, $generator, $item, &$article, $reuse_existing_thumbnail = false)
         {
+            $existing_thumbnail_id = intval(get_post_thumbnail_id($post_id));
+            if ($reuse_existing_thumbnail && $existing_thumbnail_id > 0) {
+                return $existing_thumbnail_id;
+            }
+
             $is_keyword_list = !empty($generator['source_type']) && $generator['source_type'] === 'keyword_list';
             $is_keyword_list_url_reference = Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator);
             $treat_like_rss = !$is_keyword_list || $is_keyword_list_url_reference;
@@ -449,6 +454,21 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $source_video_url = !empty($item['source_video_url']) ? esc_url_raw(trim((string) $item['source_video_url'])) : '';
             }
 
+            $content_html = isset($article['content_html']) ? (string) $article['content_html'] : '';
+            if ($content_html === '' && !empty($post->post_content)) {
+                $content_html = (string) $post->post_content;
+            }
+
+            $content_html = Alpha_RSS_AI_Generator_Helper::apply_internal_links_to_content(
+                $content_html,
+                $generator,
+                array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                )
+            );
+            $article['content_html'] = $content_html;
+
             $article['content_html'] = Alpha_RSS_AI_Generator::convert_html_fragment_to_gutenberg_blocks(
                 isset($article['content_html']) ? $article['content_html'] : '',
                 $source_video_embed_html,
@@ -456,14 +476,15 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             );
 
             $content_html = isset($article['content_html']) ? (string) $article['content_html'] : '';
-            if ($content_html === '' && !empty($post->post_content)) {
-                $content_html = (string) $post->post_content;
-            }
 
             if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])) {
                 $content_image_size = !empty($generator['content_image_size'])
                     ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
                     : 'medium';
+                $existing_image_map = array();
+                if ($content_html !== '') {
+                    $existing_image_map = Alpha_RSS_AI_Generator_Helper::extract_outline_section_image_map_from_content($content_html);
+                }
                 $content_html = Alpha_RSS_AI_Generator_Helper::inject_outline_section_media_into_content(
                     $content_html,
                     $item['source_page_outline_sections'],
@@ -476,7 +497,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     array(
                         'post_id' => intval($post_id),
                         'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                    )
+                    ),
+                    $existing_image_map
                 );
             }
 
@@ -492,7 +514,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             }
 
             Alpha_RSS_AI_Generator::apply_taxonomies_and_meta($post_id, $generator, $article, $item);
-            $thumbnail_result = self::maybe_set_generated_thumbnail($post_id, $generator, $item, $article);
+            $thumbnail_result = self::maybe_set_generated_thumbnail($post_id, $generator, $item, $article, true);
             if (is_wp_error($thumbnail_result)) {
                 $this->redirect_with_notice($thumbnail_result->get_error_message(), 'error');
             }

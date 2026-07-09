@@ -2051,8 +2051,6 @@ class Alpha_RSS_AI_Generator_Admin
                         </div>
 
                         <div class="max-h-[calc(92vh-82px)] overflow-y-auto p-6">
-                            <div id="arc-keyword-generate-status" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
-
                             <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
                                 <div class="space-y-6">
                                     <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -2296,7 +2294,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var generateBackdrop = document.getElementById('arc-keyword-generate-backdrop');
                     var generateModalTitle = document.getElementById('arc-keyword-generate-title');
                     var generateModalSubtitle = document.getElementById('arc-keyword-generate-subtitle');
-                    var generateModalStatus = document.getElementById('arc-keyword-generate-status');
                     var generateListName = document.getElementById('arc-keyword-generate-list-name');
                     var generateAvailableCount = document.getElementById('arc-keyword-generate-available-count');
                     var generateTargetCount = document.getElementById('arc-keyword-generate-target-count');
@@ -2326,7 +2323,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var currentGenerateAvailableCount = null;
                     var currentGenerateCountReady = false;
                     var currentGenerateRunToken = 0;
-                    var currentGenerateLastLink = '';
                     var generateCountRequestTimer = null;
                     var generateFilterCounter = 0;
 
@@ -2371,31 +2367,6 @@ class Alpha_RSS_AI_Generator_Admin
                         }
                         target.className = classes;
                         target.textContent = message;
-                    }
-
-                    function setStatusHtml(target, message, link, linkLabel, type) {
-                        if (!target) {
-                            return;
-                        }
-                        if (!message) {
-                            target.className = 'hidden mb-4 rounded-xl border px-4 py-3 text-sm';
-                            target.textContent = '';
-                            return;
-                        }
-                        var classes = 'mb-4 rounded-xl border px-4 py-3 text-sm';
-                        if (type === 'error') {
-                            classes += ' border-rose-200 bg-rose-50 text-rose-700';
-                        } else if (type === 'success') {
-                            classes += ' border-emerald-200 bg-emerald-50 text-emerald-700';
-                        } else {
-                            classes += ' border-amber-200 bg-amber-50 text-amber-700';
-                        }
-                        var html = escapeHtml(message);
-                        if (link) {
-                            html += ' <a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">' + escapeHtml(linkLabel || 'Abrir conteúdo') + '</a>';
-                        }
-                        target.className = classes;
-                        target.innerHTML = html;
                     }
 
                     function api(path, options) {
@@ -2673,7 +2644,7 @@ class Alpha_RSS_AI_Generator_Admin
                             currentGenerateAvailableCount = currentGenerateAvailableCount === null ? 0 : currentGenerateAvailableCount;
                             currentGenerateCountReady = true;
                             updateGenerateTargetSummary();
-                            setStatus(generateModalStatus, error.message || 'Erro ao calcular a quantidade.', 'error');
+                            window.alert(error.message || 'Erro ao calcular a quantidade.');
                             return currentGenerateAvailableCount;
                         }
                     }
@@ -2686,8 +2657,6 @@ class Alpha_RSS_AI_Generator_Admin
                         currentGenerateList = listData;
                         currentGenerateAvailableCount = currentGenerateList && currentGenerateList.counts ? parseInt(currentGenerateList.counts.pending_rows || 0, 10) || 0 : 0;
                         currentGenerateCountReady = false;
-                        currentGenerateLastLink = '';
-
                         if (generateModalTitle) {
                             generateModalTitle.textContent = 'Gerar em lote';
                         }
@@ -2706,7 +2675,6 @@ class Alpha_RSS_AI_Generator_Admin
                                 generateCountMessage.textContent = 'Esta lista ficou vazia após a limpeza de linhas inválidas. Reimporte um arquivo com URLs/slugs elegíveis para gerar.';
                             }
                         }
-                        setStatus(generateModalStatus, '', '');
                         openModal(generateModal);
                         window.setTimeout(function() {
                             if (generateRequestedInput) {
@@ -2735,7 +2703,6 @@ class Alpha_RSS_AI_Generator_Admin
                             return;
                         }
 
-                        setStatus(generateModalStatus, 'Carregando dados da lista...', 'warning');
                         try {
                             var result = await api('/keyword-lists/' + listId, {
                                 method: 'GET'
@@ -2745,7 +2712,7 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             openGenerateModalWithList(result.payload.list || null);
                         } catch (error) {
-                            setStatus(generateModalStatus, error.message || 'Erro ao carregar a lista.', 'error');
+                            window.alert(error.message || 'Erro ao carregar a lista.');
                         }
                     }
 
@@ -2770,12 +2737,11 @@ class Alpha_RSS_AI_Generator_Admin
                         var target = Math.min(requested, available);
 
                         if (target <= 0) {
-                            setStatus(generateModalStatus, 'Nenhum item elegível para gerar com os filtros atuais.', 'error');
+                            window.alert('Nenhum item elegível para gerar com os filtros atuais.');
                             return;
                         }
 
                         var generated = 0;
-                        var lastGeneratedLink = '';
                         var runLabel = generateRunButton ? generateRunButton.textContent : 'Gerar agora';
                         currentGenerateRunToken++;
                         var runToken = currentGenerateRunToken;
@@ -2791,7 +2757,6 @@ class Alpha_RSS_AI_Generator_Admin
                                     break;
                                 }
 
-                                setStatus(generateModalStatus, 'Gerando item ' + (generated + 1) + ' de ' + target + '...', 'warning');
                                 var result = await api('/keyword-lists/' + currentGenerateList.id + '/generate', {
                                     method: 'POST',
                                     headers: {
@@ -2812,29 +2777,16 @@ class Alpha_RSS_AI_Generator_Admin
                                 }
 
                                 var generatedResult = result.payload.result || {};
-                                lastGeneratedLink = generatedResult.view_link || generatedResult.permalink || generatedResult.edit_link || '';
-                                if (lastGeneratedLink) {
-                                    setStatusHtml(generateModalStatus, 'Item gerado com sucesso.', lastGeneratedLink, 'Abrir conteúdo', 'success');
-                                } else {
-                                    setStatus(generateModalStatus, 'Item gerado com sucesso.', 'success');
-                                }
-
                                 generated++;
                                 currentGenerateAvailableCount = Math.max(0, (currentGenerateAvailableCount || 0) - 1);
                                 updateGenerateTargetSummary();
                             }
 
-                            if (generated > 0) {
-                                if (lastGeneratedLink) {
-                                    setStatusHtml(generateModalStatus, 'Geração concluída. ' + generated + ' item(ns) criado(s).', lastGeneratedLink, 'Abrir último conteúdo', 'success');
-                                } else {
-                                    setStatus(generateModalStatus, 'Geração concluída. ' + generated + ' item(ns) criado(s).', 'success');
-                                }
-                            } else if (target > 0) {
-                                setStatus(generateModalStatus, 'Nenhum item foi gerado.', 'warning');
+                            if (generated <= 0 && target > 0) {
+                                window.alert('Nenhum item foi gerado.');
                             }
                         } catch (error) {
-                            setStatus(generateModalStatus, error.message || 'Erro ao gerar em lote.', 'error');
+                            window.alert(error.message || 'Erro ao gerar em lote.');
                         } finally {
                             if (generateRunButton) {
                                 generateRunButton.disabled = false;
