@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.5
+Version: 1.8.6
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -41,7 +41,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.5';
+        const VERSION = '1.8.6';
         const DB_VERSION = '1.8.3';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -151,6 +151,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 new Alpha_RSS_AI_Generated_Posts();
             }
             add_action('admin_menu', array($this, 'admin_menu'));
+            add_action('admin_menu', array(new Alpha_RSS_AI_Generator_Admin(), 'admin_menu_late'), 999);
             add_action('admin_post_arc_save_settings', array($this, 'handle_save_settings'));
             add_action('admin_post_arc_save_generator', array($this, 'handle_save_generator'));
             add_action('admin_post_arc_delete_generator', array($this, 'handle_delete_generator'));
@@ -952,7 +953,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function generator_uses_source_page_context($generator)
         {
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
-            return $source_type === 'rss' || self::generator_uses_keyword_list_url_reference_mode($generator);
+            return $source_type === 'rss' || $source_type === 'keyword_list' || self::generator_uses_keyword_list_url_reference_mode($generator);
         }
 
         public static function generator_uses_source_content_images($generator)
@@ -1031,14 +1032,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_default_image_source_mode($source_type = 'rss', $keyword_list_mode = 'keywords')
         {
-            $source_type = sanitize_key((string) $source_type);
-            $keyword_list_mode = sanitize_key((string) $keyword_list_mode);
-            if ($source_type === 'keyword_list') {
-                if ($keyword_list_mode === 'url_reference') {
-                    return 'rss_or_pexels';
-                }
-                return 'pexels';
-            }
             return 'rss_or_pexels';
         }
 
@@ -1050,21 +1043,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $allowed = array('rss', 'rss_or_pexels', 'rss_or_dalle', 'pexels', 'dalle');
 
             if ($image_source_mode !== '' && in_array($image_source_mode, $allowed, true)) {
-                if ($source_type === 'keyword_list' && $keyword_list_mode !== 'url_reference') {
-                    if ($image_source_mode === 'rss' || $image_source_mode === 'rss_or_pexels') {
-                        return 'pexels';
-                    }
-                    if ($image_source_mode === 'rss_or_dalle') {
-                        return 'dalle';
-                    }
-                }
                 return $image_source_mode;
             }
 
             if ($legacy_pexels_enabled !== null) {
-                if ($source_type === 'keyword_list' && $keyword_list_mode !== 'url_reference') {
-                    return !empty($legacy_pexels_enabled) ? 'pexels' : 'dalle';
-                }
                 return !empty($legacy_pexels_enabled) ? 'rss_or_pexels' : 'rss';
             }
 
@@ -2251,10 +2233,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($payload['source_type'] !== 'keyword_list' && $payload['feed_url'] === '') {
                 return new WP_Error('arc_invalid_generator', 'URL do feed é obrigatória para geradores RSS.');
             }
-            if ($payload['source_type'] === 'keyword_list' && trim($payload['prompt_template']) === '') {
-                $payload['prompt_template'] = self::get_default_keyword_prompt_template();
-            }
-            if ($payload['source_type'] !== 'keyword_list' && trim($payload['prompt_template']) === '') {
+            if (trim($payload['prompt_template']) === '') {
                 $payload['prompt_template'] = self::get_default_prompt_template();
             }
             if (!in_array($payload['schedule_type'], array('interval', 'daily_random'), true)) {
@@ -2459,14 +2438,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function normalize_prompt_template_for_source_type($source_type, $prompt_template, $keyword_list_mode = 'keywords')
         {
-            $source_type = sanitize_key((string) $source_type);
-            $keyword_list_mode = sanitize_key((string) $keyword_list_mode);
             $prompt_template = trim((string) $prompt_template);
 
             if ($prompt_template === '') {
-                if ($source_type === 'keyword_list') {
-                    return $keyword_list_mode === 'url_reference' ? self::get_default_prompt_template() : self::get_default_keyword_prompt_template();
-                }
                 return self::get_default_prompt_template();
             }
 
@@ -3914,6 +3888,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             if (!empty($media['image_url'])) {
                 $item['source_image_url'] = $media['image_url'];
+            } elseif (empty($item['source_image_url']) && !empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections']) && class_exists('Alpha_RSS_AI_Generator_Helper')) {
+                $outline_image_url = Alpha_RSS_AI_Generator_Helper::extract_first_outline_section_image_url($item['source_page_outline_sections']);
+                if ($outline_image_url !== '') {
+                    $item['source_image_url'] = $outline_image_url;
+                }
             }
             if (!empty($media['link_url'])) {
                 $item['source_link_url'] = $media['link_url'];
@@ -5636,27 +5615,63 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function maybe_set_source_featured_image($post_id, $item, $article)
         {
-            if (empty($item['source_image_url'])) {
-                self::log_image_debug('source_image_missing', array(
-                    'post_id' => intval($post_id),
-                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                    'title' => !empty($article['title']) ? $article['title'] : '',
-                ));
-                return false;
+            $source_image_url = !empty($item['source_image_url']) ? trim((string) $item['source_image_url']) : '';
+            if ($source_image_url === '') {
+                $outline_image_url = '';
+                if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections']) && class_exists('Alpha_RSS_AI_Generator_Helper')) {
+                    $outline_image_url = Alpha_RSS_AI_Generator_Helper::extract_first_outline_section_image_url($item['source_page_outline_sections']);
+                }
+                if ($outline_image_url !== '') {
+                    $source_image_url = $outline_image_url;
+                    self::log_image_debug('source_image_fallback_from_outline', array(
+                        'post_id' => intval($post_id),
+                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        'source_image_url' => $source_image_url,
+                        'title' => !empty($article['title']) ? $article['title'] : '',
+                    ));
+                } else {
+                    self::log_image_debug('source_image_missing', array(
+                        'post_id' => intval($post_id),
+                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        'title' => !empty($article['title']) ? $article['title'] : '',
+                    ));
+                    return false;
+                }
             }
 
             self::log_image_debug('source_image_start', array(
                 'post_id' => intval($post_id),
                 'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                'source_image_url' => $item['source_image_url'],
+                'source_image_url' => $source_image_url,
                 'title' => !empty($article['title']) ? $article['title'] : '',
             ));
 
-            if (self::is_probably_bad_featured_image_url($item['source_image_url'], !empty($article['title']) ? $article['title'] : '')) {
+            if (self::is_probably_bad_featured_image_url($source_image_url, !empty($article['title']) ? $article['title'] : '')) {
+                $outline_image_url = '';
+                if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections']) && class_exists('Alpha_RSS_AI_Generator_Helper')) {
+                    $outline_image_url = Alpha_RSS_AI_Generator_Helper::extract_first_outline_section_image_url($item['source_page_outline_sections']);
+                }
+                if ($outline_image_url !== '' && $outline_image_url !== $source_image_url && !self::is_probably_bad_featured_image_url($outline_image_url, !empty($article['title']) ? $article['title'] : '')) {
+                    self::log_image_debug('source_image_rejected_fallback_outline', array(
+                        'post_id' => intval($post_id),
+                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        'source_image_url' => $outline_image_url,
+                        'title' => !empty($article['title']) ? $article['title'] : '',
+                    ));
+                    return self::download_and_set_featured_image_from_url(
+                        $post_id,
+                        $outline_image_url,
+                        $article['title'],
+                        'source',
+                        '',
+                        ''
+                    );
+                }
+
                 self::log_image_debug('source_image_rejected', array(
                     'post_id' => intval($post_id),
                     'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                    'source_image_url' => $item['source_image_url'],
+                    'source_image_url' => $source_image_url,
                     'title' => !empty($article['title']) ? $article['title'] : '',
                 ));
                 return false;
@@ -5664,7 +5679,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             return self::download_and_set_featured_image_from_url(
                 $post_id,
-                $item['source_image_url'],
+                $source_image_url,
                 $article['title'],
                 'source',
                 '',
@@ -5704,8 +5719,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $is_keyword_list = !empty($generator['source_type']) && $generator['source_type'] === 'keyword_list';
-            $is_keyword_list_url_reference = self::generator_uses_keyword_list_url_reference_mode($generator);
-            $treat_like_rss = !$is_keyword_list || $is_keyword_list_url_reference;
+            $treat_like_rss = self::generator_uses_source_page_context($generator);
 
             if (!$use_source_page_context) {
                 $item = self::resolve_item_media_for_generation($generator, $item);
@@ -5843,16 +5857,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 self::log_image_debug('pexels_attempt', array(
                     'post_id' => intval($post_id),
                     'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                    'is_keyword_list' => $is_keyword_list ? 1 : 0,
                     'has_source_image' => $has_source_image ? 1 : 0,
                     'source_image_set' => $source_image_set ? 1 : 0,
                     'image_source_mode' => $image_source_mode,
                 ));
-                $pexels_result = self::download_and_set_featured_image_from_pexels($post_id, $generator, $item, $article, $is_keyword_list);
+                $pexels_result = self::download_and_set_featured_image_from_pexels($post_id, $generator, $item, $article, false);
                 if (is_wp_error($pexels_result)) {
-                    if ($is_keyword_list && !$is_keyword_list_url_reference) {
-                        return $pexels_result;
-                    }
                     self::insert_run_log($generator['id'], 'warning', $pexels_result->get_error_message(), array(
                         'request' => array(
                             'post_id' => $post_id,
@@ -5872,11 +5882,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'source_image_set' => $source_image_set ? 1 : 0,
                     'image_source_mode' => $image_source_mode,
                 ));
-                $dalle_result = self::download_and_set_featured_image_from_dalle($post_id, $generator, $item, $article, $is_keyword_list);
+                $dalle_result = self::download_and_set_featured_image_from_dalle($post_id, $generator, $item, $article, false);
                 if (is_wp_error($dalle_result)) {
-                    if ($is_keyword_list && !$is_keyword_list_url_reference) {
-                        return $dalle_result;
-                    }
                     self::insert_run_log($generator['id'], 'warning', $dalle_result->get_error_message(), array(
                         'request' => array(
                             'post_id' => $post_id,
@@ -6689,18 +6696,28 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             check_admin_referer('arc_import_generator', 'arc_import_generator_nonce');
 
-            $json = '';
-            if (isset($_POST['generator_json_inline'])) {
-                $json = trim((string) wp_unslash($_POST['generator_json_inline']));
-            }
-            if ($json === '' && !empty($_FILES['generator_json_file']) && !empty($_FILES['generator_json_file']['tmp_name']) && is_readable($_FILES['generator_json_file']['tmp_name'])) {
-                if (function_exists('wp_read_file')) {
-                    $json = (string) wp_read_file($_FILES['generator_json_file']['tmp_name']);
-                }
+            if (empty($_FILES['generator_json_file']) || !is_array($_FILES['generator_json_file'])) {
+                self::redirect_with_notice('Envie um arquivo JSON.', 'error');
             }
 
+            $uploaded_file = $_FILES['generator_json_file'];
+            if (!empty($uploaded_file['error'])) {
+                self::redirect_with_notice('Falha no upload do arquivo JSON.', 'error');
+            }
+            if (empty($uploaded_file['tmp_name']) || !is_uploaded_file($uploaded_file['tmp_name'])) {
+                self::redirect_with_notice('Arquivo JSON inválido.', 'error');
+            }
+
+            $json = '';
+            if (function_exists('file_get_contents')) {
+                $json = (string) file_get_contents($uploaded_file['tmp_name']);
+            } elseif (function_exists('wp_read_file')) {
+                $json = (string) wp_read_file($uploaded_file['tmp_name']);
+            }
+            $json = trim($json);
+
             if ($json === '') {
-                self::redirect_with_notice('Envie um arquivo JSON ou cole o conteúdo exportado.', 'error');
+                self::redirect_with_notice('O arquivo JSON está vazio.', 'error');
             }
 
             $decoded = json_decode($json, true);
