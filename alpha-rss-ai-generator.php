@@ -664,13 +664,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function log_pipeline_debug($label, $context = array())
         {
-            $label = sanitize_key((string) $label);
-            $context = is_array($context) ? $context : array();
-            $parts = array('[alpha-rss-ai-generator] ' . $label);
-            if (!empty($context)) {
-                $parts[] = wp_json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            }
-            error_log(implode(' | ', $parts));
+            return null;
         }
 
         public static function apply_outline_model_context($generator, $outline_context = array())
@@ -3194,7 +3188,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($html === '') {
                 return array(
                     'title' => '',
+                    'html' => '',
                     'content' => '',
+                    'content_html' => '',
                     'excerpt' => '',
                     'outline' => array(),
                     'outline_sections' => array(),
@@ -3203,11 +3199,20 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             $title = self::extract_page_title_from_html($html);
             $content = self::extract_page_content_from_html($html, $content_selector);
+            $content_html = '';
+            if (trim((string) $content_selector) !== '') {
+                $content_html = Alpha_RSS_AI_Generator_Helper::extract_html_from_html_using_selector($html, $content_selector);
+            }
+            if ($content_html === '') {
+                $content_html = $html;
+            }
             $excerpt = $content !== '' ? wp_trim_words($content, 24) : '';
             $outline = Alpha_RSS_AI_Generator_Helper::extract_page_outline_from_html($html, $url, 50, 10, 5, $image_selector_class, $link_selector_class, $content_selector);
             $page_context = array(
                 'title' => $title,
+                'html' => $html,
                 'content' => $content,
+                'content_html' => $content_html,
                 'excerpt' => $excerpt,
                 'outline' => $outline,
                 'outline_sections' => $outline,
@@ -3297,6 +3302,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $page_title = !empty($page_context['title']) ? trim((string) $page_context['title']) : '';
             $page_excerpt = !empty($page_context['excerpt']) ? trim((string) $page_context['excerpt']) : '';
             $page_content = !empty($page_context['content']) ? trim((string) $page_context['content']) : '';
+            $page_content_html = !empty($page_context['content_html']) ? trim((string) $page_context['content_html']) : '';
+            $page_html = !empty($page_context['html']) ? trim((string) $page_context['html']) : '';
             $page_outline_text = !empty($page_context['outline_text']) ? trim((string) $page_context['outline_text']) : '';
 
             if ($page_title !== '' && (empty($item['title']) || strlen(trim((string) $item['title'])) < 45)) {
@@ -3314,6 +3321,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $item['source_page_title'] = $page_title;
             $item['source_page_excerpt'] = $page_excerpt;
             $item['source_page_content'] = $page_content;
+            $item['source_page_content_html'] = $page_content_html !== '' ? $page_content_html : $page_html;
+            $item['source_page_html'] = $page_html;
             $item['source_page_outline'] = $page_outline_text;
             if (!empty($page_context['outline']) && is_array($page_context['outline'])) {
                 $item['source_page_outline_sections'] = $page_context['outline'];
@@ -4041,31 +4050,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function log_image_debug($stage, $context = array())
         {
-            $parts = array();
-            foreach ((array) $context as $key => $value) {
-                if (is_array($value) || is_object($value)) {
-                    $encoded = wp_json_encode($value);
-                    $parts[] = $key . '=' . ($encoded !== false ? $encoded : '[unserializable]');
-                    continue;
-                }
-
-                if ($value === null) {
-                    $parts[] = $key . '=null';
-                    continue;
-                }
-
-                if ($value === true) {
-                    $parts[] = $key . '=1';
-                    continue;
-                }
-
-                if ($value === false) {
-                    $parts[] = $key . '=0';
-                    continue;
-                }
-
-                $parts[] = $key . '=' . (string) $value;
-            }
+            return null;
         }
 
         public static function build_featured_image_filename($title, $image_url, $source_label = 'source')
@@ -4488,6 +4473,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 if (!empty($page_context['title'])) {
                     $item['source_page_title'] = $page_context['title'];
                 }
+                if (!empty($page_context['html'])) {
+                    $item['source_page_html'] = $page_context['html'];
+                }
                 if (!empty($page_context['excerpt'])) {
                     $item['excerpt'] = $page_context['excerpt'];
                     $item['source_page_excerpt'] = $page_context['excerpt'];
@@ -4495,6 +4483,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 if (!empty($page_context['content'])) {
                     $item['content'] = $page_context['content'];
                     $item['source_page_content'] = $page_context['content'];
+                }
+                if (!empty($page_context['content_html'])) {
+                    $item['source_page_content_html'] = $page_context['content_html'];
+                } elseif (!empty($page_context['html'])) {
+                    $item['source_page_content_html'] = $page_context['html'];
                 }
                 if (!empty($page_context['outline_text'])) {
                     $item['source_page_outline'] = $page_context['outline_text'];
@@ -4978,18 +4971,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function mark_item_processed($generator_id, $item, $post_id)
         {
             global $wpdb;
-            $wpdb->insert(
-                self::$table_items,
-                array(
-                    'generator_id' => intval($generator_id),
-                    'item_guid' => $item['guid'],
-                    'item_permalink' => $item['permalink'],
-                    'item_title' => $item['title'],
-                    'post_id' => intval($post_id),
-                    'item_hash' => md5($item['guid'] . '|' . $item['permalink']),
-                    'created_at' => current_time('mysql'),
-                ),
-                array('%d', '%s', '%s', '%s', '%d', '%s', '%s')
+            $generator_id = intval($generator_id);
+            $item_guid = isset($item['guid']) ? (string) $item['guid'] : '';
+            $item_permalink = isset($item['permalink']) ? (string) $item['permalink'] : '';
+            $item_title = isset($item['title']) ? (string) $item['title'] : '';
+            $item_hash = md5($item_guid . '|' . $item_permalink);
+
+            $wpdb->query(
+                $wpdb->prepare(
+                    'INSERT IGNORE INTO ' . self::$table_items . ' (generator_id, item_guid, item_permalink, item_title, post_id, item_hash, created_at) VALUES (%d, %s, %s, %s, %d, %s, %s)',
+                    $generator_id,
+                    $item_guid,
+                    $item_permalink,
+                    $item_title,
+                    intval($post_id),
+                    $item_hash,
+                    current_time('mysql')
+                )
             );
         }
 
@@ -5808,7 +5806,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     !empty($generator['keyword_list_mode']) ? $generator['keyword_list_mode'] : self::get_default_keyword_list_mode()
                 );
 
-            $use_source_image = $treat_like_rss && self::image_source_mode_uses_source_image($image_source_mode);
+            $use_source_image = $treat_like_rss;
             $use_pexels = self::image_source_mode_uses_pexels($image_source_mode);
             $use_dalle = self::image_source_mode_uses_dalle($image_source_mode);
             self::log_image_debug('image_pipeline_start', array(
@@ -5832,7 +5830,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'image_source_mode' => $image_source_mode,
             ));
             if ($use_source_image && $has_source_image) {
+                self::log_image_debug('thumbnail_try_source', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'source_image_url' => !empty($item['source_image_url']) ? $item['source_image_url'] : '',
+                ));
                 $source_image_set = (bool) self::maybe_set_source_featured_image($post_id, $item, $article);
+                self::log_image_debug('thumbnail_source_done', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'source_image_set' => $source_image_set ? 1 : 0,
+                ));
                 if (!$source_image_set) {
                     self::log_image_debug('source_image_fallback_to_external', array(
                         'post_id' => intval($post_id),
@@ -5854,6 +5862,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             $needs_fallback_image = !$has_source_image || !$source_image_set;
             if ($needs_fallback_image && $use_pexels) {
+                self::log_image_debug('thumbnail_try_pexels', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'has_source_image' => $has_source_image ? 1 : 0,
+                    'source_image_set' => $source_image_set ? 1 : 0,
+                ));
                 self::log_image_debug('pexels_attempt', array(
                     'post_id' => intval($post_id),
                     'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
@@ -5862,6 +5876,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'image_source_mode' => $image_source_mode,
                 ));
                 $pexels_result = self::download_and_set_featured_image_from_pexels($post_id, $generator, $item, $article, false);
+                self::log_image_debug('thumbnail_pexels_done', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'result' => is_wp_error($pexels_result) ? 'wp_error' : ($pexels_result ? 'ok' : 'false'),
+                ));
                 if (is_wp_error($pexels_result)) {
                     self::insert_run_log($generator['id'], 'warning', $pexels_result->get_error_message(), array(
                         'request' => array(
@@ -5874,6 +5893,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     ), $post_id, $item['guid'], $item['permalink']);
                 }
             } elseif ($needs_fallback_image && $use_dalle) {
+                self::log_image_debug('thumbnail_try_dalle', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'has_source_image' => $has_source_image ? 1 : 0,
+                    'source_image_set' => $source_image_set ? 1 : 0,
+                ));
                 self::log_image_debug('dalle_attempt', array(
                     'post_id' => intval($post_id),
                     'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
@@ -5883,6 +5908,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'image_source_mode' => $image_source_mode,
                 ));
                 $dalle_result = self::download_and_set_featured_image_from_dalle($post_id, $generator, $item, $article, false);
+                self::log_image_debug('thumbnail_dalle_done', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'result' => is_wp_error($dalle_result) ? 'wp_error' : ($dalle_result ? 'ok' : 'false'),
+                ));
                 if (is_wp_error($dalle_result)) {
                     self::insert_run_log($generator['id'], 'warning', $dalle_result->get_error_message(), array(
                         'request' => array(

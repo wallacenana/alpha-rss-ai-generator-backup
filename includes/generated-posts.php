@@ -361,29 +361,69 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
 
             $has_source_image = !empty($item['source_image_url']);
             $source_image_set = false;
-            $use_source_image = Alpha_RSS_AI_Generator::image_source_mode_uses_source_image($image_source_mode);
+            $use_source_image = $treat_like_rss;
             $use_pexels = Alpha_RSS_AI_Generator::image_source_mode_uses_pexels($image_source_mode);
             $use_dalle = Alpha_RSS_AI_Generator::image_source_mode_uses_dalle($image_source_mode);
 
             if ($use_source_image && $has_source_image) {
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_try_source', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'source_image_url' => !empty($item['source_image_url']) ? $item['source_image_url'] : '',
+                ));
                 $source_image_set = (bool) Alpha_RSS_AI_Generator::maybe_set_source_featured_image($post_id, $item, $article);
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_source_done', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'source_image_set' => $source_image_set ? 1 : 0,
+                ));
             }
 
             $needs_fallback_image = !$has_source_image || !$source_image_set;
             if ($needs_fallback_image && $use_pexels) {
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_try_pexels', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'has_source_image' => $has_source_image ? 1 : 0,
+                    'source_image_set' => $source_image_set ? 1 : 0,
+                ));
                 $pexels_result = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_pexels($post_id, $generator, $item, $article, $is_keyword_list);
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_pexels_done', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'result' => is_wp_error($pexels_result) ? 'wp_error' : ($pexels_result ? 'ok' : 'false'),
+                ));
                 if (is_wp_error($pexels_result)) {
                     if ($is_keyword_list && !$is_keyword_list_url_reference) {
                         return $pexels_result;
                     }
                 }
             } elseif ($needs_fallback_image && $use_dalle) {
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_try_dalle', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'has_source_image' => $has_source_image ? 1 : 0,
+                    'source_image_set' => $source_image_set ? 1 : 0,
+                ));
                 $dalle_result = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_dalle($post_id, $generator, $item, $article, $is_keyword_list);
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_dalle_done', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'result' => is_wp_error($dalle_result) ? 'wp_error' : ($dalle_result ? 'ok' : 'false'),
+                ));
                 if (is_wp_error($dalle_result)) {
                     if ($is_keyword_list && !$is_keyword_list_url_reference) {
                         return $dalle_result;
                     }
                 }
+            } else {
+                Alpha_RSS_AI_Generator::log_image_debug('thumbnail_fallback_skipped', array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'needs_fallback_image' => $needs_fallback_image ? 1 : 0,
+                    'use_pexels' => $use_pexels ? 1 : 0,
+                    'use_dalle' => $use_dalle ? 1 : 0,
+                ));
             }
 
             return true;

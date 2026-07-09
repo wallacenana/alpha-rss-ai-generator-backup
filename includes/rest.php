@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) {
 
 class Alpha_RSS_AI_Generator_REST
 {
+    // phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- REST endpoints are capability-protected via permission_callback and handle uploads through $_FILES.
     public function register_rest_routes()
     {
         register_rest_route('alpha-rss-ai-generator/v1', '/keyword-lists/preview', array(
@@ -368,7 +369,7 @@ class Alpha_RSS_AI_Generator_REST
         if ($inserted_rows <= 0) {
             $wpdb->delete(Alpha_RSS_AI_Generator::$table_lists, array('id' => $list_id), array('%d'));
             if (!empty($file_path) && file_exists($file_path)) {
-                @unlink($file_path);
+                wp_delete_file($file_path);
             }
 
             return new WP_REST_Response(array(
@@ -426,7 +427,7 @@ class Alpha_RSS_AI_Generator_REST
         }
 
         $tables = Alpha_RSS_AI_Generator::bulk_tables();
-        $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$tables['lists']} WHERE id = %d", $list_id), ARRAY_A);
+        $list = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . $tables['lists'] . ' WHERE id = %d', $list_id), ARRAY_A);
         if (!$list) {
             return new WP_Error('arc_keyword_list_missing', 'Lista nao encontrada', array('status' => 404));
         }
