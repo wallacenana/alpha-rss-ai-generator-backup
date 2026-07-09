@@ -754,7 +754,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                             <div class="text-sm text-slate-500">Página <?php echo esc_html($paged); ?> de <?php echo esc_html($total_pages); ?></div>
                             <div class="pagination-links">
                                 <?php
-                                echo paginate_links(array(
+                                echo wp_kses_post(paginate_links(array(
                                     'base' => add_query_arg(array(
                                         'page' => self::PAGE_SLUG,
                                         'paged' => '%#%',
@@ -766,7 +766,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                     'total' => $total_pages,
                                     'prev_text' => '&laquo;',
                                     'next_text' => '&raquo;',
-                                ));
+                                )));
                                 ?>
                             </div>
                         </div>

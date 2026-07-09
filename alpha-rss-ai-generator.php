@@ -4,14 +4,24 @@ Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita via OpenAI, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
 Version: 1.8.2
 Author: OpenAI
+License: GPLv2 or later
 */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!defined('ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE')) {
+    define('ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE', __FILE__);
+}
 if (!defined('ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR')) {
     define('ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR', plugin_dir_path(__FILE__));
+}
+if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
+}
+if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/master/update.json');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -25,8 +35,10 @@ require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/generated-posts.php';
 require_once __DIR__ . '/includes/related-posts.php';
+require_once __DIR__ . '/includes/updater.php';
 
 if (!class_exists('Alpha_RSS_AI_Generator')) {
+    // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
         const VERSION = '1.8.2';
@@ -126,6 +138,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public function boot()
         {
             self::maybe_upgrade_schema();
+            if (class_exists('Alpha_RSS_AI_Generator_Updater')) {
+                new Alpha_RSS_AI_Generator_Updater(ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE);
+            }
             if (class_exists('Alpha_RSS_AI_Related_Posts')) {
                 new Alpha_RSS_AI_Related_Posts();
             }
@@ -208,6 +223,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function create_tables()
         {
             global $wpdb;
+            if (!function_exists('dbDelta')) {
+                require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            }
 
             $charset_collate = $wpdb->get_charset_collate();
 
@@ -369,39 +387,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
 
             foreach ($schema_queries as $schema_query) {
-                $schema_query = preg_replace('/^CREATE TABLE\s+/i', 'CREATE TABLE IF NOT EXISTS ', $schema_query, 1);
-                $wpdb->query($schema_query);
-            }
-
-            self::maybe_add_generator_columns();
-        }
-
-        public static function maybe_add_generator_columns()
-        {
-            global $wpdb;
-
-            if (empty(self::$table_generators)) {
-                return;
-            }
-
-            $column_exists = $wpdb->get_var($wpdb->prepare(
-                "SHOW COLUMNS FROM " . self::$table_generators . " LIKE %s",
-                'internal_links_json'
-            ));
-            if (empty($column_exists)) {
-                $wpdb->query(
-                    "ALTER TABLE " . self::$table_generators . " ADD COLUMN internal_links_json longtext DEFAULT NULL AFTER related_posts_phrases"
-                );
-            }
-
-            $column_exists = $wpdb->get_var($wpdb->prepare(
-                "SHOW COLUMNS FROM " . self::$table_generators . " LIKE %s",
-                'content_selector'
-            ));
-            if (empty($column_exists)) {
-                $wpdb->query(
-                    "ALTER TABLE " . self::$table_generators . " ADD COLUMN content_selector varchar(255) NOT NULL DEFAULT '' AFTER link_selector_class"
-                );
+                dbDelta($schema_query);
             }
         }
 
@@ -491,7 +477,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return wp_rand($min_words, $max_words);
             }
 
-            return rand($min_words, $max_words);
+            try {
+                return random_int($min_words, $max_words);
+            } catch (Throwable $error) {
+                return $min_words;
+            }
         }
 
         public static function get_content_length_target_h2_count($target_words)
@@ -632,7 +622,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return wp_rand($range['min'], $range['max']);
             }
 
-            return rand($range['min'], $range['max']);
+            try {
+                return random_int($range['min'], $range['max']);
+            } catch (Throwable $error) {
+                return $range['min'];
+            }
         }
 
         public static function get_outline_model_target_h2_range($outline_model)
@@ -1355,13 +1349,19 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function bulk_detect_csv_delimiter($file_path)
         {
-            $handle = fopen($file_path, 'r');
-            if (!$handle) {
+            $file_path = (string) $file_path;
+            if ($file_path === '') {
                 return ',';
             }
 
-            $line = fgets($handle);
-            fclose($handle);
+            $line = '';
+            if (function_exists('wp_read_file')) {
+                $contents = wp_read_file($file_path);
+                if (is_string($contents) && $contents !== '') {
+                    $line_parts = preg_split('/\r\n|\r|\n/', $contents);
+                    $line = !empty($line_parts) ? (string) reset($line_parts) : '';
+                }
+            }
 
             if ($line === false) {
                 return ',';
@@ -1414,7 +1414,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $is_url = filter_var($candidate, FILTER_VALIDATE_URL);
             $source_url = $is_url ? $candidate : '';
-            $path = $is_url ? (string) parse_url($candidate, PHP_URL_PATH) : $candidate;
+            $path = $is_url ? (string) wp_parse_url($candidate, PHP_URL_PATH) : $candidate;
             $path = trim((string) $path);
             $path = trim($path, '/');
 
@@ -4213,7 +4213,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             });
             $attachment_id = media_handle_sideload($file_array, $post_id, $title);
             restore_error_handler();
-            @unlink($tmp);
+            if (!empty($tmp) && file_exists($tmp)) {
+                wp_delete_file($tmp);
+            }
 
             if (is_wp_error($attachment_id)) {
                 self::log_image_debug('sideload_failed', array(
@@ -4895,7 +4897,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $wpdb->delete($tables['lists'], array('id' => $list_id), array('%d'));
 
             if (!empty($list->file_path) && file_exists($list->file_path)) {
-                @unlink($list->file_path);
+                wp_delete_file($list->file_path);
             }
 
             return rest_ensure_response(array(
@@ -5057,7 +5059,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     $lower = $window_start;
                 }
 
-                $next_timestamp = rand($lower, $window_end);
+                $next_timestamp = function_exists('wp_rand') ? wp_rand($lower, $window_end) : random_int($lower, $window_end);
                 return self::format_timestamp_for_db($next_timestamp);
             }
 
@@ -5065,7 +5067,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $jitter = max(0, intval($generator['jitter_minutes']));
             $delay_minutes = $interval;
             if ($jitter > 0) {
-                $delay_minutes += rand(0, $jitter);
+                $delay_minutes += function_exists('wp_rand') ? wp_rand(0, $jitter) : random_int(0, $jitter);
             }
             return self::format_timestamp_for_db($base_timestamp + ($delay_minutes * MINUTE_IN_SECONDS));
         }
@@ -5949,7 +5951,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             $sql .= " ORDER BY COALESCE(next_run_at, created_at) ASC LIMIT 10";
 
-            $generators = $params ? $wpdb->get_results(call_user_func_array(array($wpdb, 'prepare'), array_merge(array($sql), $params)), ARRAY_A) : $wpdb->get_results($sql, ARRAY_A);
+            $generators = !empty($params) ? $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A) : $wpdb->get_results($sql, ARRAY_A);
 
             foreach ($generators as $generator) {
                 self::run_generator($generator, false);
@@ -6692,7 +6694,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $json = trim((string) wp_unslash($_POST['generator_json_inline']));
             }
             if ($json === '' && !empty($_FILES['generator_json_file']) && !empty($_FILES['generator_json_file']['tmp_name']) && is_readable($_FILES['generator_json_file']['tmp_name'])) {
-                $json = (string) file_get_contents($_FILES['generator_json_file']['tmp_name']);
+                if (function_exists('wp_read_file')) {
+                    $json = (string) wp_read_file($_FILES['generator_json_file']['tmp_name']);
+                }
             }
 
             if ($json === '') {
@@ -6833,6 +6837,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         }
     }
 }
+
+// phpcs:enable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 
 register_activation_hook(__FILE__, array('Alpha_RSS_AI_Generator', 'activate'));
 register_deactivation_hook(__FILE__, array('Alpha_RSS_AI_Generator', 'deactivate'));
