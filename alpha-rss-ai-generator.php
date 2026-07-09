@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.4
+Version: 1.8.5
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -41,7 +41,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.4';
+        const VERSION = '1.8.5';
         const DB_VERSION = '1.8.3';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -3230,7 +3230,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $title = self::extract_page_title_from_html($html);
             $content = self::extract_page_content_from_html($html, $content_selector);
             $excerpt = $content !== '' ? wp_trim_words($content, 24) : '';
-            $outline = Alpha_RSS_AI_Generator_Helper::extract_page_outline_from_html($html, $url, 50, 10, 5, $image_selector_class, $link_selector_class);
+            $outline = Alpha_RSS_AI_Generator_Helper::extract_page_outline_from_html($html, $url, 50, 10, 5, $image_selector_class, $link_selector_class, $content_selector);
             $page_context = array(
                 'title' => $title,
                 'content' => $content,

@@ -401,6 +401,57 @@ class Alpha_RSS_AI_Generator_Helper
         return $best;
     }
 
+    public static function extract_html_from_html_using_selector($html, $selector)
+    {
+        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        $selector = trim((string) $selector);
+        if ($html === '' || $selector === '') {
+            return '';
+        }
+
+        libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        if (!@$dom->loadHTML('<?xml encoding="UTF-8">' . $html)) {
+            return '';
+        }
+
+        $xpath = new DOMXPath($dom);
+        $queries = self::build_xpath_content_selector_queries($selector);
+        if (empty($queries)) {
+            return '';
+        }
+
+        $best_html = '';
+        $best_length = 0;
+        foreach ($queries as $query) {
+            $nodes = $xpath->query($query);
+            if (!$nodes || $nodes->length === 0) {
+                continue;
+            }
+
+            for ($i = 0; $i < min(2, $nodes->length); $i++) {
+                $node = $nodes->item($i);
+                if (!($node instanceof DOMNode)) {
+                    continue;
+                }
+
+                $candidate = $dom->saveHTML($node);
+                $candidate = is_string($candidate) ? trim($candidate) : '';
+                if ($candidate === '') {
+                    continue;
+                }
+
+                $candidate_length = strlen($candidate);
+                if ($candidate_length > $best_length) {
+                    $best_length = $candidate_length;
+                    $best_html = $candidate;
+                }
+            }
+        }
+
+        return $best_html;
+    }
+
     public static function extract_selector_media_candidate_from_html($html, $base_url = '', $selector_class = '', $kind = 'image')
     {
         $result = array(
@@ -715,11 +766,19 @@ class Alpha_RSS_AI_Generator_Helper
         return true;
     }
 
-    public static function extract_page_outline_from_html($html, $base_url = '', $max_sections = 6, $max_links_per_section = 5, $max_images_per_section = 3, $image_selector_class = '', $link_selector_class = '')
+    public static function extract_page_outline_from_html($html, $base_url = '', $max_sections = 6, $max_links_per_section = 5, $max_images_per_section = 3, $image_selector_class = '', $link_selector_class = '', $content_selector = '')
     {
         $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
         if ($html === '') {
             return array();
+        }
+
+        $content_selector = trim((string) $content_selector);
+        if ($content_selector !== '') {
+            $selected_html = self::extract_html_from_html_using_selector($html, $content_selector);
+            if ($selected_html !== '') {
+                $html = $selected_html;
+            }
         }
 
         $max_sections = max(1, intval($max_sections));
@@ -733,13 +792,22 @@ class Alpha_RSS_AI_Generator_Helper
 
         $xpath = new DOMXPath($dom);
         $h2_nodes = $xpath->query('//h2');
-        if (!$h2_nodes || $h2_nodes->length === 0) {
+        $h3_nodes = $xpath->query('//h3');
+        $h2_count = ($h2_nodes && $h2_nodes->length > 0) ? $h2_nodes->length : 0;
+        $h3_count = ($h3_nodes && $h3_nodes->length > 0) ? $h3_nodes->length : 0;
+        if ($h2_count === 0 && $h3_count === 0) {
             return array();
         }
 
+        $use_h3 = $h3_count >= $h2_count && $h3_count > 0;
+        $heading_nodes = $use_h3 ? $h3_nodes : $h2_nodes;
+        if (!$heading_nodes || $heading_nodes->length === 0) {
+            $heading_nodes = $use_h3 ? $h2_nodes : $h3_nodes;
+        }
+
         $outline = array();
-        for ($i = 0; $i < $h2_nodes->length && count($outline) < $max_sections; $i++) {
-            $heading = $h2_nodes->item($i);
+        for ($i = 0; $i < $heading_nodes->length && count($outline) < $max_sections; $i++) {
+            $heading = $heading_nodes->item($i);
             if (!($heading instanceof DOMElement)) {
                 continue;
             }
@@ -749,6 +817,8 @@ class Alpha_RSS_AI_Generator_Helper
                 continue;
             }
 
+            $heading_tag = strtolower((string) $heading->nodeName);
+            $heading_level = in_array($heading_tag, array('h2', 'h3'), true) ? intval(substr($heading_tag, 1)) : 2;
             $section_links = array();
             $section_images = array();
             $seen_links = array();
@@ -759,8 +829,11 @@ class Alpha_RSS_AI_Generator_Helper
             while ($cursor) {
                 if ($cursor->nodeType === XML_ELEMENT_NODE) {
                     $tag = strtolower((string) $cursor->nodeName);
-                    if ($tag === 'h1' || $tag === 'h2') {
-                        break;
+                    if ($tag === 'h1' || $tag === 'h2' || $tag === 'h3') {
+                        $cursor_level = intval(substr($tag, 1));
+                        if ($cursor_level <= $heading_level) {
+                            break;
+                        }
                     }
                     $cursor_text = self::clean_source_text($cursor->textContent);
                     if ($cursor_text !== '') {
@@ -788,7 +861,7 @@ class Alpha_RSS_AI_Generator_Helper
 
             $outline_item = array(
                 'h2' => $title,
-                'heading_level' => 2,
+                'heading_level' => $heading_level,
                 'text' => trim(mb_substr(implode(' ', array_slice($section_text_parts, 0, 4)), 0, 600)),
                 'image_selector_class' => $image_selector_class,
                 'link_selector_class' => $link_selector_class,
@@ -835,42 +908,40 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         if ($max_images > 0 && count($images) < $max_images) {
-            if ($image_selector_class === '' || $image_scope_active || $matches_image_selector) {
-                $image_url = '';
-                $image_attr = '';
-                $candidate_attrs = array('data-img-url', 'data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-full', 'data-large', 'src', 'srcset', 'data-srcset');
-                foreach ($candidate_attrs as $attribute) {
-                    if (!$node->hasAttribute($attribute)) {
-                        continue;
-                    }
-
-                    $value = trim((string) $node->getAttribute($attribute));
-                    if ($value === '') {
-                        continue;
-                    }
-
-                    if ($attribute === 'srcset' || $attribute === 'data-srcset') {
-                        $value = self::pick_best_srcset_url($value);
-                    }
-
-                    $candidate = self::resolve_url_against_base(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
-                    if ($candidate === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate, $base_url)) {
-                        continue;
-                    }
-
-                    $image_url = $candidate;
-                    $image_attr = $attribute;
-                    break;
+            $image_url = '';
+            $image_attr = '';
+            $candidate_attrs = array('data-img-url', 'data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-full', 'data-large', 'src', 'srcset', 'data-srcset');
+            foreach ($candidate_attrs as $attribute) {
+                if (!$node->hasAttribute($attribute)) {
+                    continue;
                 }
 
-                if ($image_url !== '' && !isset($seen_images[$image_url])) {
-                    $seen_images[$image_url] = true;
-                    $images[] = array(
-                        'url' => $image_url,
-                        'attr' => $image_attr,
-                        'source' => $tag,
-                    );
+                $value = trim((string) $node->getAttribute($attribute));
+                if ($value === '') {
+                    continue;
                 }
+
+                if ($attribute === 'srcset' || $attribute === 'data-srcset') {
+                    $value = self::pick_best_srcset_url($value);
+                }
+
+                $candidate = self::resolve_url_against_base(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
+                if ($candidate === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate, $base_url)) {
+                    continue;
+                }
+
+                $image_url = $candidate;
+                $image_attr = $attribute;
+                break;
+            }
+
+            if ($image_url !== '' && !isset($seen_images[$image_url])) {
+                $seen_images[$image_url] = true;
+                $images[] = array(
+                    'url' => $image_url,
+                    'attr' => $image_attr,
+                    'source' => $tag,
+                );
             }
         }
 
@@ -912,7 +983,9 @@ class Alpha_RSS_AI_Generator_Helper
                 continue;
             }
 
-            $lines[] = 'H2 ' . ($section_index + 1) . ': ' . $title;
+            $heading_level = isset($section['heading_level']) ? intval($section['heading_level']) : 2;
+            $heading_label = 'H' . ($heading_level > 0 ? $heading_level : 2);
+            $lines[] = $heading_label . ' ' . ($section_index + 1) . ': ' . $title;
 
             $section_text = isset($section['text']) ? self::clean_source_text($section['text']) : '';
             if ($section_text !== '') {
