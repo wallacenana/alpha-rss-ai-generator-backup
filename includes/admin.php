@@ -55,6 +55,20 @@ class Alpha_RSS_AI_Generator_Admin
         $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
 
 ?>
+        <style>
+            #wpbody-content > .notice,
+            #wpbody-content > .updated,
+            #wpbody-content > .error,
+            #wpbody-content > .notice-success,
+            #wpbody-content > .notice-warning {
+                display: none !important;
+            }
+
+            .arc-wrap .arc-admin-notice {
+                display: block;
+                margin: 0 0 1rem;
+            }
+        </style>
         <script>
             window.tailwind = window.tailwind || {};
             window.tailwind.config = {
@@ -3432,7 +3446,7 @@ class Alpha_RSS_AI_Generator_Admin
         $message = sanitize_text_field(wp_unslash($_GET['arc_notice']));
         $link = isset($_GET['arc_notice_link']) ? esc_url_raw(wp_unslash($_GET['arc_notice_link'])) : '';
 
-        echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($message);
+        echo '<div class="arc-admin-notice ' . esc_attr($class) . '"><p>' . esc_html($message);
         if ($link !== '' && $type !== 'error') {
             echo ' <a href="' . esc_url($link) . '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">Abrir conteúdo</a>';
         }
