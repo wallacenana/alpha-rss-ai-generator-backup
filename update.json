@@ -1,7 +1,7 @@
 {
   "name": "Alpha RSS AI Generator",
   "slug": "alpha-rss-ai-generator",
-  "version": "1.8.8",
+  "version": "1.8.9",
   "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -12,7 +12,7 @@
   "last_updated": "2026-07-10",
   "sections": {
     "description": "Atualização via GitHub para o plugin Alpha RSS AI Generator.",
-    "changelog": "<ul><li>Alinhamento da release 1.8.8 com o plugin principal.</li><li>Correções de fluxo, mídia e atualização.</li></ul>",
+    "changelog": "<ul><li>Merge da feature multi-prompt-models no main.</li><li>Atualizacao da release para 1.8.9.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote é distribuído a partir do branch main do repositório.",
     "screenshots": ""
