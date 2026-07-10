@@ -757,21 +757,56 @@ class Alpha_RSS_AI_Generator_Admin
                                     <div class="mt-4 space-y-3" data-internal-links-rows></div>
                                     <textarea name="internal_links_json" class="hidden" data-internal-links-json></textarea>
                                 </div>
-                                <div class="md:col-span-2">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
-                                    <textarea name="prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_prompt_template()); ?></textarea>
-                                    <p class="mt-1 text-xs text-slate-500">Esse campo controla a etapa SEO do gerador. O corpo do artigo e criado depois no backend. Use variáveis como {{keyword}}, {{source_title}}, {{source_url}}, {{final_slug}}, {{source_excerpt}}, {{source_content}}, {{row_data}}, {{site_name}}, {{generator_name}}, {{generation_language}} e {{pexels_tags}}.</p>
+                                <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-white p-4" data-prompt-models-field>
+                                    <div class="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <label class="block text-sm font-semibold text-slate-800">Modelos de prompt</label>
+                                            <p class="mt-1 text-xs text-slate-500">A IA escolhe o modelo mais adequado antes de chamar o Prompt SEO e o Prompt do conteudo.</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 space-y-3">
+                                        <?php foreach (Alpha_RSS_AI_Generator::get_default_prompt_models() as $prompt_model): ?>
+                                            <?php
+                                                $prompt_model_key = isset($prompt_model['key']) ? (string) $prompt_model['key'] : '';
+                                                $prompt_model_name = isset($prompt_model['name']) ? (string) $prompt_model['name'] : '';
+                                                $prompt_model_description = isset($prompt_model['description']) ? (string) $prompt_model['description'] : '';
+                                                $prompt_model_outline_key = isset($prompt_model['outline_model_key']) ? (string) $prompt_model['outline_model_key'] : '';
+                                            ?>
+                                            <details class="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-slate-800">
+                                                    <span><?php echo esc_html($prompt_model_name); ?></span>
+                                                    <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+                                                </summary>
+                                                <div class="mt-2 text-xs text-slate-500">
+                                                    <?php echo esc_html($prompt_model_description); ?>
+                                                    <?php if ($prompt_model_outline_key !== ''): ?>
+                                                        <span class="ml-2 inline-flex rounded-full bg-white px-2 py-1 font-medium text-slate-600">Outline: <?php echo esc_html($prompt_model_outline_key); ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][key]" value="<?php echo esc_attr($prompt_model_key); ?>" />
+                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][name]" value="<?php echo esc_attr($prompt_model_name); ?>" />
+                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][description]" value="<?php echo esc_attr($prompt_model_description); ?>" />
+                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][outline_model_key]" value="<?php echo esc_attr($prompt_model_outline_key); ?>" />
+                                                <div class="mt-4 grid gap-4 lg:grid-cols-2">
+                                                    <div>
+                                                        <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
+                                                        <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][seo_prompt_template]" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['seo_prompt_template']) ? $prompt_model['seo_prompt_template'] : ''); ?></textarea>
+                                                    </div>
+                                                    <div>
+                                                        <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteudo</label>
+                                                        <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][content_prompt_template]" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['content_prompt_template']) ? $prompt_model['content_prompt_template'] : ''); ?></textarea>
+                                                    </div>
+                                                </div>
+                                            </details>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <textarea name="prompt_models_json" class="hidden" data-prompt-models-json></textarea>
+                                    <p class="mt-3 text-xs text-slate-500">O backend usa o modelo escolhido pela IA e mantém este bloco como fallback editavel.</p>
                                 </div>
-                                <div class="md:col-span-2">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteúdo</label>
-                                    <textarea name="content_prompt_template" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible()); ?></textarea>
-                                    <p class="mt-1 text-xs text-slate-500">Esse prompt e visivel e editavel. O backend adiciona as variaveis automaticamente na geracao do conteudo.</p>
-                                </div>
-                            </div>
 
-                            <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                                <p class="text-sm text-slate-500">O modal reaproveita o mesmo formulário para criar e editar geradores.</p>
-                                <div class="flex items-center gap-3">
+                            <div class="mt-6 grid w-full gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[1fr_auto] lg:items-center">
+                                <p class="w-full text-sm text-slate-500">O modal reaproveita o mesmo formulário para criar e editar geradores.</p>
+                                <div class="flex w-full items-center gap-3 lg:w-auto lg:justify-end">
                                     <button type="button" data-close-generator-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
                                     <button id="arc-generator-submit" type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Salvar gerador</button>
                                 </div>
@@ -826,6 +861,8 @@ class Alpha_RSS_AI_Generator_Admin
                                         'source_context_keep_unrated' => '0',
                                         'seo_enabled' => '1',
                                         'generation_language' => Alpha_RSS_AI_Generator::get_default_generation_language(),
+                                        'prompt_models' => Alpha_RSS_AI_Generator::get_default_prompt_models(),
+                                        'prompt_models_json' => wp_json_encode(Alpha_RSS_AI_Generator::get_default_prompt_models()),
                                         'category_ids' => array(),
                                         'tags_default' => array(),
                                         'prompt_template' => Alpha_RSS_AI_Generator::get_default_prompt_template(),
@@ -866,6 +903,7 @@ class Alpha_RSS_AI_Generator_Admin
                     var internalLinksField = form.querySelector('[data-internal-links-field]');
                     var internalLinksRows = form.querySelector('[data-internal-links-rows]');
                     var internalLinksJson = form.querySelector('[data-internal-links-json]');
+                    var promptModelsJsonField = form.querySelector('[data-prompt-models-json]');
                     var internalLinksAddButton = form.querySelector('[data-add-internal-link]');
                     var feedUrlField = form.querySelector('[data-feed-url-field]');
                     var listIdField = form.querySelector('[data-list-id-field]');
@@ -1077,6 +1115,35 @@ class Alpha_RSS_AI_Generator_Admin
                         return {};
                     }
 
+                    function parsePromptModels(value) {
+                        if (Array.isArray(value)) {
+                            return value;
+                        }
+                        if (value && typeof value === 'object') {
+                            return Object.keys(value).map(function(key) {
+                                var model = value[key] || {};
+                                model.key = model.key || key;
+                                return model;
+                            });
+                        }
+                        if (typeof value === 'string' && value !== '') {
+                            try {
+                                var parsed = JSON.parse(value);
+                                if (Array.isArray(parsed)) {
+                                    return parsed;
+                                }
+                                if (parsed && typeof parsed === 'object') {
+                                    return Object.keys(parsed).map(function(key) {
+                                        var model = parsed[key] || {};
+                                        model.key = model.key || key;
+                                        return model;
+                                    });
+                                }
+                            } catch (e) {}
+                        }
+                        return [];
+                    }
+
                     function parseInternalLinkRules(value) {
                         if (Array.isArray(value)) {
                             return value;
@@ -1110,6 +1177,59 @@ class Alpha_RSS_AI_Generator_Admin
                             sponsored: toFlag(rule.sponsored),
                             ugc: toFlag(rule.ugc)
                         };
+                    }
+
+                    function syncPromptModelFields(models) {
+                        (models || []).forEach(function(model) {
+                            var key = String(model && model.key ? model.key : '').trim();
+                            if (!key) {
+                                return;
+                            }
+                            setValue('prompt_models[' + key + '][key]', model.key || key);
+                            setValue('prompt_models[' + key + '][name]', model.name || '');
+                            setValue('prompt_models[' + key + '][description]', model.description || '');
+                            setValue('prompt_models[' + key + '][outline_model_key]', model.outline_model_key || '');
+                            setValue('prompt_models[' + key + '][seo_prompt_template]', model.seo_prompt_template || '');
+                            setValue('prompt_models[' + key + '][content_prompt_template]', model.content_prompt_template || '');
+                        });
+                    }
+
+                    function collectPromptModelRules() {
+                        var sourceModels = Array.isArray(defaults.prompt_models) ? defaults.prompt_models : [];
+                        var rules = [];
+
+                        sourceModels.forEach(function(model) {
+                            var key = String(model && model.key ? model.key : '').trim();
+                            if (!key) {
+                                return;
+                            }
+
+                            var keyPrefix = 'prompt_models[' + key + ']';
+                            var keyValueEl = byName(keyPrefix + '[key]');
+                            var nameEl = byName(keyPrefix + '[name]');
+                            var descriptionEl = byName(keyPrefix + '[description]');
+                            var outlineEl = byName(keyPrefix + '[outline_model_key]');
+                            var seoEl = byName(keyPrefix + '[seo_prompt_template]');
+                            var contentEl = byName(keyPrefix + '[content_prompt_template]');
+
+                            rules.push({
+                                key: keyValueEl ? String(keyValueEl.value || key).trim() : key,
+                                name: nameEl ? String(nameEl.value || '').trim() : '',
+                                description: descriptionEl ? String(descriptionEl.value || '').trim() : '',
+                                outline_model_key: outlineEl ? String(outlineEl.value || '').trim() : '',
+                                seo_prompt_template: seoEl ? String(seoEl.value || '') : '',
+                                content_prompt_template: contentEl ? String(contentEl.value || '') : ''
+                            });
+                        });
+
+                        return rules;
+                    }
+
+                    function syncPromptModelsField() {
+                        if (!promptModelsJsonField) {
+                            return;
+                        }
+                        promptModelsJsonField.value = JSON.stringify(collectPromptModelRules());
                     }
 
                     function collectInternalLinkRules() {
@@ -1312,6 +1432,9 @@ class Alpha_RSS_AI_Generator_Admin
                         if (!manualRunForm) {
                             return;
                         }
+                        if (window.AlphaRssAiGeneratorManualRunInFlight) {
+                            return;
+                        }
                         var generatorIdField = manualRunForm.querySelector('[name="generator_id"]');
                         var itemGuidField = manualRunForm.querySelector('[name="item_guid"]');
                         if (generatorIdField) {
@@ -1320,6 +1443,7 @@ class Alpha_RSS_AI_Generator_Admin
                         if (itemGuidField) {
                             itemGuidField.value = itemGuid || '';
                         }
+                        window.AlphaRssAiGeneratorManualRunInFlight = true;
                         manualRunForm.submit();
                     }
 
@@ -1438,8 +1562,8 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('internal_links_json', defaults.internal_links_json);
                         setMultiSelect('category_ids[]', []);
                         setMultiSelect('tags_default[]', []);
-                        setValue('prompt_template', defaults.prompt_template);
-                        setValue('content_prompt_template', defaults.content_prompt_template);
+                        syncPromptModelFields(parsePromptModels(defaults.prompt_models));
+                        syncPromptModelsField();
                         renderInternalLinkRows(parseInternalLinkRules(defaults.internal_links_json));
                         syncSourceFields();
                         if (titleEl) {
@@ -1497,8 +1621,8 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('internal_links_json', generator.internal_links_json || defaults.internal_links_json);
                         setMultiSelect('category_ids[]', parseListValue(generator.category_ids));
                         setMultiSelect('tags_default[]', parseListValue(generator.tags_default));
-                        setValue('prompt_template', normalizePromptForSourceType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.prompt_template || ((generator.source_type === 'keyword_list' && (generator.keyword_list_mode || defaults.keyword_list_mode) !== 'url_reference') ? defaults.keyword_prompt_template : defaults.prompt_template)));
-                        setValue('content_prompt_template', generator.content_prompt_template || defaults.content_prompt_template);
+                        syncPromptModelFields(parsePromptModels(generator.prompt_models_json || generator.prompt_models || defaults.prompt_models));
+                        syncPromptModelsField();
                         renderInternalLinkRows(parseInternalLinkRules(generator.internal_links_json || defaults.internal_links_json));
                         syncSourceFields();
 
@@ -1552,6 +1676,7 @@ class Alpha_RSS_AI_Generator_Admin
                     if (form) {
                         form.addEventListener('submit', function() {
                             syncInternalLinksField();
+                            syncPromptModelsField();
                         });
                     }
 
@@ -3563,3 +3688,4 @@ class Alpha_RSS_AI_Generator_Admin
         return isset($map[$status]) ? $map[$status] : ucfirst((string) $status);
     }
 }
+

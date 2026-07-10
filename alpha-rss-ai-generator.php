@@ -160,6 +160,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             add_action('admin_post_arc_export_generator', array($this, 'handle_export_generator'));
             add_action('admin_post_arc_export_generators', array($this, 'handle_export_generators'));
             add_action('admin_post_arc_import_generators', array($this, 'handle_import_generators'));
+            add_action('trashed_post', array($this, 'handle_generated_post_deleted'), 10, 1);
+            add_action('before_delete_post', array($this, 'handle_generated_post_deleted'), 10, 1);
             add_action(self::CRON_HOOK, array($this, 'cron_tick'));
             add_filter('cron_schedules', array($this, 'add_cron_schedule'));
             add_action('rest_api_init', array($this, 'register_rest_routes'));
@@ -204,6 +206,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     if ($found_table !== $table_name) {
                         $needs_upgrade = true;
                         break;
+                    }
+                }
+
+                if (!$needs_upgrade && !empty(self::$table_generators)) {
+                    $required_generator_columns = array(
+                        'prompt_models_json',
+                        'prompt_model_key',
+                    );
+                    foreach ($required_generator_columns as $column_name) {
+                        $found_column = $wpdb->get_var($wpdb->prepare(
+                            "SHOW COLUMNS FROM `" . self::$table_generators . "` LIKE %s",
+                            $column_name
+                        ));
+                        if (empty($found_column)) {
+                            $needs_upgrade = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -268,9 +287,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 content_selector varchar(255) NOT NULL DEFAULT '',
                 content_image_size varchar(20) NOT NULL DEFAULT 'medium',
                 seo_enabled tinyint(1) NOT NULL DEFAULT 1,
-                generation_language varchar(80) NOT NULL DEFAULT 'Português do Brasil',
+                generation_language varchar(80) NOT NULL DEFAULT 'PortuguÃªs do Brasil',
                 prompt_template longtext DEFAULT NULL,
                 content_prompt_template longtext DEFAULT NULL,
+                prompt_models_json longtext DEFAULT NULL,
+                prompt_model_key varchar(120) NOT NULL DEFAULT '',
                 outline_model_key varchar(120) NOT NULL DEFAULT '',
                 related_posts_enabled tinyint(1) NOT NULL DEFAULT 0,
                 related_posts_position varchar(20) NOT NULL DEFAULT 'end',
@@ -582,6 +603,419 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
         }
 
+        public static function get_default_prompt_models()
+        {
+            return array(
+                array(
+                    'key' => 'lista',
+                    'name' => 'Lista',
+                    'description' => 'Modelo para listas, rankings, selecoes e comparativos.',
+                    'outline_model_key' => 'list_article',
+                    'seo_prompt_template' => self::get_default_list_prompt_template(),
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: mantenha a estrutura em lista, com bloco de resposta logo no primeiro H2 e itens diretos.",
+                ),
+                array(
+                    'key' => 'artigo',
+                    'name' => 'Artigo',
+                    'description' => 'Modelo para artigos, guias e textos mais profundos.',
+                    'outline_model_key' => 'guide_long',
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize artigo, guia e explicacao aprofundada, sem cara de lista.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: desenvolva um artigo editorial com contexto, transicoes fluidas e aprofundamento progressivo.",
+                ),
+                array(
+                    'key' => 'noticia',
+                    'name' => 'Noticia',
+                    'description' => 'Modelo para noticias curtas, objetivas e diretas ao ponto.',
+                    'outline_model_key' => 'news_short',
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize noticia curta, objetiva, factual e com entrada rapida.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: escreva como noticia curta, com lead forte, contexto rapido e fechamento enxuto.",
+                ),
+                array(
+                    'key' => 'review',
+                    'name' => 'Review',
+                    'description' => 'Modelo para reviews, resenhas e avaliacoes comparativas.',
+                    'outline_model_key' => 'guide_long',
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize review, resenha e avaliacao critica com conclusao clara e criterio editorial.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: escreva uma review detalhada, com contexto, pontos fortes, pontos fracos e veredito final.",
+                ),
+                array(
+                    'key' => 'faq',
+                    'name' => 'FAQ',
+                    'description' => 'Modelo para perguntas e respostas objetivas.',
+                    'outline_model_key' => 'guide_long',
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize perguntas frequentes, respostas objetivas e estrutura direta para duvidas comuns.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: organize o conteudo em perguntas e respostas curtas, claras e praticas.",
+                ),
+                array(
+                    'key' => 'tutorial',
+                    'name' => 'Tutorial',
+                    'description' => 'Modelo para passo a passo, instrucoes e guias praticos.',
+                    'outline_model_key' => 'guide_long',
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize passo a passo, instrucoes claras e aplicacao pratica do tema.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: escreva como tutorial, com etapas numeradas, orientacao pratica e progressao logica.",
+                ),
+                array(
+                    'key' => 'comparativo',
+                    'name' => 'Comparativo',
+                    'description' => 'Modelo para comparacoes, versus e analises lado a lado.',
+                    'outline_model_key' => 'list_article',
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize comparacao, contraste entre opcoes e criterios objetivos de escolha.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: apresente os itens em comparacao direta, deixando diferencas, semelhanças e conclusao final claras.",
+                ),
+            );
+        }
+
+        public static function get_default_list_prompt_template()
+        {
+            return "Você é um editor especializado em SEO, Google Discover e portais de entretenimento.\n"
+                . "Analise a notícia fornecida e gere apenas os metadados da publicação.\n\n"
+                . "REGRAS GERAIS\n"
+                . "Estritamente proibido colocar ano diferente de 2026, pois estamos em 2026 a não ser que a kw peça, mas tem que colocar coisas criativas, como \"filmes de 2013 que ainda fazem sucesso\" (só exemplo, não use isso em todo título).\n"
+                . "Escreva tudo em Portugues do Brasil.\n"
+                . "Use o nome da obra mais conhecido pelo público brasileiro.\n"
+                . "Tudo o que for relacionado a medidas, kilometetragem, distancia, dentre tudo isso, deve ser sempre no padrão brasileiro (km/h, metros, kg etc)\n\n"
+                . "TÍTULO\n"
+                . "Use essa forma:\n"
+                . "[numero (até 10)/Filmes/Séries/Plataforma/genero do filme] (brinque com a ordem) + [curiosidade/descoberta/problema/comparação com outra série ou filme (brinque com a ordem)]\n"
+                . "Evite capitalização desnecessária, somente em nomes, siglas e primeira letra\n"
+                . "O numero, streaming e genero, devem estar no começo do título\n"
+                . "Não gere títulos genéricos, como \"que parecem joias escondidas\"\n"
+                . "Cada título, deve ter a dor real dos usuários, por exemplo, se um título for comparado com interestellar, um possivel sentimento é a saudade e isso pode ser explorado, cada título deve ser explorado um sentimento diferente, pode sim ser a saudade, mas não necessariamente a saudade.\n"
+                . "Prefira o nome oficial da obra no Brasil.\n"
+                . "Evite nomes de atores pouco conhecidos.\n"
+                . "Sentimento de Polêmica/Validação: Para quem gosta de julgar ou entender por que a internet está brigando por um filme (ex: que dividem opiniões desde 2024).\n"
+                . "Regra de Data Imutável: Estamos em 2026. Se a fonte falar de filmes lançados em 2024, brinque com o tempo de forma criativa (ex: \"filmes de 2024 que você ainda precisa ver em 2026\" ou \"que envelheceram bem\"). Nunca cite anos passados como se fossem o ano atual.\n"
+                . "Limite de Tamanho: O título final deve ter obrigatoriamente entre 55 e 70 caracteres (contando espaços).\n"
+                . "Localização: Use sempre os nomes oficiais das obras no Brasil e evite citar atores pouco conhecidos pelo público geral brasileiro.\n\n"
+                . "Exemplos:\n"
+                . "5 animações da Netflix que os adultos acabam gostando mais que as crianças\n"
+                . "7 filmes de suspense na Netflix para quem acha que já viu tudo\n"
+                . "5 suspenses de 2024 na Netflix que você precisa dar uma segunda chance hoje\n"
+                . "4 Séries curtas da Netflix que você consegue terminar em dois dias\n\n"
+                . "SLUG\n"
+                . "Minúsculas, sem acentos.\n"
+                . "Separado por hífens.\n"
+                . "Remova artigos e palavras desnecessárias.\n"
+                . "Mantenha apenas os termos mais relevantes.\n\n"
+                . "RESUMO\n"
+                . "18 a 24 palavras.\n"
+                . "Resuma a principal novidade de forma direta.\n"
+                . "Não repita o título.\n\n"
+                . "META DESCRIÇÃO\n"
+                . "140 a 160 caracteres.\n"
+                . "Inclua a palavra-chave foco.\n"
+                . "Resuma a novidade principal.\n"
+                . "Termine com um CTA sutil e convidativo.\n\n"
+                . "PALAVRA-CHAVE FOCO\n"
+                . "Escolha apenas uma.\n"
+                . "Prioridade: 1. Nome da obra, 2. Nome da franquia, 3. Principal acontecimento/revelação.\n\n"
+                . "TAGS\n"
+                . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
+                . "Máximo 4 tags.\n"
+                . "Se a lista estiver vazia, retorne [].\n\n"
+                . "PEXELS_TAGS\n"
+                . "Máximo 4 termos.\n"
+                . "Use apenas elementos visuais concretos (ex: godzilla, nova york, dragao, arranha ceu, monstro gigante, traje preto, etc.).\n"
+                . "Evite termos genéricos (filme, cinema, trailer, ação, etc.).";
+        }
+
+        public static function strip_backend_source_context_from_prompt($prompt_template)
+        {
+            $prompt_template = (string) $prompt_template;
+            if ($prompt_template === '') {
+                return '';
+            }
+
+            $patterns = array(
+                '/^\s*Resumo da fonte:.*(?:\r?\n|$)/mi',
+                '/^\s*Conteudo da fonte:.*(?:\r?\n|$)/mi',
+                '/^\s*Titulo do item:.*(?:\r?\n|$)/mi',
+                '/^\s*Link do item:.*(?:\r?\n|$)/mi',
+                '/^\s*Titulo da origem:.*(?:\r?\n|$)/mi',
+                '/^\s*URL de origem:.*(?:\r?\n|$)/mi',
+                '/^\s*Site:.*(?:\r?\n|$)/mi',
+                '/^\s*Gerador:.*(?:\r?\n|$)/mi',
+                '/^\s*Idioma final:.*(?:\r?\n|$)/mi',
+            );
+
+            return trim(preg_replace($patterns, '', $prompt_template));
+        }
+
+        public static function get_prompt_output_suffix()
+        {
+            return "FORMATO DE SAIDA\n"
+                . "Retorne exclusivamente o JSON valido com exatamente estas chaves:\n"
+                . "JSON{\n"
+                . '  "titulo": "",' . "\n"
+                . '  "slug": "",' . "\n"
+                . '  "resumo": "",' . "\n"
+                . '  "meta_descricao": "",' . "\n"
+                . '  "palavra_chave_foco": "",' . "\n"
+                . '  "tags": [],' . "\n"
+                . '  "pexels_tags": []' . "\n"
+                . "}";
+        }
+
+        public static function normalize_prompt_model_definition($model)
+        {
+            $model = is_array($model) ? $model : array();
+            $key = !empty($model['key']) ? sanitize_key((string) $model['key']) : '';
+            if ($key === '') {
+                return array();
+            }
+
+            $defaults = self::get_default_prompt_model($key);
+            $name = !empty($model['name']) ? sanitize_text_field((string) $model['name']) : (!empty($defaults['name']) ? $defaults['name'] : ucfirst($key));
+            $description = !empty($model['description']) ? sanitize_textarea_field((string) $model['description']) : (!empty($defaults['description']) ? $defaults['description'] : '');
+            $outline_model_key = !empty($model['outline_model_key']) ? sanitize_key((string) $model['outline_model_key']) : (!empty($defaults['outline_model_key']) ? sanitize_key((string) $defaults['outline_model_key']) : self::get_default_outline_model_key());
+            $seo_prompt_template = isset($model['seo_prompt_template']) ? trim((string) wp_kses_post($model['seo_prompt_template'])) : '';
+            $content_prompt_template = isset($model['content_prompt_template']) ? trim((string) wp_kses_post($model['content_prompt_template'])) : '';
+            $seo_prompt_template = self::strip_backend_source_context_from_prompt($seo_prompt_template);
+            $content_prompt_template = self::strip_backend_source_context_from_prompt($content_prompt_template);
+
+            if ($seo_prompt_template === '') {
+                $seo_prompt_template = !empty($defaults['seo_prompt_template']) ? $defaults['seo_prompt_template'] : self::get_default_prompt_template();
+            }
+            if ($content_prompt_template === '') {
+                $content_prompt_template = !empty($defaults['content_prompt_template']) ? $defaults['content_prompt_template'] : self::get_default_content_prompt_template_visible();
+            }
+
+            return array(
+                'key' => $key,
+                'name' => $name,
+                'description' => $description,
+                'outline_model_key' => $outline_model_key,
+                'seo_prompt_template' => $seo_prompt_template,
+                'content_prompt_template' => $content_prompt_template,
+            );
+        }
+
+        public static function normalize_prompt_models($models)
+        {
+            if (!is_array($models) || empty($models)) {
+                $models = self::get_default_prompt_models();
+            }
+
+            $normalized = array();
+            foreach ($models as $model) {
+                $model = self::normalize_prompt_model_definition($model);
+                if (!empty($model['key'])) {
+                    $normalized[$model['key']] = $model;
+                }
+            }
+
+            if (empty($normalized)) {
+                foreach (self::get_default_prompt_models() as $model) {
+                    $normalized[$model['key']] = self::normalize_prompt_model_definition($model);
+                }
+            }
+
+            return array_values($normalized);
+        }
+
+        public static function get_default_prompt_model_key()
+        {
+            return '';
+        }
+
+        public static function get_default_content_model_type()
+        {
+            return 'pillar';
+        }
+
+        public static function normalize_content_model_type($content_model_type = '')
+        {
+            $content_model_type = sanitize_key((string) $content_model_type);
+            $aliases = array(
+                'pillar' => 'pillar',
+                'pilhar' => 'pillar',
+                'content_pillar' => 'pillar',
+                'satellite' => 'satellite',
+                'satelite' => 'satellite',
+                'content_satellite' => 'satellite',
+            );
+
+            if ($content_model_type !== '' && isset($aliases[$content_model_type])) {
+                return $aliases[$content_model_type];
+            }
+
+            return self::get_default_content_model_type();
+        }
+
+        public static function get_content_model_label($content_model_type = '')
+        {
+            $content_model_type = self::normalize_content_model_type($content_model_type);
+
+            switch ($content_model_type) {
+                case 'satellite':
+                    return 'Satélite';
+                case 'pillar':
+                default:
+                    return 'Pilar';
+            }
+        }
+
+        public static function get_default_prompt_model($prompt_model_key = '')
+        {
+            $prompt_model_key = sanitize_key((string) $prompt_model_key);
+            foreach (self::get_default_prompt_models() as $model) {
+                if (!empty($model['key']) && $model['key'] === $prompt_model_key) {
+                    return $model;
+                }
+            }
+
+            return array();
+        }
+
+        public static function get_prompt_models($generator = array())
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $models = array();
+
+            if (!empty($generator['prompt_models']) && is_array($generator['prompt_models'])) {
+                $models = $generator['prompt_models'];
+            } elseif (!empty($generator['prompt_models_json'])) {
+                $decoded = json_decode((string) $generator['prompt_models_json'], true);
+                if (is_array($decoded)) {
+                    $models = $decoded;
+                }
+            }
+
+            return self::normalize_prompt_models($models);
+        }
+
+        public static function get_prompt_model($prompt_model_key = '', $generator = array())
+        {
+            $prompt_model_key = sanitize_key((string) $prompt_model_key);
+            $models = self::get_prompt_models($generator);
+            foreach ($models as $model) {
+                if (!empty($model['key']) && $model['key'] === $prompt_model_key) {
+                    return $model;
+                }
+            }
+
+            return array();
+        }
+
+        public static function get_prompt_model_key_for_content_type($content_type = '', $outline_context = array(), $generator = array())
+        {
+            $content_type = sanitize_key((string) $content_type);
+            $outline_context = is_array($outline_context) ? $outline_context : array();
+            $generator = is_array($generator) ? $generator : array();
+
+            $content_type_map = array(
+                'list' => 'lista',
+                'lista' => 'lista',
+                'ranking' => 'lista',
+                'ranking_list' => 'lista',
+                'list_article' => 'lista',
+                'article' => 'artigo',
+                'artigo' => 'artigo',
+                'guide' => 'artigo',
+                'guide_long' => 'artigo',
+                'opinion' => 'artigo',
+                'analysis' => 'artigo',
+                'opiniao' => 'artigo',
+                'analise' => 'artigo',
+                'review' => 'review',
+                'resenha' => 'review',
+                'avaliacao' => 'review',
+                'analysis_review' => 'review',
+                'faq' => 'faq',
+                'perguntas_frequentes' => 'faq',
+                'questions' => 'faq',
+                'question_answer' => 'faq',
+                'tutorial' => 'tutorial',
+                'howto' => 'tutorial',
+                'how_to' => 'tutorial',
+                'passo_a_passo' => 'tutorial',
+                'comparativo' => 'comparativo',
+                'comparison' => 'comparativo',
+                'versus' => 'comparativo',
+                'vs' => 'comparativo',
+                'noticia' => 'noticia',
+                'news' => 'noticia',
+                'news_short' => 'noticia',
+            );
+
+            if ($content_type !== '' && isset($content_type_map[$content_type])) {
+                return $content_type_map[$content_type];
+            }
+
+            $outline_model_key = '';
+            if (!empty($outline_context['recommended_outline_model_key'])) {
+                $outline_model_key = sanitize_key((string) $outline_context['recommended_outline_model_key']);
+            } elseif (!empty($generator['outline_model_key'])) {
+                $outline_model_key = sanitize_key((string) $generator['outline_model_key']);
+            }
+
+            $outline_to_prompt_map = array(
+                'list_article' => 'lista',
+                'guide_long' => 'artigo',
+                'news_short' => 'noticia',
+            );
+
+            if ($outline_model_key !== '' && isset($outline_to_prompt_map[$outline_model_key])) {
+                return $outline_to_prompt_map[$outline_model_key];
+            }
+
+            return '';
+        }
+
+        public static function get_generator_prompt_model($generator, $outline_context = array())
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $outline_context = is_array($outline_context) ? $outline_context : array();
+
+            $prompt_model_key = '';
+            if (!empty($outline_context['recommended_prompt_model_key'])) {
+                $prompt_model_key = sanitize_key((string) $outline_context['recommended_prompt_model_key']);
+            } else {
+                $prompt_model_key = self::get_prompt_model_key_for_content_type(
+                    !empty($outline_context['content_type']) ? $outline_context['content_type'] : '',
+                    $outline_context,
+                    $generator
+                );
+            }
+
+            if ($prompt_model_key === '' && !empty($outline_context['recommended_outline_model_key'])) {
+                $outline_model_key = sanitize_key((string) $outline_context['recommended_outline_model_key']);
+                $models = self::get_prompt_models($generator);
+                foreach ($models as $model) {
+                    if (!empty($model['outline_model_key']) && $model['outline_model_key'] === $outline_model_key) {
+                        $prompt_model_key = !empty($model['key']) ? (string) $model['key'] : '';
+                        break;
+                    }
+                }
+            }
+
+            if ($prompt_model_key === '') {
+                return array();
+            }
+
+            return self::get_prompt_model($prompt_model_key, $generator);
+        }
+
+        public static function format_prompt_model_for_prompt($prompt_model)
+        {
+            $prompt_model = is_array($prompt_model) ? $prompt_model : array();
+            $lines = array();
+            $key = !empty($prompt_model['key']) ? sanitize_key((string) $prompt_model['key']) : '';
+            $name = !empty($prompt_model['name']) ? sanitize_text_field((string) $prompt_model['name']) : '';
+            $description = !empty($prompt_model['description']) ? sanitize_textarea_field((string) $prompt_model['description']) : '';
+            $outline_model_key = !empty($prompt_model['outline_model_key']) ? sanitize_key((string) $prompt_model['outline_model_key']) : '';
+
+            $lines[] = '- key=' . $key . ' | name=' . $name;
+            if ($description !== '') {
+                $lines[] = '  description=' . $description;
+            }
+            if ($outline_model_key !== '') {
+                $lines[] = '  outline_model_key=' . $outline_model_key;
+            }
+
+            return implode("\n", $lines);
+        }
+
         public static function normalize_outline_quantity_range($min, $max, $default_min = 1, $default_max = 1)
         {
             $min = intval($min);
@@ -880,7 +1314,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function normalize_generation_language_value($value)
         {
             $value = trim((string) $value);
-            if ($value === '' || $value === 'Português do Brasil' || $value === 'PortuguÃƒÆ’Ã‚Âªs do Brasil' || $value === 'PortuguÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªs do Brasil') {
+            if ($value === '' || $value === 'Português do Brasil') {
                 return self::get_default_generation_language();
             }
             return $value;
@@ -1084,7 +1518,33 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($content_prompt_template === '' || self::content_prompt_template_looks_like_legacy_default($content_prompt_template)) {
                 $content_prompt_template = self::get_default_content_prompt_template_visible();
             }
+            $prompt_models = array();
+            if (!empty($generator['prompt_models_json'])) {
+                $decoded_prompt_models = json_decode((string) $generator['prompt_models_json'], true);
+                if (is_array($decoded_prompt_models)) {
+                    $prompt_models = $decoded_prompt_models;
+                }
+            } elseif (!empty($generator['prompt_models']) && is_array($generator['prompt_models'])) {
+                $prompt_models = $generator['prompt_models'];
+            }
+            $prompt_models = self::normalize_prompt_models($prompt_models);
+            if (empty($prompt_models)) {
+                $prompt_models = self::get_default_prompt_models();
+            }
+            $prompt_model_key = isset($generator['prompt_model_key']) ? sanitize_key((string) $generator['prompt_model_key']) : '';
+            $prompt_model_keys = array();
+            foreach ($prompt_models as $prompt_model) {
+                if (!empty($prompt_model['key'])) {
+                    $prompt_model_keys[] = (string) $prompt_model['key'];
+                }
+            }
+            if ($prompt_model_key !== '' && !empty($prompt_model_keys) && !in_array($prompt_model_key, $prompt_model_keys, true)) {
+                $prompt_model_key = '';
+            }
             $generator['content_length_class'] = isset($generator['content_length_class']) ? self::normalize_content_length_class((string) $generator['content_length_class']) : self::get_default_content_length_class();
+            $generator['prompt_model_key'] = $prompt_model_key;
+            $generator['prompt_models'] = $prompt_models;
+            $generator['prompt_models_json'] = wp_json_encode($prompt_models);
             $generator['outline_model_key'] = isset($generator['outline_model_key']) ? sanitize_key((string) $generator['outline_model_key']) : self::get_default_outline_model_key();
             $available_outline_models = self::get_outline_models();
             $available_outline_model_keys = array();
@@ -1318,7 +1778,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'source_title_column' => $find(array('title', 'titulo', 'titulooriginal', 'headline')),
                 'source_url_column' => $source_url_column,
                 'slug_column' => $find(array('slug', 'finalslug', 'final_url', 'finalurl')) ?: $source_url_column,
-                'content_column' => $find(array('content', 'conteudo', 'conteúdo', 'body', 'text')),
+                'content_column' => $find(array('content', 'conteudo', 'body', 'text')),
                 'tags_column' => $find(array('tags', 'tag')),
             );
         }
@@ -1969,6 +2429,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 )),
                 'seo_enabled' => !empty($settings['seo_enabled']) ? 1 : 0,
                 'generation_language' => !empty($settings['generation_language']) ? Alpha_RSS_AI_Generator::normalize_generation_language_value($settings['generation_language']) : Alpha_RSS_AI_Generator::get_default_generation_language(),
+                'prompt_model_key' => '',
+                'prompt_models_json' => wp_json_encode(self::get_default_prompt_models()),
                 'content_prompt_template' => '',
                 'related_posts_enabled' => !empty($settings['related_posts_enabled']) ? 1 : 0,
                 'related_posts_position' => !empty($settings['related_posts_position']) ? sanitize_key($settings['related_posts_position']) : 'end',
@@ -2181,6 +2643,21 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (trim($payload['content_prompt_template']) === '' || self::content_prompt_template_looks_like_legacy_default($payload['content_prompt_template'])) {
                 $payload['content_prompt_template'] = self::get_default_content_prompt_template_visible();
             }
+            $payload['prompt_model_key'] = isset($raw['prompt_model_key']) ? sanitize_key(wp_unslash($raw['prompt_model_key'])) : '';
+            $raw_prompt_models = array();
+            if (isset($raw['prompt_models_json']) && is_string($raw['prompt_models_json']) && trim((string) $raw['prompt_models_json']) !== '') {
+                $decoded_prompt_models = json_decode(wp_unslash((string) $raw['prompt_models_json']), true);
+                if (is_array($decoded_prompt_models)) {
+                    $raw_prompt_models = $decoded_prompt_models;
+                }
+            } elseif (isset($raw['prompt_models']) && is_array($raw['prompt_models'])) {
+                $raw_prompt_models = wp_unslash($raw['prompt_models']);
+            }
+            $normalized_prompt_models = self::normalize_prompt_models($raw_prompt_models);
+            $payload['prompt_models_json'] = wp_json_encode($normalized_prompt_models);
+            if ($payload['prompt_models_json'] === false || $payload['prompt_models_json'] === '') {
+                $payload['prompt_models_json'] = wp_json_encode(self::get_default_prompt_models());
+            }
             $payload['outline_model_key'] = isset($raw['outline_model_key']) ? sanitize_key(wp_unslash($raw['outline_model_key'])) : self::get_default_outline_model_key();
             $available_outline_models = self::get_outline_models();
             $available_outline_model_keys = array();
@@ -2219,13 +2696,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'keep_unrated' => $source_context_keep_unrated ? 1 : 0,
             ));
             if ($payload['name'] === '') {
-                return new WP_Error('arc_invalid_generator', 'Nome do gerador é obrigatório.');
+                return new WP_Error('arc_invalid_generator', 'Nome do gerador é obrigatÃ³rio.');
             }
             if ($payload['source_type'] === 'keyword_list' && $payload['list_id'] <= 0) {
                 return new WP_Error('arc_invalid_generator', 'Selecione uma lista de palavras-chave.');
             }
             if ($payload['source_type'] !== 'keyword_list' && $payload['feed_url'] === '') {
-                return new WP_Error('arc_invalid_generator', 'URL do feed é obrigatória para geradores RSS.');
+                return new WP_Error('arc_invalid_generator', 'URL do feed é obrigatÃ³ria para geradores RSS.');
             }
             if (trim($payload['prompt_template']) === '') {
                 $payload['prompt_template'] = self::get_default_prompt_template();
@@ -2308,13 +2785,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "A meta description deve ser objetiva e curta.\n"
                 . "As tags devem ter no maximo 4 termos.\n"
                 . "Pexels_tags deve ser um array com no maximo 4 termos visuais, concretos e especificos, sem palavras genericas.\n"
-                . "Resumo da fonte: {{source_excerpt}}\n"
-                . "Conteudo da fonte: {{source_content}}\n"
-                . "Titulo do item: {{source_title}}\n"
-                . "Link do item: {{source_permalink}}\n"
-                . "Site: {{site_name}}\n"
-                . "Gerador: {{generator_name}}\n"
-                . "Idioma final: {{generation_language}}\n"
+                . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
+                . "Se a lista estiver vazia, retorne [].\n"
                 . "Regras:\n"
                 . "- Foque em title, slug, excerpt, tags, meta description e focus keyword.\n"
                 . "- Nao escreva o corpo do artigo nesta resposta.\n"
@@ -2337,16 +2809,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "As tags devem ter no maximo 4 termos e, quando houver selecao no gerador, somente termos dessa lista.\n"
                 . "Pexels_tags deve ser um array com no maximo 4 termos visuais, concretos e especificos, sem palavras genericas.\n"
                 . "Se houver titulo na planilha, use-o como base principal; se nao houver, crie um titulo forte e natural a partir da keyword.\n"
-                . "Resumo da fonte: {{source_excerpt}}\n"
-                . "Conteudo da fonte: {{source_content}}\n"
                 . "Keyword: {{keyword}}\n"
-                . "Titulo da origem: {{source_title}}\n"
-                . "URL de origem: {{source_url}}\n"
                 . "Slug final: {{final_slug}}\n"
                 . "Dados da linha: {{row_data}}\n"
-                . "Site: {{site_name}}\n"
-                . "Gerador: {{generator_name}}\n"
-                . "Idioma final: {{generation_language}}\n"
+                . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
+                . "Se a lista estiver vazia, retorne [].\n"
                 . "Regras:\n"
                 . "- Preserve os fatos, mas reescreva do zero.\n"
                 . "- Nao invente fatos fora da keyword, da URL e dos dados da linha.\n"
@@ -2358,13 +2825,29 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function prompt_template_looks_like_keyword_default($prompt_template)
         {
             $prompt_template = (string) $prompt_template;
-            return strpos($prompt_template, 'Você é um editor de conteúdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== false;
+            return strpos($prompt_template, 'VocÃª é um editor de conteÃºdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== false;
         }
 
         public static function get_default_content_prompt_template()
         {
-            return "Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo.\n"
-                . "Escreva em {{generation_language}}.\n"
+            return "Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista."
+                . "Escreva em {{generation_language}}. \n"
+                . "Objetivo:\n"
+                . "- Escrever um artigo com cara de texto humano, natural, completo e fiel aos fatos.\n"
+                . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
+                . "- Use 2 a 3 paragrafos curtos na introducao, sem frases genericas.\n"
+                . "- Crie um H2 para cada item da lista.\n"
+                . "- Formato do H2: 01. Nome do item (ano ou informacao adicional se a fonte mencionar).\n"
+                . "- Se a fonte nao trouxer ano ou informacao adicional, use apenas o nome do item.\n"
+                . "- Mantenha a ordem dos H2 exatamente na mesma sequencia do esboço interno; nao reordene, nao agrupe e nao pule itens.\n"
+                . "- Depois de cada H2, escreva 2 a 3 paragrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
+                . "- Nao insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
+                . "- A conclusao deve usar um H2 criativo, sem a palavra conclusao, e apontar para o proximo passo.\n"
+                . "- Mantenha o foco no titulo ja definido e desenvolva o texto ao redor dele.\n"
+                . "- Use HTML simples apenas no content_html.\n"
+                . "- Nao repita os mesmos argumentos e nao invente informacoes.\n"
+                . "- Se a fonte for pobre, encurte em vez de encher lingui?a.\n"
+                . "- Se a pauta for entretenimento, escreva de forma concreta, visual e direta."
                 . "Retorne apenas JSON valido com a chave content_html.\n"
                 . "Nao gere title, slug, tags ou meta dados nesta etapa.\n"
                 . "Use o titulo ja definido: {{generated_title}}.\n"
@@ -2377,33 +2860,30 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Titulo da origem: {{source_title}}\n"
                 . "Keyword: {{keyword}}\n"
                 . "Slug final: {{generated_slug}}\n"
-                . "Palavras-chave selecionadas: {{selected_tags}}\n"
-                . "Objetivo:\n"
-                . "- Escrever um artigo completo, natural e fiel aos fatos.\n"
-                . "- Priorize 1000 a 1800 palavras quando houver material suficiente.\n"
-                . "- Use paragrafos curtos e ajuste os H2 conforme a extensao e a estrutura da pauta.\n"
-                . "- Nao repita os mesmos argumentos e nao invente informacoes.\n"
-                . "- Mantenha o foco no titulo ja definido e desenvolva o texto ao redor dele.\n"
-                . "- Use HTML simples apenas no content_html.\n"
-                . "- Se a fonte for pobre, encurte em vez de encher linguiça.\n"
-                . "- Se a pauta for entretenimento, escreva de forma concreta, visual e direta.";
+                . "Palavras-chave selecionadas: {{selected_tags}}\n";
         }
+
         public static function get_default_content_prompt_template_visible()
         {
-            return "Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo.\n"
+            return "Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista.\n"
                 . "Escreva um texto final natural, completo e fiel aos fatos.\n"
                 . "Retorne apenas JSON valido com a chave content_html.\n"
                 . "Nao gere title, slug, tags ou meta dados nesta etapa.\n"
                 . "Use apenas HTML simples no content_html.\n"
                 . "Objetivo:\n"
-                . "- Escrever um artigo com cara de texto humano, sem soar mecanico.\n"
+                . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
+                . "- Use 2 a 3 paragrafos curtos na introducao, sem frases genericas.\n"
+                . "- Crie um H2 para cada item da lista.\n"
+                . "- Formato do H2: 01. Nome do item (ano ou informacao adicional se a fonte mencionar).\n"
+                . "- Se a fonte nao trouxer ano ou informacao adicional, use apenas o nome do item.\n"
+                . "- Mantenha a ordem dos H2 exatamente na mesma sequencia do esboço interno; nao reordene, nao agrupe e nao pule itens.\n"
+                . "- Depois de cada H2, escreva 2 a 3 paragrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
+                . "- Nao insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
+                . "- A conclusao deve usar um H2 criativo, sem a palavra conclusao, e apontar para o proximo passo.\n"
+                . "- Escreva com tom humano, sem soar mecanico.\n"
                 . "- Priorize 1000 a 1800 palavras quando houver material suficiente.\n"
                 . "- Use paragrafos curtos e ajuste o numero de H2 conforme a densidade do tema e o outline interno.\n"
                 . "- Avance com fatos novos em cada bloco e evite repeticao de ideias.\n"
-                . "- Mantenha o foco no titulo ja definido e desenvolva o texto ao redor dele.\n"
-                . "- Use o titulo e o contexto fornecidos pelo backend como base factual.\n"
-                . "- Se a fonte for pobre, encurte em vez de encher linguica.\n"
-                . "- Se a pauta for entretenimento, escreva de forma concreta, visual e direta.\n"
                 . "- Nao use Markdown.\n"
                 . "- Nao invente informacoes.";
         }
@@ -2425,8 +2905,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function prompt_template_looks_like_rss_default($prompt_template)
         {
             $prompt_template = (string) $prompt_template;
-            return strpos($prompt_template, 'Você é um editor jornalístico especializado em reescrever conteúdo de RSS.') !== false
-                || strpos($prompt_template, 'Você é um jornalista de portal focado em SEO e no estilo GEO') !== false
+            return strpos($prompt_template, 'VocÃª é um editor jornalÃ­stico especializado em reescrever conteÃºdo de RSS.') !== false
+                || strpos($prompt_template, 'Voc? ? um jornalista de portal focado em SEO e no estilo GEO') !== false
                 || strpos($prompt_template, '[DIRETRIZES DE ESCRITA E ESTILO (GEO)]') !== false;
         }
 
@@ -2435,7 +2915,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $prompt_template = trim((string) $prompt_template);
 
             if ($prompt_template === '') {
-                return self::get_default_prompt_template();
+                return ($source_type === 'keyword_list' && $keyword_list_mode !== 'url_reference')
+                    ? self::get_default_keyword_prompt_template()
+                    : self::get_default_prompt_template();
             }
 
             return $prompt_template;
@@ -2514,48 +2996,30 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $filtered = array();
             $generic_terms = array(
                 'action',
-                'acao',
                 'ação',
                 'cinema',
-                'film',
                 'filme',
                 'filmes',
-                'movie',
-                'movies',
                 'trailer',
                 'trailers',
                 'serie',
                 'series',
                 'série',
-                'tv',
-                'televisao',
-                'televisão',
                 'luta',
-                'fight',
-                'fighting',
                 'drama',
                 'aventura',
-                'adventure',
-                'comedy',
-                'comedia',
                 'comédia',
                 'terror',
                 'horror',
                 'suspense',
-                'sports',
                 'esporte',
                 'esportes',
                 'nostalgia',
                 'anos 1990',
                 'anos 2000',
                 '1990',
-                '1990s',
                 '2000',
-                '2000s',
-                '80s',
-                '90s',
                 'people',
-                'person',
                 'personagem',
             );
 
@@ -2636,7 +3100,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => 'Você é um editor jornalístico especializado. Retorne apenas JSON valido.'
+                        'content' => 'VocÃª é um editor jornalÃ­stico especializado. Retorne apenas JSON vÃ¡lido.'
                     ),
                     array(
                         'role' => 'user',
@@ -2647,6 +3111,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'max_completion_tokens' => $max_tokens,
             );
 
+            error_log("prompt completo: " . $prompt);
             $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -4628,7 +5093,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!$generator) {
                 return new WP_REST_Response(array(
                     'success' => false,
-                    'message' => 'Gerador não encontrado.',
+                    'message' => 'Gerador nÃ£o encontrado.',
                 ), 404);
             }
 
@@ -4888,12 +5353,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $selected_item = null;
             if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list') {
                 if (empty($generator['list_id'])) {
-                    return new WP_Error('arc_missing_list', 'Este gerador não possui uma lista vinculada.');
+                    return new WP_Error('arc_missing_list', 'Este gerador nÃ£o possui uma lista vinculada.');
                 }
 
                 $row = self::get_keyword_list_row_by_guid(intval($generator['list_id']), $item_guid);
                 if (!$row) {
-                    return new WP_Error('arc_item_not_found', 'O item selecionado não foi encontrado na lista.');
+                    return new WP_Error('arc_item_not_found', 'O item selecionado nÃ£o foi encontrado na lista.');
                 }
                 $selected_item = self::build_keyword_list_item_from_row(
                     self::get_keyword_list(intval($generator['list_id'])),
@@ -4930,16 +5395,37 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
 
                 if (!$selected_item) {
-                    return new WP_Error('arc_item_not_found', 'O item selecionado não foi encontrado no feed.');
+                    return new WP_Error('arc_item_not_found', 'O item selecionado nÃ£o foi encontrado no feed.');
                 }
             }
 
-            if (self::is_item_processed($generator['id'], $selected_item['guid'])) {
-                return new WP_Error('arc_item_processed', 'Esse item já foi gerado.');
+            $processed_record = self::get_item_processed_record($generator['id'], $selected_item['guid']);
+            if ($processed_record) {
+                $processed_post_id = !empty($processed_record['post_id']) ? intval($processed_record['post_id']) : 0;
+                if ($processed_post_id > 0 && get_post($processed_post_id)) {
+                    $post_view_link = self::get_post_view_link($processed_post_id);
+                    $post_edit_link = self::get_post_edit_link($processed_post_id);
+
+                    return array(
+                        'post_id' => $processed_post_id,
+                        'item_guid' => $selected_item['guid'],
+                        'item_title' => $selected_item['title'],
+                        'view_link' => $post_view_link ? $post_view_link : '',
+                        'edit_link' => $post_edit_link ? $post_edit_link : '',
+                        'permalink' => $post_view_link ? $post_view_link : '',
+                        'reused_existing_post' => 1,
+                    );
+                }
+                return new WP_Error('arc_item_locked', 'Esse item j? est? em processamento.');
+            }
+
+            if (!self::claim_item_processing_slot($generator['id'], $selected_item)) {
+                return new WP_Error('arc_item_locked', 'Esse item j? est? em processamento.');
             }
 
             $result = self::create_post_from_generator_item($generator, $selected_item);
             if (is_wp_error($result)) {
+                self::delete_item_processed_by_guid($generator['id'], $selected_item['guid']);
                 return $result;
             }
 
@@ -4959,13 +5445,40 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function is_item_processed($generator_id, $guid)
         {
+            $record = self::get_item_processed_record($generator_id, $guid);
+            if (!$record) {
+                return false;
+            }
+
+            $post_id = !empty($record['post_id']) ? intval($record['post_id']) : 0;
+            if ($post_id <= 0) {
+                return false;
+            }
+
+            if (!get_post($post_id)) {
+                self::delete_item_processed_by_guid($generator_id, $guid);
+                return false;
+            }
+
+            return true;
+        }
+
+        public static function get_item_processed_record($generator_id, $guid)
+        {
             global $wpdb;
-            $exists = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM " . self::$table_items . " WHERE generator_id = %d AND item_guid = %s LIMIT 1",
-                intval($generator_id),
+            $generator_id = intval($generator_id);
+            $guid = trim((string) $guid);
+            if ($generator_id <= 0 || $guid === '') {
+                return null;
+            }
+
+            $record = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM " . self::$table_items . " WHERE generator_id = %d AND item_guid = %s LIMIT 1",
+                $generator_id,
                 $guid
-            ));
-            return !empty($exists);
+            ), ARRAY_A);
+
+            return is_array($record) ? $record : null;
         }
 
         public static function mark_item_processed($generator_id, $item, $post_id)
@@ -4977,18 +5490,112 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $item_title = isset($item['title']) ? (string) $item['title'] : '';
             $item_hash = md5($item_guid . '|' . $item_permalink);
 
-            $wpdb->query(
-                $wpdb->prepare(
-                    'INSERT IGNORE INTO ' . self::$table_items . ' (generator_id, item_guid, item_permalink, item_title, post_id, item_hash, created_at) VALUES (%d, %s, %s, %s, %d, %s, %s)',
-                    $generator_id,
-                    $item_guid,
-                    $item_permalink,
-                    $item_title,
-                    intval($post_id),
-                    $item_hash,
-                    current_time('mysql')
-                )
+            if ($generator_id <= 0 || $item_guid === '') {
+                return 0;
+            }
+
+            return $wpdb->replace(
+                self::$table_items,
+                array(
+                    'generator_id' => $generator_id,
+                    'item_guid' => $item_guid,
+                    'item_permalink' => $item_permalink,
+                    'item_title' => $item_title,
+                    'post_id' => intval($post_id),
+                    'item_hash' => $item_hash,
+                    'created_at' => current_time('mysql'),
+                ),
+                array('%d', '%s', '%s', '%s', '%d', '%s', '%s')
             );
+        }
+
+        public static function claim_item_processing_slot($generator_id, $item)
+        {
+            global $wpdb;
+            $generator_id = intval($generator_id);
+            $item_guid = isset($item['guid']) ? trim((string) $item['guid']) : '';
+            $item_permalink = isset($item['permalink']) ? (string) $item['permalink'] : '';
+            $item_title = isset($item['title']) ? (string) $item['title'] : '';
+            $item_hash = md5($item_guid . '|' . $item_permalink);
+
+            if ($generator_id <= 0 || $item_guid === '') {
+                return false;
+            }
+
+            $result = $wpdb->insert(
+                self::$table_items,
+                array(
+                    'generator_id' => $generator_id,
+                    'item_guid' => $item_guid,
+                    'item_permalink' => $item_permalink,
+                    'item_title' => $item_title,
+                    'post_id' => 0,
+                    'item_hash' => $item_hash,
+                    'created_at' => current_time('mysql'),
+                ),
+                array('%d', '%s', '%s', '%s', '%d', '%s', '%s')
+            );
+
+            if ($result !== false) {
+                return true;
+            }
+
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM " . self::$table_items . " WHERE generator_id = %d AND item_guid = %s LIMIT 1",
+                $generator_id,
+                $item_guid
+            ));
+
+            return empty($existing);
+        }
+
+        public static function delete_item_processed_by_post_id($post_id)
+        {
+            global $wpdb;
+            $post_id = intval($post_id);
+            if ($post_id <= 0) {
+                return 0;
+            }
+
+            return $wpdb->delete(self::$table_items, array('post_id' => $post_id), array('%d'));
+        }
+
+        public static function delete_item_processed_by_guid($generator_id, $item_guid)
+        {
+            global $wpdb;
+            $generator_id = intval($generator_id);
+            $item_guid = trim((string) $item_guid);
+            if ($generator_id <= 0 || $item_guid === '') {
+                return 0;
+            }
+
+            return $wpdb->delete(
+                self::$table_items,
+                array(
+                    'generator_id' => $generator_id,
+                    'item_guid' => $item_guid,
+                ),
+                array('%d', '%s')
+            );
+        }
+
+        public function handle_generated_post_deleted($post_id)
+        {
+            $post_id = intval($post_id);
+            if ($post_id <= 0) {
+                return;
+            }
+
+            if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
+                return;
+            }
+
+            $generator_id = intval(get_post_meta($post_id, '_arc_generator_id', true));
+            if ($generator_id <= 0) {
+                return;
+            }
+
+            self::delete_item_processed_by_post_id($post_id);
         }
 
         public static function parse_time_to_seconds($time_string)
@@ -5770,7 +6377,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     $content_image_size,
                     !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
                     $use_source_content_images,
-                    $use_source_content_links,
+                    false,
                     $generator,
                     array(
                         'post_id' => intval($post_id),
@@ -5935,10 +6542,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'dalle_enabled' => $use_dalle ? 1 : 0,
                 ));
             } else {
-                // Fonte já inserida com sucesso; não faz fallback.
+                // Fonte jÃ¡ inserida com sucesso; nÃ£o faz fallback.
             }
             if ($treat_like_rss && $use_source_video) {
-                self::insert_run_log($generator['id'], 'info', 'Checagem de vídeo da fonte', array(
+                self::insert_run_log($generator['id'], 'info', 'Checagem de vÃ­deo da fonte', array(
                     'request' => array(
                         'post_id' => $post_id,
                         'item_guid' => $item['guid'],
@@ -6004,7 +6611,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'request' => array('manual' => $manual),
                 ));
                 self::update_next_run_after_attempt($generator);
-                return new WP_Error('arc_missing_list', 'Este gerador não possui uma lista vinculada.');
+                return new WP_Error('arc_missing_list', 'Este gerador nÃ£o possui uma lista vinculada.');
             }
 
             $list = self::get_keyword_list($list_id);
@@ -6013,7 +6620,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'request' => array('manual' => $manual, 'list_id' => $list_id),
                 ));
                 self::update_next_run_after_attempt($generator);
-                return new WP_Error('arc_missing_list', 'Lista vinculada não encontrada.');
+                return new WP_Error('arc_missing_list', 'Lista vinculada nÃ£o encontrada.');
             }
 
             $filters = array();
@@ -6098,8 +6705,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         array('%s', '%s'),
                         array('%d')
                     );
+                    if (!self::claim_item_processing_slot($generator['id'], $selected_item)) {
+                        $skipped++;
+                        continue;
+                    }
+
                     $result = self::create_post_from_generator_item($generator, $selected_item);
                     if (is_wp_error($result)) {
+                        self::delete_item_processed_by_guid($generator['id'], $selected_item['guid']);
                         $failed++;
                         $wpdb->update(
                             $tables['rows'],
@@ -6192,8 +6805,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
+                if (!self::claim_item_processing_slot($generator['id'], $item)) {
+                    $skipped++;
+                    continue;
+                }
+
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
+                    self::delete_item_processed_by_guid($generator['id'], $item['guid']);
                     $failed++;
                     self::insert_run_log($generator['id'], 'error', $result->get_error_message(), array(
                         'request' => array('guid' => $item['guid']),
@@ -6204,7 +6823,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $created++;
             }
 
-            $message = sprintf('Criados %d post(s), ignorados %d item(s) já processados, falharam %d item(s).', $created, $skipped, $failed);
+            $message = sprintf('Criados %d post(s), ignorados %d item(s) jÃ¡ processados, falharam %d item(s).', $created, $skipped, $failed);
             self::insert_run_log($generator['id'], 'success', $message, array(
                 'request' => array('manual' => $manual),
                 'response' => array('created' => $created, 'skipped' => $skipped, 'failed' => $failed),
@@ -6285,6 +6904,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'content_image_size' => $payload['content_image_size'],
                 'source_link_phrases' => $payload['source_link_phrases'],
                 'source_context_filters_json' => $payload['source_context_filters_json'],
+                'prompt_model_key' => $payload['prompt_model_key'],
+                'prompt_models_json' => $payload['prompt_models_json'],
                 'outline_model_key' => $payload['outline_model_key'],
                 'seo_enabled' => $payload['seo_enabled'],
                 'generation_language' => $payload['generation_language'],
@@ -6334,7 +6955,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $generator = self::get_generator($id);
             if (!$generator) {
-                return new WP_Error('arc_missing_generator', 'Gerador não encontrado.');
+                return new WP_Error('arc_missing_generator', 'Gerador nÃ£o encontrado.');
             }
 
             $duplicated_list_id = !empty($generator['list_id']) ? intval($generator['list_id']) : 0;
@@ -6390,8 +7011,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'source_context_keep_unrated' => isset($generator['source_context_keep_unrated']) ? $generator['source_context_keep_unrated'] : '0',
                 'seo_enabled' => $generator['seo_enabled'],
                 'generation_language' => $generator['generation_language'],
+                'prompt_model_key' => isset($generator['prompt_model_key']) ? $generator['prompt_model_key'] : '',
                 'prompt_template' => $generator['prompt_template'],
                 'content_prompt_template' => isset($generator['content_prompt_template']) ? $generator['content_prompt_template'] : '',
+                'prompt_models_json' => isset($generator['prompt_models_json']) ? $generator['prompt_models_json'] : wp_json_encode(self::get_default_prompt_models()),
                 'outline_model_key' => isset($generator['outline_model_key']) ? $generator['outline_model_key'] : self::get_default_outline_model_key(),
                 'related_posts_enabled' => isset($generator['related_posts_enabled']) ? $generator['related_posts_enabled'] : 0,
                 'related_posts_position' => isset($generator['related_posts_position']) ? $generator['related_posts_position'] : 'end',
@@ -6413,12 +7036,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $list_id = intval($list_id);
             if ($list_id <= 0) {
-                return new WP_Error('arc_keyword_list_invalid', 'Lista inválida.');
+                return new WP_Error('arc_keyword_list_invalid', 'Lista invÃ¡lida.');
             }
 
             $source_list = self::get_keyword_list($list_id);
             if (!$source_list) {
-                return new WP_Error('arc_keyword_list_missing', 'Lista não encontrada.');
+                return new WP_Error('arc_keyword_list_missing', 'Lista nÃ£o encontrada.');
             }
 
             $tables = self::bulk_tables();
@@ -6550,7 +7173,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $generator = self::get_generator($id);
             if (!$generator) {
-                return new WP_Error('arc_missing_generator', 'Gerador não encontrado.');
+                return new WP_Error('arc_missing_generator', 'Gerador nÃ£o encontrado.');
             }
 
             return array(
@@ -6563,7 +7186,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function import_generators_from_payload($payload)
         {
             if (!is_array($payload)) {
-                return new WP_Error('arc_invalid_import_payload', 'Payload inválido.');
+                return new WP_Error('arc_invalid_import_payload', 'Payload invÃ¡lido.');
             }
 
             $generators = array();
@@ -6655,7 +7278,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             check_admin_referer('arc_duplicate_generator', 'arc_duplicate_nonce');
             $id = isset($_POST['generator_id']) ? intval($_POST['generator_id']) : 0;
-            $result = $id > 0 ? self::duplicate_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador inválido.');
+            $result = $id > 0 ? self::duplicate_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador invÃ¡lido.');
             if (is_wp_error($result)) {
                 self::redirect_with_notice($result->get_error_message(), 'error');
             }
@@ -6670,7 +7293,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             check_admin_referer('arc_export_generator', 'arc_export_generator_nonce');
 
             $id = isset($_POST['generator_id']) ? intval($_POST['generator_id']) : 0;
-            $result = $id > 0 ? self::export_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador inválido.');
+            $result = $id > 0 ? self::export_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador invÃ¡lido.');
             if (is_wp_error($result)) {
                 self::redirect_with_notice($result->get_error_message(), 'error');
             }
@@ -6735,7 +7358,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 self::redirect_with_notice('Falha no upload do arquivo JSON.', 'error');
             }
             if (empty($uploaded_file['tmp_name']) || !is_uploaded_file($uploaded_file['tmp_name'])) {
-                self::redirect_with_notice('Arquivo JSON inválido.', 'error');
+                self::redirect_with_notice('Arquivo JSON invÃ¡lido.', 'error');
             }
 
             $json = '';
@@ -6747,12 +7370,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $json = trim($json);
 
             if ($json === '') {
-                self::redirect_with_notice('O arquivo JSON está vazio.', 'error');
+                self::redirect_with_notice('O arquivo JSON estÃ¡ vazio.', 'error');
             }
 
             $decoded = json_decode($json, true);
             if (!is_array($decoded) || json_last_error() !== JSON_ERROR_NONE) {
-                self::redirect_with_notice('JSON inválido.', 'error');
+                self::redirect_with_notice('JSON invÃ¡lido.', 'error');
             }
 
             $result = self::import_generators_from_payload($decoded);
@@ -6873,7 +7496,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (empty($parts)) {
                 return '';
             }
-            return implode(' Â· ', array_slice($parts, 0, 4));
+            return implode(' · ', array_slice($parts, 0, 4));
         }
 
         public static function get_recent_runs($limit = 30)

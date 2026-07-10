@@ -511,9 +511,17 @@ class Alpha_RSS_AI_Generator_REST
             !empty($temp_generator['link_selector_class']) ? sanitize_text_field((string) $temp_generator['link_selector_class']) : ''
         );
 
+        if (!Alpha_RSS_AI_Generator::claim_item_processing_slot($temp_generator['id'], $selected_item)) {
+            return new WP_REST_Response(array(
+                'success' => false,
+                'message' => 'Item já estava em processamento.',
+            ), 409);
+        }
+
         try {
             $result = Alpha_RSS_AI_Generator::create_post_from_generator_item($temp_generator, $selected_item);
             if (is_wp_error($result)) {
+                Alpha_RSS_AI_Generator::delete_item_processed_by_guid($temp_generator['id'], $selected_item['guid']);
                 $wpdb->update(
                     $tables['rows'],
                     array(

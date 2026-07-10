@@ -13,6 +13,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
         {
             add_action('admin_menu', array($this, 'admin_menu'), 21);
             add_action('admin_post_arc_regenerate_generated_post', array($this, 'handle_regenerate_post'));
+            add_action('admin_post_arc_delete_generated_post', array($this, 'handle_delete_post'));
         }
 
         public function admin_menu()
@@ -532,7 +533,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     $content_image_size,
                     !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
                     Alpha_RSS_AI_Generator::generator_uses_source_content_images($generator),
-                    Alpha_RSS_AI_Generator::generator_uses_source_content_links($generator),
+                    false,
                     $generator,
                     array(
                         'post_id' => intval($post_id),
@@ -582,6 +583,30 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $this->redirect_with_notice('Post regenerado com sucesso.', 'success', array(
                 'arc_notice_link' => $view_link ? $view_link : $edit_link,
             ));
+        }
+
+        public function handle_delete_post()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_die('Acesso negado.');
+            }
+
+            check_admin_referer('arc_delete_generated_post', 'arc_delete_generated_post_nonce');
+
+            $post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+            if ($post_id <= 0) {
+                $this->redirect_with_notice('Post invalido.', 'error');
+            }
+
+            if (!get_post($post_id)) {
+                $this->redirect_with_notice('Post nao encontrado.', 'error');
+            }
+
+            if (!wp_trash_post($post_id)) {
+                $this->redirect_with_notice('Nao foi possivel excluir o post.', 'error');
+            }
+
+            $this->redirect_with_notice('Post enviado para a lixeira.', 'success');
         }
 
         private function redirect_with_notice($message, $type = 'success', $extra = array())
@@ -666,8 +691,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                         <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
-                        <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Posts gerados</h1>
-                        <p class="mt-2 max-w-3xl text-sm text-slate-600">Veja tudo que o plugin já publicou ou salvou e use <strong>Regerar</strong> para rodar o mesmo post com o prompt atual do gerador. O slug atual do post e mantido.</p>
+                        <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-950 lg:text-[2.15rem]">Posts gerados</h1>
+                        <p class="mt-2 max-w-3xl text-[13px] leading-5 text-slate-600">Veja tudo que o plugin já publicou ou salvou e use a regeneração para rodar o mesmo post com o prompt atual do gerador. O slug atual do post é mantido.</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                         <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Ir para geradores</a>
@@ -680,11 +705,11 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     <form method="get" action="<?php echo esc_url(admin_url('admin.php')); ?>" class="grid gap-4 px-6 py-5 lg:grid-cols-12">
                         <input type="hidden" name="page" value="<?php echo esc_attr(self::PAGE_SLUG); ?>" />
                         <div class="lg:col-span-5">
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Buscar</label>
+                            <label class="mb-1 block text-[13px] font-medium text-slate-700">Buscar</label>
                             <input type="text" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Título, conteúdo ou origem" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                         </div>
                         <div class="lg:col-span-4">
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Filtrar por gerador</label>
+                            <label class="mb-1 block text-[13px] font-medium text-slate-700">Filtrar por gerador</label>
                             <select name="generator_id" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                 <option value="0"<?php selected($generator_id <= 0); ?>>Todos os geradores</option>
                                 <?php foreach ($generators as $generator): ?>
@@ -702,8 +727,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
                     <div class="flex flex-col gap-3 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                            <h2 class="text-lg font-semibold text-slate-950">Lista de posts</h2>
-                            <p class="mt-1 text-sm text-slate-500">
+                            <h2 class="text-base font-semibold text-slate-950">Lista de posts</h2>
+                            <p class="mt-1 text-[13px] text-slate-500">
                                 <?php if ($selected_generator_name !== ''): ?>
                                     Mostrando posts do gerador <strong><?php echo esc_html($selected_generator_name); ?></strong>.
                                 <?php else: ?>
@@ -711,7 +736,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                 <?php endif; ?>
                             </p>
                         </div>
-                        <div class="rounded-xl bg-slate-50 px-4 py-2 text-sm text-slate-600">
+                        <div class="rounded-xl bg-slate-50 px-4 py-2 text-[13px] text-slate-600">
                             <?php echo esc_html(number_format_i18n($total_items)); ?> post(s)
                         </div>
                     </div>
@@ -719,7 +744,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200">
                             <thead class="bg-slate-50">
-                                <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                <tr class="text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                                     <th class="px-6 py-3">Post</th>
                                     <th class="px-6 py-3">Gerador</th>
                                     <th class="px-6 py-3">Origem</th>
@@ -750,47 +775,72 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                         ?>
                                         <tr class="align-top">
                                             <td class="px-6 py-4">
-                                                <div class="font-semibold text-slate-950"><?php echo esc_html(get_the_title($post_id)); ?></div>
-                                                <div class="mt-1 text-xs text-slate-500">#<?php echo esc_html($post_id); ?> · <?php echo esc_html(get_post_type($post_id)); ?></div>
+                                                <div class="text-sm font-semibold leading-5 text-slate-950"><?php echo esc_html(get_the_title($post_id)); ?></div>
+                                                <div class="mt-1 text-[11px] text-slate-500">#<?php echo esc_html($post_id); ?> · <?php echo esc_html(get_post_type($post_id)); ?></div>
                                             </td>
                                             <td class="px-6 py-4">
-                                                <div class="font-medium text-slate-700"><?php echo esc_html($generator_name !== '' ? $generator_name : ('Gerador #' . $generator_id_row)); ?></div>
-                                                <div class="mt-1 text-xs text-slate-500"><?php echo esc_html($source_type !== '' ? $source_type : '-'); ?></div>
+                                                <div class="text-sm font-medium leading-5 text-slate-700"><?php echo esc_html($generator_name !== '' ? $generator_name : ('Gerador #' . $generator_id_row)); ?></div>
+                                                <div class="mt-1 text-[11px] text-slate-500"><?php echo esc_html($source_type !== '' ? $source_type : '-'); ?></div>
                                             </td>
                                             <td class="px-6 py-4">
                                                 <?php if ($source_external_link !== ''): ?>
-                                                    <a href="<?php echo esc_url($source_external_link); ?>" target="_blank" rel="noopener noreferrer" class="block max-w-md text-sm font-medium text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-600">
+                                                    <a href="<?php echo esc_url($source_external_link); ?>" target="_blank" rel="noopener noreferrer" class="block max-w-md text-sm font-medium leading-5 text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-600">
                                                         <?php echo esc_html(self::truncate_text($source_label !== '' ? $source_label : '-', 120)); ?>
                                                     </a>
-                                                    <a href="<?php echo esc_url($source_external_link); ?>" target="_blank" rel="noopener noreferrer" class="mt-1 block max-w-md break-all text-xs text-slate-500 hover:text-slate-700">
+                                                    <a href="<?php echo esc_url($source_external_link); ?>" target="_blank" rel="noopener noreferrer" class="mt-1 block max-w-md break-all text-[11px] leading-4 text-slate-500 hover:text-slate-700">
                                                         <?php echo esc_html(self::truncate_text($source_external_link, 140)); ?>
                                                     </a>
                                                 <?php else: ?>
-                                                    <div class="max-w-md text-sm text-slate-700"><?php echo esc_html(self::truncate_text($source_label !== '' ? $source_label : '-', 120)); ?></div>
+                                                    <div class="max-w-md text-sm leading-5 text-slate-700"><?php echo esc_html(self::truncate_text($source_label !== '' ? $source_label : '-', 120)); ?></div>
                                                 <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4">
                                                 <?php echo wp_kses_post(self::render_post_status_badge(get_post_status($post_id))); ?>
                                             </td>
-                                            <td class="px-6 py-4 text-sm text-slate-600"><?php echo esc_html(get_the_date('Y-m-d H:i', $post_id)); ?></td>
-                                            <td class="px-6 py-4">
-                                                <div class="flex flex-wrap gap-2">
+                                            <td class="px-6 py-4 text-[13px] leading-5 text-slate-600"><?php echo esc_html(get_the_date('Y-m-d H:i', $post_id)); ?></td>
+                                            <td class="whitespace-nowrap px-6 py-4">
+                                                <div class="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                                                     <?php if ($view_link !== ''): ?>
-                                                        <a href="<?php echo esc_url($view_link); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Visualizar</a>
+                                                        <a href="<?php echo esc_url($view_link); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Visualizar" title="Visualizar">
+                                                            <span class="dashicons dashicons-visibility text-[16px] leading-none"></span>
+                                                            <span class="sr-only">Visualizar</span>
+                                                        </a>
                                                     <?php endif; ?>
                                                     <?php if ($edit_link !== ''): ?>
-                                                        <a href="<?php echo esc_url($edit_link); ?>" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Editar</a>
+                                                        <a href="<?php echo esc_url($edit_link); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Editar" title="Editar">
+                                                            <span class="dashicons dashicons-edit text-[16px] leading-none"></span>
+                                                            <span class="sr-only">Editar</span>
+                                                        </a>
                                                     <?php endif; ?>
                                                     <?php if ($can_regenerate): ?>
-                                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-swal-confirm="Regerar este post com o prompt atual do gerador?">
+                                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="m-0 inline-flex shrink-0" data-swal-confirm="Regerar este post com o prompt atual do gerador?">
                                                             <?php wp_nonce_field('arc_regenerate_generated_post', 'arc_regenerate_nonce'); ?>
                                                             <input type="hidden" name="action" value="arc_regenerate_generated_post" />
                                                             <input type="hidden" name="post_id" value="<?php echo esc_attr($post_id); ?>" />
-                                                            <button type="submit" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Regerar</button>
+                                                            <button type="submit" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-indigo-600 shadow-sm transition hover:bg-slate-50 hover:text-indigo-700" aria-label="Regerar" title="Regerar">
+                                                                <span class="dashicons dashicons-update text-[16px] leading-none"></span>
+                                                                <span class="sr-only">Regerar</span>
+                                                            </button>
                                                         </form>
                                                     <?php else: ?>
-                                                        <span class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-400" title="Nao foi possivel identificar o gerador original">Regerar indisponivel</span>
+                                                        <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400 shadow-sm" title="Nao foi possivel identificar o gerador original" aria-label="Regerar indisponivel">
+                                                            <span class="dashicons dashicons-update text-[16px] leading-none"></span>
+                                                            <span class="sr-only">Regerar indisponivel</span>
+                                                        </span>
                                                     <?php endif; ?>
+                                                    <a href="<?php echo esc_url(add_query_arg(array('page' => 'alpha-rss-ai-content-plans', 'post_id' => $post_id), admin_url('admin.php'))); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Planejar" title="Planejar">
+                                                        <span class="dashicons dashicons-clipboard text-[16px] leading-none"></span>
+                                                        <span class="sr-only">Planejar</span>
+                                                    </a>
+                                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="m-0 inline-flex shrink-0" data-swal-confirm="Excluir este post gerado?">
+                                                        <?php wp_nonce_field('arc_delete_generated_post', 'arc_delete_generated_post_nonce'); ?>
+                                                        <input type="hidden" name="action" value="arc_delete_generated_post" />
+                                                        <input type="hidden" name="post_id" value="<?php echo esc_attr($post_id); ?>" />
+                                                        <button type="submit" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-700" aria-label="Excluir" title="Excluir">
+                                                            <span class="dashicons dashicons-trash text-[16px] leading-none"></span>
+                                                            <span class="sr-only">Excluir</span>
+                                                        </button>
+                                                    </form>
                                                 </div>
                                             </td>
                                         </tr>

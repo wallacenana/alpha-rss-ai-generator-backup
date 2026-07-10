@@ -444,7 +444,7 @@
 
     function submitManualRunItem(itemGuid) {
         var generatorId = String(manualRunCurrentGeneratorId || '');
-        if (!generatorId || !itemGuid || manualRunGenerating) {
+        if (!generatorId || !itemGuid || manualRunGenerating || window.AlphaRssAiGeneratorManualRunInFlight) {
             return;
         }
         if (!apiBase) {
@@ -453,6 +453,7 @@
         }
 
         manualRunGenerating = true;
+        window.AlphaRssAiGeneratorManualRunInFlight = true;
         setManualRunStatus('Gerando item selecionado...', 'warning');
         showSwalLoading('Gerando item...', 'Aguarde enquanto o post e criado.');
 
@@ -519,6 +520,7 @@
             showSwalError(error.message || 'Falha ao gerar o item.', 'Erro');
         }).finally(function () {
             manualRunGenerating = false;
+            window.AlphaRssAiGeneratorManualRunInFlight = false;
             if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
                 manualRunGenerationRequest.abort();
             }
