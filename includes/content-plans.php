@@ -662,8 +662,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             foreach ($satellites as $satellite) {
                 $normalized_satellite = self::normalize_satellite_item($satellite, isset($satellite['index']) ? intval($satellite['index']) : (count($generated_posts) + 1));
                 $item = self::build_satellite_generation_item($context, $plan, $normalized_satellite);
+                if (!Alpha_RSS_AI_Generator::claim_item_processing_slot($satellite_generator['id'], $item)) {
+                    $errors[] = 'Item já estava em processamento.';
+                    continue;
+                }
                 $post_result = Alpha_RSS_AI_Generator::create_post_from_generator_item($satellite_generator, $item);
                 if (is_wp_error($post_result)) {
+                    Alpha_RSS_AI_Generator::delete_item_processed_by_guid($satellite_generator['id'], $item['guid']);
                     $errors[] = $post_result->get_error_message();
                     continue;
                 }
