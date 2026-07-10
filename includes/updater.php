@@ -84,6 +84,10 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
                 return array();
             }
 
+            if (isset($_GET['force-check']) && $_GET['force-check'] !== '') {
+                $force = true;
+            }
+
             $manifest_url = $this->get_manifest_url();
             if ($manifest_url === '') {
                 return array();
@@ -103,6 +107,8 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
                 'user-agent' => 'Alpha-RSS-AI-Generator/' . (class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::VERSION : '1.0.0') . '; ' . home_url('/'),
                 'headers' => array(
                     'Accept' => 'application/json',
+                    'Cache-Control' => 'no-cache, no-store, max-age=0',
+                    'Pragma' => 'no-cache',
                 ),
             ));
 
@@ -125,7 +131,7 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
             }
 
             $manifest = $this->normalize_manifest($decoded);
-            set_transient($cache_key, $manifest, 6 * HOUR_IN_SECONDS);
+            set_transient($cache_key, $manifest, MINUTE_IN_SECONDS);
             return $manifest;
         }
 
