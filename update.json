@@ -5,7 +5,7 @@
   "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
-  "tested": "7.0",
+  "tested": "7.0.1",
   "requires_php": "7.4",
   "author": "Wallace Tavares e Codex",
   "author_url": "https://github.com/wallacenana",
