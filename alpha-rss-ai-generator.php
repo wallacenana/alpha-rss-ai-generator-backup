@@ -21,7 +21,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.10');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
