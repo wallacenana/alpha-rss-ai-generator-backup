@@ -9,10 +9,10 @@
   "requires_php": "7.4",
   "author": "Wallace Tavares e Codex",
   "author_url": "https://github.com/wallacenana",
-  "last_updated": "2026-07-09",
+  "last_updated": "2026-07-10",
   "sections": {
     "description": "Atualização via GitHub para o plugin Alpha RSS AI Generator.",
-    "changelog": "<ul><li>Melhorias no fluxo de importação e atualização.</li><li>Correções de interface e regeneração.</li></ul>",
+    "changelog": "<ul><li>Alinhamento da release 1.8.8 com o plugin principal.</li><li>Correções de fluxo, mídia e atualização.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote é distribuído a partir do branch main do repositório.",
     "screenshots": ""
