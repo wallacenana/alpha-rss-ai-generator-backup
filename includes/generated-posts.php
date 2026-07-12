@@ -482,6 +482,12 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             if ($excerpt === '' && !empty($post->post_excerpt)) {
                 $excerpt = (string) $post->post_excerpt;
             }
+            if ($excerpt === '' && !empty($article['meta_description'])) {
+                $excerpt = (string) $article['meta_description'];
+            }
+            if ($excerpt === '' && !empty($content_html)) {
+                $excerpt = wp_trim_words(wp_strip_all_tags((string) $content_html), 28);
+            }
 
             $use_source_video = !empty($generator['source_video_enabled']);
             $source_video_embed_html = '';
@@ -541,6 +547,28 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     ),
                     $existing_image_map
                 );
+            }
+
+            $internal_link_rules = array();
+            if (!empty($generator['internal_links_json'])) {
+                $internal_link_rules = Alpha_RSS_AI_Generator_Helper::parse_internal_link_rules($generator['internal_links_json']);
+            }
+            $auto_internal_links_count = isset($generator['internal_links_count']) ? intval($generator['internal_links_count']) : 0;
+            if ($auto_internal_links_count <= 0 && empty($internal_link_rules) && in_array($source_type, array('rss', 'keyword_list'), true)) {
+                $auto_internal_links_count = 5;
+            }
+            if (empty($internal_link_rules) && $auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
+                $auto_link_result = Alpha_RSS_AI_Link_Suggestions::generate_and_apply_link_suggestions_to_post(
+                    $post_id,
+                    $generator,
+                    $auto_internal_links_count,
+                    '',
+                    $content_html
+                );
+                if (is_array($auto_link_result) && !empty($auto_link_result['content_html'])) {
+                    $content_html = (string) $auto_link_result['content_html'];
+                    $article['content_html'] = $content_html;
+                }
             }
 
             $update_result = wp_update_post(array(
@@ -828,9 +856,9 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                             <span class="sr-only">Regerar indisponivel</span>
                                                         </span>
                                                     <?php endif; ?>
-                                                    <a href="<?php echo esc_url(add_query_arg(array('page' => 'alpha-rss-ai-content-plans', 'post_id' => $post_id), admin_url('admin.php'))); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Planejar" title="Planejar">
-                                                        <span class="dashicons dashicons-clipboard text-[16px] leading-none"></span>
-                                                        <span class="sr-only">Planejar</span>
+                                                    <a href="<?php echo esc_url(add_query_arg(array('page' => 'alpha-rss-ai-link-suggestions', 'post_id' => $post_id), admin_url('admin.php'))); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Lincagem automática" title="Lincagem automática">
+                                                        <span class="dashicons dashicons-admin-links text-[16px] leading-none"></span>
+                                                        <span class="sr-only">Lincagem automática</span>
                                                     </a>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="m-0 inline-flex shrink-0" data-swal-confirm="Excluir este post gerado?">
                                                         <?php wp_nonce_field('arc_delete_generated_post', 'arc_delete_generated_post_nonce'); ?>

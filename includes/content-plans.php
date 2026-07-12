@@ -14,10 +14,17 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         private const META_PLAN_PILLAR_POST_ID = '_arc_content_plan_pillar_post_id';
         private const META_PLAN_SATELLITE_COUNT = '_arc_content_plan_satellite_count';
         private const META_PLAN_CONTENT_MODEL_TYPE = '_arc_content_plan_content_model_type';
+        private const META_PLAN_PROMPT_MODEL_KEY = '_arc_content_plan_prompt_model_key';
+        private const META_PLAN_OUTLINE_MODEL_KEY = '_arc_content_plan_outline_model_key';
+        private const META_PLAN_PLANNING_NICHE = '_arc_content_plan_planning_niche';
+        private const META_PLAN_PLANNING_CUSTOM_PROMPT = '_arc_content_plan_planning_custom_prompt';
+        private const MAX_PLANNING_SOURCE_WORDS = 1000;
 
         public function __construct()
         {
             add_action('admin_menu', array($this, 'admin_menu'), 22);
+            add_action('admin_init', array($this, 'register_row_action_filters'));
+            add_action('wp_ajax_arc_content_plan_search_posts', array($this, 'ajax_search_posts'));
             add_action('admin_post_arc_generate_content_plan', array($this, 'handle_generate_plan'));
             add_action('admin_post_arc_generate_content_satellites', array($this, 'handle_generate_satellites'));
             add_action('admin_post_arc_clear_content_plan', array($this, 'handle_clear_plan'));
@@ -25,14 +32,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
         public function admin_menu()
         {
-            add_submenu_page(
-                'alpha-rss-ai-generator',
-                'Planejamento de conteúdos',
-                'Planejamento de conteúdos',
-                'manage_options',
-                self::PAGE_SLUG,
-                array($this, 'render_page')
-            );
+            return;
         }
 
         private static function get_request_param($key, $default = '')
@@ -106,6 +106,223 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             return $filtered;
         }
 
+        private static function build_plan_url($post_id)
+        {
+            $post_id = intval($post_id);
+            if ($post_id <= 0) {
+                return '';
+            }
+
+            return add_query_arg(array(
+                'page' => self::PAGE_SLUG,
+                'post_id' => $post_id,
+            ), admin_url('admin.php'));
+        }
+
+        public function register_row_action_filters()
+        {
+            return;
+        }
+
+        public function add_plan_row_action($actions, $post)
+        {
+            if (!$post instanceof WP_Post || !current_user_can('manage_options')) {
+                return $actions;
+            }
+
+            $plan_url = self::build_plan_url($post->ID);
+            if ($plan_url === '') {
+                return $actions;
+            }
+
+            $actions['alpha_rss_ai_plan'] = '<a href="' . esc_url($plan_url) . '" aria-label="Lincagem automática" title="Lincagem automática">Lincagem automática</a>';
+            return $actions;
+        }
+
+        private static function build_picker_post_item($post)
+        {
+            if (!$post instanceof WP_Post) {
+                return array();
+            }
+
+            $generator_id = intval(get_post_meta($post->ID, '_arc_generator_id', true));
+            $generator_name = '';
+            if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
+                $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
+                if (!empty($generator['name'])) {
+                    $generator_name = (string) $generator['name'];
+                }
+            }
+
+            $title = self::normalize_plain_text(get_the_title($post));
+            $label = $title;
+            if ($generator_name !== '') {
+                $label .= ' - ' . $generator_name;
+            }
+
+            return array(
+                'id' => intval($post->ID),
+                'title' => $title,
+                'label' => $label,
+                'url' => get_permalink($post),
+                'post_type' => get_post_type($post),
+                'generator_name' => $generator_name,
+            );
+        }
+
+        private static function query_picker_posts($search = '', $page = 1, $per_page = 10)
+        {
+            $search = self::normalize_plain_text($search);
+            $page = max(1, intval($page));
+            $per_page = max(1, min(20, intval($per_page)));
+            $chunk_size = max($per_page * 4, 20);
+
+            $query_args = array(
+                'post_type' => 'any',
+                'post_status' => array('publish', 'draft', 'pending', 'private', 'future'),
+                'posts_per_page' => $chunk_size,
+                'offset' => ($page - 1) * $chunk_size,
+                'orderby' => 'date',
+                'order' => 'DESC',
+                'meta_query' => array(
+                    array(
+                        'key' => '_arc_generator_id',
+                        'compare' => 'EXISTS',
+                    ),
+                ),
+            );
+
+            if ($search !== '') {
+                $query_args['s'] = $search;
+            }
+
+            $posts = get_posts($query_args);
+            if (empty($posts) || !is_array($posts)) {
+                return array(
+                    'items' => array(),
+                    'has_more' => false,
+                );
+            }
+
+            $items = array();
+            foreach ($posts as $post) {
+                if (!$post instanceof WP_Post) {
+                    continue;
+                }
+
+                $stored_content_model_type = (string) get_post_meta($post->ID, '_arc_content_model_type', true);
+                if ($stored_content_model_type === '') {
+                    $has_satellite_plan_marker = get_post_meta($post->ID, '_arc_content_plan_satellite_index', true) !== '';
+                    $stored_content_model_type = $has_satellite_plan_marker ? 'satellite' : 'pillar';
+                }
+                if (class_exists('Alpha_RSS_AI_Generator')) {
+                    $stored_content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($stored_content_model_type);
+                }
+                if ($stored_content_model_type !== 'pillar') {
+                    continue;
+                }
+
+                $items[] = self::build_picker_post_item($post);
+                if (count($items) >= $per_page) {
+                    break;
+                }
+            }
+
+            return array(
+                'items' => $items,
+                'has_more' => count($posts) >= $chunk_size,
+            );
+        }
+
+        public function ajax_search_posts()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_send_json_error(array('message' => 'Permissao negada.'), 403);
+            }
+
+            check_ajax_referer('arc_content_plan_posts_search', 'nonce');
+
+            $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
+            $page = isset($_POST['page']) ? intval($_POST['page']) : 1;
+            $per_page = isset($_POST['per_page']) ? intval($_POST['per_page']) : 10;
+
+            $result = self::query_picker_posts($search, $page, $per_page);
+            wp_send_json_success($result);
+        }
+
+        private static function limit_plain_text_words($text, $max_words = self::MAX_PLANNING_SOURCE_WORDS)
+        {
+            $text = self::normalize_plain_text($text);
+            $max_words = max(1, intval($max_words));
+            if ($text === '') {
+                return '';
+            }
+
+            if (function_exists('wp_trim_words')) {
+                return trim((string) wp_trim_words($text, $max_words));
+            }
+
+            $parts = preg_split('/\s+/', $text);
+            if (!is_array($parts) || empty($parts)) {
+                return $text;
+            }
+
+            return trim(implode(' ', array_slice($parts, 0, $max_words)));
+        }
+
+        private static function limit_item_for_planning($item, $max_words = self::MAX_PLANNING_SOURCE_WORDS)
+        {
+            $item = is_array($item) ? $item : array();
+            $max_words = max(1, intval($max_words));
+
+            foreach (array('excerpt', 'content', 'source_page_excerpt', 'source_page_content', 'source_page_outline') as $key) {
+                if (!empty($item[$key])) {
+                    $item[$key] = self::limit_plain_text_words((string) $item[$key], $max_words);
+                }
+            }
+
+            return $item;
+        }
+
+        private static function build_default_generator_context($post_id = 0)
+        {
+            $post_id = max(0, intval($post_id));
+            $synthetic_generator_id = $post_id > 0 ? (100000000 + $post_id) : 0;
+            return array(
+                'id' => $synthetic_generator_id,
+                'name' => $post_id > 0 ? 'Lincagem manual' : get_bloginfo('name'),
+                'source_type' => 'post',
+                'generation_language' => class_exists('Alpha_RSS_AI_Generator')
+                    ? Alpha_RSS_AI_Generator::get_default_generation_language()
+                    : get_bloginfo('language'),
+                'content_length_class' => class_exists('Alpha_RSS_AI_Generator')
+                    ? Alpha_RSS_AI_Generator::get_default_content_length_class()
+                    : 'medium',
+                'prompt_model_key' => '',
+                'outline_model_key' => '',
+                'prompt_models' => class_exists('Alpha_RSS_AI_Generator')
+                    ? Alpha_RSS_AI_Generator::get_default_prompt_models()
+                    : array(),
+                'prompt_models_json' => class_exists('Alpha_RSS_AI_Generator')
+                    ? wp_json_encode(Alpha_RSS_AI_Generator::get_default_prompt_models(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : '',
+                'seo_enabled' => 1,
+                'post_type' => 'post',
+                'post_status' => 'draft',
+            );
+        }
+
+        private static function lift_execution_time_limit($seconds = 300)
+        {
+            $seconds = max(30, intval($seconds));
+            if (function_exists('set_time_limit')) {
+                @set_time_limit($seconds);
+            }
+            if (function_exists('ini_set')) {
+                @ini_set('max_execution_time', (string) $seconds);
+            }
+        }
+
         private static function normalize_plain_text($text)
         {
             $text = trim(wp_strip_all_tags((string) $text));
@@ -135,13 +352,12 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
 
             $generator_id = intval(get_post_meta($post_id, '_arc_generator_id', true));
-            if ($generator_id <= 0) {
-                return new WP_Error('arc_content_plan_missing_generator', 'Este post nao possui um gerador vinculado.');
+            $generator = array();
+            if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
+                $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
             }
-
-            $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
-            if (empty($generator)) {
-                return new WP_Error('arc_content_plan_generator_missing', 'Gerador original nao encontrado.');
+            if (empty($generator) || !is_array($generator)) {
+                $generator = self::build_default_generator_context($post_id);
             }
 
             $source_title = (string) get_post_meta($post_id, '_arc_source_title', true);
@@ -155,8 +371,14 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($generator['content_model_type']);
             }
             if ($content_model_type === '') {
-                $content_model_type = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_default_content_model_type() : 'pillar';
+                $content_model_type = 'pillar';
             }
+            $source_url = $source_url !== '' ? $source_url : get_permalink($post_id);
+            $source_page_title = $source_page_title !== '' ? $source_page_title : (string) $post->post_title;
+            $source_page_excerpt = $source_page_excerpt !== '' ? $source_page_excerpt : self::get_post_excerpt_text($post);
+            $source_page_content = $source_page_content !== '' ? $source_page_content : (string) $post->post_content;
+            $source_page_outline = $source_page_outline !== '' ? $source_page_outline : '';
+
             $item = array(
                 'guid' => (string) get_post_meta($post_id, '_arc_source_item_guid', true),
                 'title' => (string) $post->post_title,
@@ -205,6 +427,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $item['source_page_title'] = $item['title'];
             }
 
+            $item = self::limit_item_for_planning($item, self::MAX_PLANNING_SOURCE_WORDS);
+
             return array(
                 'generator' => $generator,
                 'item' => $item,
@@ -217,6 +441,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $satellite = is_array($satellite) ? $satellite : array();
             $title = !empty($satellite['title']) ? sanitize_text_field((string) $satellite['title']) : ('Satélite ' . intval($index));
             $slug = !empty($satellite['slug']) ? sanitize_title((string) $satellite['slug']) : sanitize_title($title);
+            $suggestion = '';
+            foreach (array('suggestion', 'summary', 'brief', 'description') as $key) {
+                if (!empty($satellite[$key])) {
+                    $suggestion = sanitize_textarea_field((string) $satellite[$key]);
+                    break;
+                }
+            }
 
             return array(
                 'index' => intval($index),
@@ -224,9 +455,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'slug' => $slug,
                 'focus_keyword' => !empty($satellite['focus_keyword']) ? sanitize_text_field((string) $satellite['focus_keyword']) : '',
                 'anchor_phrase' => !empty($satellite['anchor_phrase']) ? sanitize_text_field((string) $satellite['anchor_phrase']) : '',
-                'excerpt' => !empty($satellite['excerpt']) ? sanitize_textarea_field((string) $satellite['excerpt']) : '',
-                'brief' => !empty($satellite['brief']) ? sanitize_textarea_field((string) $satellite['brief']) : '',
-                'category_hint' => !empty($satellite['category_hint']) ? sanitize_text_field((string) $satellite['category_hint']) : '',
+                'suggestion' => $suggestion,
+                'content_angle' => !empty($satellite['content_angle']) ? sanitize_text_field((string) $satellite['content_angle']) : '',
                 'reason' => !empty($satellite['reason']) ? sanitize_textarea_field((string) $satellite['reason']) : '',
             );
         }
@@ -237,8 +467,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $normalized = array(
                 'title' => !empty($plan['title']) ? sanitize_text_field((string) $plan['title']) : '',
                 'slug' => !empty($plan['slug']) ? sanitize_title((string) $plan['slug']) : '',
-                'excerpt' => !empty($plan['excerpt']) ? sanitize_textarea_field((string) $plan['excerpt']) : '',
-                'pillar_summary' => !empty($plan['pillar_summary']) ? sanitize_textarea_field((string) $plan['pillar_summary']) : '',
                 'satellites' => array(),
             );
 
@@ -254,59 +482,54 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             return $normalized;
         }
 
-        private static function build_plan_prompt($generator, $item, $satellite_count)
+        private static function build_plan_prompt($generator, $item, $satellite_count, $outline_context = array(), $planning_niche = '', $planning_custom_prompt = '')
         {
             $satellite_count = max(1, intval($satellite_count));
-            $outline_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_base($generator);
+            $outline_context = is_array($outline_context) && !empty($outline_context)
+                ? $outline_context
+                : Alpha_RSS_AI_Generator_Helper::build_outline_context_base($generator);
             $outline_text = !empty($outline_context['outline_model_text']) ? (string) $outline_context['outline_model_text'] : '';
-            $source_context = Alpha_RSS_AI_Generator_Helper::build_source_context_block($generator, $item);
 
             $pillar_title = !empty($item['title']) ? self::normalize_plain_text($item['title']) : '';
             $pillar_url = !empty($item['permalink']) ? esc_url_raw((string) $item['permalink']) : '';
-            $pillar_excerpt = !empty($item['excerpt']) ? self::normalize_plain_text($item['excerpt']) : '';
-            $pillar_content = !empty($item['content']) ? self::normalize_plain_text($item['content']) : '';
+            $pillar_content = !empty($item['content']) ? self::limit_plain_text_words((string) $item['content'], self::MAX_PLANNING_SOURCE_WORDS) : '';
             $pillar_categories = !empty($item['categories']) && is_array($item['categories']) ? implode(', ', array_map('sanitize_text_field', $item['categories'])) : '';
             $pillar_tags = !empty($item['tags']) && is_array($item['tags']) ? implode(', ', array_map('sanitize_text_field', $item['tags'])) : '';
             $generation_language = !empty($generator['generation_language']) ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language']) : Alpha_RSS_AI_Generator::get_default_generation_language();
-            $content_model_type = !empty($item['content_model_type'])
-                ? Alpha_RSS_AI_Generator::normalize_content_model_type($item['content_model_type'])
-                : Alpha_RSS_AI_Generator::get_default_content_model_type();
-            $content_model_label = Alpha_RSS_AI_Generator::get_content_model_label($content_model_type);
+            $available_prompt_models = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_prompt_models($generator) : array();
+            $available_prompt_models_text = array();
+            foreach ($available_prompt_models as $available_prompt_model) {
+                if (!is_array($available_prompt_model)) {
+                    continue;
+                }
+                $available_prompt_models_text[] = Alpha_RSS_AI_Generator::format_prompt_model_for_prompt($available_prompt_model);
+            }
+            $available_prompt_models_text = !empty($available_prompt_models_text) ? implode("\n\n---\n\n", $available_prompt_models_text) : '';
+            $recommended_prompt_model_key = !empty($outline_context['recommended_prompt_model_key']) ? sanitize_key((string) $outline_context['recommended_prompt_model_key']) : '';
+            $recommended_outline_model_key = !empty($outline_context['recommended_outline_model_key']) ? sanitize_key((string) $outline_context['recommended_outline_model_key']) : '';
+            $recommended_prompt_model = !empty($recommended_prompt_model_key) ? Alpha_RSS_AI_Generator::get_prompt_model($recommended_prompt_model_key, $generator) : array();
+            $recommended_prompt_model_name = !empty($recommended_prompt_model['name']) ? (string) $recommended_prompt_model['name'] : '';
+            $planning_niche = self::normalize_plain_text($planning_niche);
+            $planning_custom_prompt = self::normalize_plain_text($planning_custom_prompt);
 
             $lines = array(
-                'Voce e um estrategista editorial e arquiteto de links internos.',
-                'Analise o post pilar abaixo e devolva somente JSON valido.',
-                'Modelo editorial do conteudo: ' . $content_model_label,
-                $content_model_type === 'pillar'
-                    ? 'Trate este projeto como um post pilar: o plano precisa sustentar satelites, ancoras e uma estrutura central robusta.'
-                    : 'Trate este projeto como um post satelite: o plano deve ser mais especifico e pronto para amarrar ao pilar.',
-                'Crie exatamente ' . $satellite_count . ' posts satelites.',
-                'A resposta deve trazer as chaves: title, slug, excerpt, pillar_summary, satellites.',
+                'Voce é um estrategista editorial e arquiteto de links internos.',
+                'Analise o post abaixo e devolva somente JSON valido.',
+                'Escolha ' . $satellite_count . ' frases viaveis para se tornarem kw de um post satelite.',
+                'A resposta deve trazer as chaves: title, slug, satellites.',
                 'satellites deve ser um array com exatamente ' . $satellite_count . ' objetos.',
-                'Cada objeto deve ter: title, slug, focus_keyword, anchor_phrase, excerpt, brief, category_hint, reason.',
+                'Cada objeto deve ter: title, slug, focus_keyword, anchor_phrase, suggestion, content_angle, reason.',
                 'Cada anchor_phrase precisa ser uma frase natural que possa receber um link no post pilar.',
-                'Nao repita a mesma anchor_phrase em satelites diferentes.',
-                'Nao invente fatos fora do post pilar e do contexto fornecido.',
-                'Se o post pilar nao sustentar todos os satelites, reduza apenas o recorte dos temas, nunca crie assuntos aleatorios.',
+                'Cada suggestion deve ser uma pauta editorial pronta, com 2 a 4 frases curtas, com sugestão do que o post pode abordar.',
+                'Use content_angle para classificar o tipo da sugestao, priorizando: critica, resumo, opiniao, guia, comparacao, curiosidades, spoilers, ranking, debate, analise, contexto, checklist, releitura.',
                 'Use o mesmo idioma final do gerador: ' . $generation_language . '.',
-                'Titulo do post pilar: ' . $pillar_title,
+                $planning_niche !== '' ? 'Nicho / recorte editorial informado pelo usuario: ' . $planning_niche : '',
+                $planning_custom_prompt !== '' ? 'Prompt personalizado do usuario: ' . $planning_custom_prompt : '',
                 'URL do post pilar: ' . $pillar_url,
-                'Resumo do post pilar: ' . $pillar_excerpt,
-                'Conteudo do post pilar: ' . $pillar_content,
+                'Conteudo de referencia do post pilar: ' . $pillar_content,
             );
 
-            if ($pillar_categories !== '') {
-                $lines[] = 'Categorias do post pilar: ' . $pillar_categories;
-            }
-            if ($pillar_tags !== '') {
-                $lines[] = 'Tags do post pilar: ' . $pillar_tags;
-            }
-            if ($outline_text !== '') {
-                $lines[] = 'Modelo de outline do gerador:';
-                $lines[] = $outline_text;
-            }
-
-            $lines[] = $source_context;
+            $lines = array_values(array_filter($lines, 'strlen'));
 
             return implode("\n", $lines);
         }
@@ -342,10 +565,10 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     ? sprintf('Satélites gerados com sucesso. %d post(s) criado(s) e linkados ao pilar.', $count)
                     : 'Satélites gerados com sucesso.';
             } elseif ($notice === 'satellite_error') {
-                $message = self::get_request_param('arc_message', 'Nao foi possivel gerar os satelites.');
+                $message = self::get_request_param('arc_message', 'Não foi possível gerar os satélites.');
                 $class = 'notice-error';
             } elseif ($notice === 'plan_error') {
-                $message = self::get_request_param('arc_message', 'Nao foi possivel gerar o plano editorial.');
+                $message = self::get_request_param('arc_message', 'Não foi possível gerar o plano editorial.');
                 $class = 'notice-error';
             }
 
@@ -363,10 +586,16 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
 
             check_admin_referer('arc_generate_content_plan', 'arc_content_plan_nonce');
+            self::lift_execution_time_limit(300);
 
             $post_id = isset($_POST['pillar_post_id']) ? intval($_POST['pillar_post_id']) : 0;
             $satellite_count = isset($_POST['satellite_count']) ? intval($_POST['satellite_count']) : 5;
             $satellite_count = max(1, min(12, $satellite_count));
+            $planning_niche = isset($_POST['planning_niche']) ? sanitize_text_field(wp_unslash($_POST['planning_niche'])) : '';
+            $planning_custom_prompt = isset($_POST['planning_custom_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['planning_custom_prompt'])) : '';
+
+            update_post_meta($post_id, self::META_PLAN_PLANNING_NICHE, $planning_niche);
+            update_post_meta($post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT, $planning_custom_prompt);
 
             $context = self::resolve_pillar_context($post_id);
             if (is_wp_error($context)) {
@@ -382,13 +611,10 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
             $generator = $context['generator'];
             $item = $context['item'];
-            $content_model_type = isset($_POST['content_model_type'])
-                ? Alpha_RSS_AI_Generator::normalize_content_model_type(sanitize_key(wp_unslash($_POST['content_model_type'])))
-                : (!empty($item['content_model_type']) ? Alpha_RSS_AI_Generator::normalize_content_model_type($item['content_model_type']) : Alpha_RSS_AI_Generator::get_default_content_model_type());
-            $generator['content_model_type'] = $content_model_type;
-            $item['content_model_type'] = $content_model_type;
-
-            $prompt = self::build_plan_prompt($generator, $item, $satellite_count);
+            $item = self::limit_item_for_planning($item, self::MAX_PLANNING_SOURCE_WORDS);
+            $outline_base_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_base($generator);
+            $outline_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_from_source($generator, $item, array(), $outline_base_context);
+            $prompt = self::build_plan_prompt($generator, $item, $satellite_count, $outline_context, $planning_niche, $planning_custom_prompt);
             $plan = Alpha_RSS_AI_Generator::request_openai_json($generator, $prompt, array(
                 'stage' => 'content_plan',
                 'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
@@ -420,8 +646,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $normalized_plan['pillar_url'] = !empty($item['permalink']) ? $item['permalink'] : '';
             $normalized_plan['pillar_categories'] = !empty($item['categories']) && is_array($item['categories']) ? array_values($item['categories']) : array();
             $normalized_plan['pillar_tags'] = !empty($item['tags']) && is_array($item['tags']) ? array_values($item['tags']) : array();
-            $normalized_plan['content_model_type'] = !empty($item['content_model_type']) ? Alpha_RSS_AI_Generator::normalize_content_model_type($item['content_model_type']) : Alpha_RSS_AI_Generator::get_default_content_model_type();
+            $normalized_plan['content_model_type'] = !empty($item['content_model_type']) ? Alpha_RSS_AI_Generator::normalize_content_model_type($item['content_model_type']) : 'pillar';
             $normalized_plan['content_model_label'] = Alpha_RSS_AI_Generator::get_content_model_label($normalized_plan['content_model_type']);
+            $normalized_plan['planning_niche'] = $planning_niche;
+            $normalized_plan['planning_custom_prompt'] = $planning_custom_prompt;
+            $normalized_plan['recommended_prompt_model_key'] = !empty($outline_context['recommended_prompt_model_key']) ? sanitize_key((string) $outline_context['recommended_prompt_model_key']) : '';
+            $normalized_plan['recommended_outline_model_key'] = !empty($outline_context['recommended_outline_model_key']) ? sanitize_key((string) $outline_context['recommended_outline_model_key']) : '';
+            $normalized_plan['outline_context'] = $outline_context;
 
             update_post_meta($post_id, self::META_PLAN_JSON, wp_json_encode($normalized_plan, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             update_post_meta($post_id, self::META_PLAN_GENERATED_AT, current_time('mysql'));
@@ -429,6 +660,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             update_post_meta($post_id, self::META_PLAN_PILLAR_POST_ID, $post_id);
             update_post_meta($post_id, self::META_PLAN_SATELLITE_COUNT, $satellite_count);
             update_post_meta($post_id, self::META_PLAN_CONTENT_MODEL_TYPE, $normalized_plan['content_model_type']);
+            update_post_meta($post_id, self::META_PLAN_PROMPT_MODEL_KEY, $normalized_plan['recommended_prompt_model_key']);
+            update_post_meta($post_id, self::META_PLAN_OUTLINE_MODEL_KEY, $normalized_plan['recommended_outline_model_key']);
             delete_post_meta($post_id, '_arc_content_plan_satellite_post_ids');
             delete_post_meta($post_id, '_arc_content_plan_generated_satellites');
 
@@ -457,6 +690,10 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 delete_post_meta($post_id, self::META_PLAN_PILLAR_POST_ID);
                 delete_post_meta($post_id, self::META_PLAN_SATELLITE_COUNT);
                 delete_post_meta($post_id, self::META_PLAN_CONTENT_MODEL_TYPE);
+                delete_post_meta($post_id, self::META_PLAN_PROMPT_MODEL_KEY);
+                delete_post_meta($post_id, self::META_PLAN_OUTLINE_MODEL_KEY);
+                delete_post_meta($post_id, self::META_PLAN_PLANNING_NICHE);
+                delete_post_meta($post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT);
                 delete_post_meta($post_id, '_arc_content_plan_satellite_post_ids');
                 delete_post_meta($post_id, '_arc_content_plan_generated_satellites');
             }
@@ -496,13 +733,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $pillar_url = esc_url_raw(get_permalink($post));
             }
 
-            $pillar_excerpt = '';
-            if (!empty($context['item']) && is_array($context['item']) && !empty($context['item']['excerpt'])) {
-                $pillar_excerpt = self::normalize_plain_text((string) $context['item']['excerpt']);
-            } elseif ($post instanceof WP_Post) {
-                $pillar_excerpt = self::get_post_excerpt_text($post);
-            }
-
             $pillar_content = '';
             if (!empty($context['item']) && is_array($context['item']) && !empty($context['item']['content'])) {
                 $pillar_content = self::normalize_plain_text((string) $context['item']['content']);
@@ -510,14 +740,15 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $pillar_content = self::normalize_plain_text((string) $post->post_content);
             }
 
-            $brief = !empty($satellite['brief']) ? self::normalize_plain_text((string) $satellite['brief']) : '';
+            $suggestion = !empty($satellite['suggestion']) ? self::normalize_plain_text((string) $satellite['suggestion']) : '';
+            $content_angle = !empty($satellite['content_angle']) ? self::normalize_plain_text((string) $satellite['content_angle']) : '';
             $reason = !empty($satellite['reason']) ? self::normalize_plain_text((string) $satellite['reason']) : '';
             $anchor_phrase = !empty($satellite['anchor_phrase']) ? self::normalize_plain_text((string) $satellite['anchor_phrase']) : '';
             $source_content = implode("\n", array_filter(array(
                 'Pilar: ' . $pillar_title,
-                $pillar_excerpt !== '' ? 'Resumo do pilar: ' . $pillar_excerpt : '',
                 $pillar_content !== '' ? 'Conteudo do pilar: ' . $pillar_content : '',
-                $brief !== '' ? 'Resumo do satelite: ' . $brief : '',
+                $suggestion !== '' ? 'Sugestao editorial: ' . $suggestion : '',
+                $content_angle !== '' ? 'Tipo de conteudo: ' . $content_angle : '',
                 $reason !== '' ? 'Motivo do satelite: ' . $reason : '',
                 $anchor_phrase !== '' ? 'Ancora planejada: ' . $anchor_phrase : '',
             )));
@@ -529,16 +760,16 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'keyword' => !empty($satellite['focus_keyword']) ? $satellite['focus_keyword'] : $satellite['title'],
                 'permalink' => '',
                 'source_url' => $pillar_url,
-                'excerpt' => !empty($satellite['excerpt']) ? $satellite['excerpt'] : $brief,
+                'excerpt' => $suggestion,
                 'content' => $source_content,
                 'feed_title' => !empty($generator['name']) ? (string) $generator['name'] : get_bloginfo('name'),
                 'date' => current_time('mysql'),
                 'categories' => !empty($context['item']['categories']) && is_array($context['item']['categories']) ? $context['item']['categories'] : array(),
                 'tags' => !empty($context['item']['tags']) && is_array($context['item']['tags']) ? $context['item']['tags'] : array(),
                 'source_page_title' => $pillar_title,
-                'source_page_excerpt' => $pillar_excerpt,
+                'source_page_excerpt' => '',
                 'source_page_content' => $pillar_content,
-                'source_page_outline' => !empty($plan['pillar_summary']) ? self::normalize_plain_text((string) $plan['pillar_summary']) : '',
+                'source_page_outline' => '',
                 'source_page_outline_sections' => array(),
                 'source_context_enriched' => 1,
                 'content_model_type' => 'satellite',
@@ -551,8 +782,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'content_plan_satellite_slug' => !empty($satellite['slug']) ? $satellite['slug'] : sanitize_title($satellite['title']),
                 'content_plan_satellite_anchor_phrase' => $anchor_phrase,
                 'content_plan_satellite_focus_keyword' => !empty($satellite['focus_keyword']) ? $satellite['focus_keyword'] : '',
-                'content_plan_satellite_excerpt' => !empty($satellite['excerpt']) ? $satellite['excerpt'] : '',
-                'content_plan_satellite_brief' => $brief,
+                'content_plan_satellite_suggestion' => $suggestion,
+                'content_plan_satellite_content_angle' => $content_angle,
                 'content_plan_satellite_reason' => $reason,
                 'content_plan_satellite' => $satellite,
                 'content_plan_backlink_links' => array(
@@ -576,6 +807,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $current_content = (string) get_post_field('post_content', $pillar_post_id);
             $pillar_links = array();
             $satellite_ids = array();
+            $related_posts = array();
             foreach ($generated_satellite_posts as $generated) {
                 if (empty($generated['post_id'])) {
                     continue;
@@ -589,7 +821,12 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     'title' => !empty($generated['title']) ? $generated['title'] : get_the_title($post_id),
                     'url' => !empty($generated['url']) ? $generated['url'] : get_permalink($post_id),
                     'anchor_phrase' => !empty($generated['anchor_phrase']) ? $generated['anchor_phrase'] : '',
+                    'slug' => !empty($generated['slug']) ? $generated['slug'] : get_post_field('post_name', $post_id),
                 );
+                $satellite_post = get_post($post_id);
+                if ($satellite_post instanceof WP_Post) {
+                    $related_posts[] = $satellite_post;
+                }
             }
 
             if (!empty($pillar_links)) {
@@ -599,6 +836,30 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     'pillar',
                     'Você também pode gostar de:'
                 );
+                if (!empty($related_posts)) {
+                    $related_markup = Alpha_RSS_AI_Generator_Helper::build_related_posts_markup(
+                        $pillar_post_id,
+                        array(
+                            'related_posts_enabled' => 1,
+                            'related_posts_style' => 'list',
+                            'related_posts_phrases' => "Você também pode gostar de:",
+                        ),
+                        $related_posts
+                    );
+
+                    if ($related_markup !== '') {
+                        $updated_content = preg_replace(
+                            '~<!-- arc-content-plan-related-start -->.*?<!-- arc-content-plan-related-end -->\s*~s',
+                            '',
+                            $current_content
+                        );
+                        if (is_string($updated_content)) {
+                            $current_content = $updated_content;
+                        }
+                        $current_content = rtrim($current_content) . "\n\n<!-- arc-content-plan-related-start -->\n" . $related_markup . "\n<!-- arc-content-plan-related-end -->\n";
+                    }
+                }
+
                 wp_update_post(array(
                     'ID' => $pillar_post_id,
                     'post_content' => $current_content,
@@ -623,6 +884,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
 
             check_admin_referer('arc_generate_content_satellites', 'arc_content_satellites_nonce');
+            self::lift_execution_time_limit(300);
 
             $post_id = isset($_POST['pillar_post_id']) ? intval($_POST['pillar_post_id']) : 0;
             $context = self::resolve_pillar_context($post_id);
@@ -655,6 +917,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $satellite_generator['source_type'] = 'rss';
             $satellite_generator['content_model_type'] = 'satellite';
             $satellite_generator['use_final_slug'] = 1;
+            $satellite_generator['post_status'] = 'publish';
 
             $generated_posts = array();
             $errors = array();
@@ -676,6 +939,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $generated_posts[] = array(
                     'post_id' => intval($post_result),
                     'title' => $normalized_satellite['title'],
+                    'slug' => (string) get_post_field('post_name', $post_result),
                     'url' => get_permalink($post_result),
                     'anchor_phrase' => $normalized_satellite['anchor_phrase'],
                 );
@@ -700,29 +964,82 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             exit;
         }
 
+        private static function render_picker_post_button($item, $selected_post_id = 0)
+        {
+            $item = is_array($item) ? $item : array();
+            $item_id = isset($item['id']) ? intval($item['id']) : 0;
+            if ($item_id <= 0) {
+                return;
+            }
+
+            $is_selected = $selected_post_id > 0 && $selected_post_id === $item_id;
+            $classes = array(
+                'arc-plan-picker-item',
+                'w-full',
+                'rounded-xl',
+                'border',
+                'px-4',
+                'py-3',
+                'text-left',
+                'text-sm',
+                'transition',
+                'focus:outline-none',
+                'focus:ring-2',
+                'focus:ring-indigo-200',
+            );
+            if ($is_selected) {
+                $classes[] = 'border-indigo-500';
+                $classes[] = 'bg-indigo-50';
+            } else {
+                $classes[] = 'border-slate-200';
+                $classes[] = 'bg-white';
+                $classes[] = 'hover:bg-slate-50';
+            }
+
+            echo '<button type="button" class="' . esc_attr(implode(' ', $classes)) . '" data-post-id="' . esc_attr($item_id) . '" data-post-title="' . esc_attr(!empty($item['title']) ? $item['title'] : '') . '" data-post-url="' . esc_attr(!empty($item['url']) ? $item['url'] : '') . '" data-post-type="' . esc_attr(!empty($item['post_type']) ? $item['post_type'] : 'post') . '">';
+            echo esc_html(!empty($item['title']) ? $item['title'] : 'Post');
+            echo '</button>';
+        }
+
         private static function render_posts_selector($selected_post_id = 0)
         {
-            $posts = self::get_generated_posts(40, 'pillar');
-            echo '<select name="pillar_post_id" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">';
-            echo '<option value="0">Selecione um post pilar</option>';
-            foreach ($posts as $post) {
-                $post_id = intval($post->ID);
-                $title = get_the_title($post_id);
-                $generator_id = intval(get_post_meta($post_id, '_arc_generator_id', true));
-                $generator_name = '';
-                if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
-                    $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
-                    if (!empty($generator['name'])) {
-                        $generator_name = (string) $generator['name'];
-                    }
+            $selected_post_id = intval($selected_post_id);
+            $selected_post = $selected_post_id > 0 ? get_post($selected_post_id) : null;
+            $search_nonce = wp_create_nonce('arc_content_plan_posts_search');
+            $initial_results = self::query_picker_posts('', 1, 10);
+            $items = !empty($initial_results['items']) && is_array($initial_results['items']) ? $initial_results['items'] : array();
+            $has_more = !empty($initial_results['has_more']);
+            $button_label = $selected_post instanceof WP_Post ? self::normalize_plain_text(get_the_title($selected_post)) : 'Selecionar post';
+
+            echo '<div id="arc-plan-picker" class="relative space-y-3" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr($search_nonce) . '" data-per-page="10" data-current-page="1" data-has-more="' . ($has_more ? '1' : '0') . '">';
+            echo '<input type="hidden" name="pillar_post_id" id="arc-plan-picker-value" value="' . esc_attr($selected_post_id) . '" />';
+            echo '<button type="button" id="arc-plan-picker-toggle" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false">';
+            echo '<span id="arc-plan-picker-label">' . esc_html($button_label) . '</span>';
+            echo '<span class="text-slate-400">⌄</span>';
+            echo '</button>';
+
+            echo '<div id="arc-plan-picker-menu" class="absolute left-0 right-0 top-full z-20 mt-2 hidden rounded-2xl border border-slate-200 bg-white shadow-soft">';
+            echo '<div class="border-b border-slate-200 p-3">';
+            echo '<div class="flex gap-2">';
+            echo '<input id="arc-plan-picker-search" type="search" class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Pesquisar..." autocomplete="off" />';
+            echo '<button type="button" id="arc-plan-picker-search-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Buscar</button>';
+            echo '</div>';
+            echo '</div>';
+            echo '<div id="arc-plan-picker-results" class="max-h-80 space-y-2 overflow-y-auto p-3 pr-1">';
+            if (!empty($items)) {
+                foreach ($items as $item) {
+                    self::render_picker_post_button($item, $selected_post_id);
                 }
-                $label = $title;
-                if ($generator_name !== '') {
-                    $label .= ' - ' . $generator_name;
-                }
-                echo '<option value="' . esc_attr($post_id) . '" ' . selected($selected_post_id, $post_id, false) . '>' . esc_html($label) . '</option>';
+            } else {
+                echo '<p class="text-sm text-slate-500">Nenhum post encontrado.</p>';
             }
-            echo '</select>';
+            echo '</div>';
+            echo '<div class="mt-3 flex justify-center">';
+            echo '<button type="button" id="arc-plan-picker-load-more" class="' . ($has_more ? '' : 'hidden ') . 'inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Carregar mais</button>';
+            echo '</div>';
+            echo '<p id="arc-plan-picker-empty" class="hidden px-3 pb-3 text-sm text-slate-500">Nenhum resultado encontrado.</p>';
+            echo '</div>';
+            echo '</div>';
         }
 
         private static function render_plan_table($plan)
@@ -733,11 +1050,12 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
 
             $satellites = !empty($plan['satellites']) && is_array($plan['satellites']) ? $plan['satellites'] : array();
+
             echo '<div class="space-y-4">';
             echo '<div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">';
             echo '<div class="flex flex-wrap items-center justify-between gap-3">';
             echo '<div>';
-            echo '<h3 class="text-lg font-semibold text-slate-950">Plano gerado</h3>';
+            echo '<h3 class="text-lg font-semibold text-slate-950">Plano editorial</h3>';
             if (!empty($plan['generated_at'])) {
                 echo '<p class="mt-1 text-sm text-slate-500">Gerado em ' . esc_html($plan['generated_at']) . '</p>';
             }
@@ -750,9 +1068,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             echo '</div>';
             echo '<div class="text-sm text-slate-500">' . esc_html(count($satellites)) . ' satélite(s)</div>';
             echo '</div>';
-            if (!empty($plan['pillar_summary'])) {
-                echo '<p class="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">' . esc_html($plan['pillar_summary']) . '</p>';
-            }
             echo '</div>';
 
             echo '<div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">';
@@ -760,10 +1075,11 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             echo '<thead class="bg-slate-50">';
             echo '<tr>';
             echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">#</th>';
-            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Título</th>';
+            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Título do satélite</th>';
             echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Âncora</th>';
-            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Foco</th>';
-            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Resumo</th>';
+            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">KW</th>';
+            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo</th>';
+            echo '<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sugestão editorial</th>';
             echo '</tr>';
             echo '</thead>';
             echo '<tbody class="divide-y divide-slate-100 bg-white">';
@@ -774,11 +1090,12 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 echo '<td class="px-4 py-4 text-sm font-semibold text-slate-900">' . esc_html(isset($satellite['title']) ? $satellite['title'] : '-') . '</td>';
                 echo '<td class="px-4 py-4 text-sm text-slate-700">' . esc_html(isset($satellite['anchor_phrase']) ? $satellite['anchor_phrase'] : '-') . '</td>';
                 echo '<td class="px-4 py-4 text-sm text-slate-700">' . esc_html(isset($satellite['focus_keyword']) ? $satellite['focus_keyword'] : '-') . '</td>';
-                echo '<td class="px-4 py-4 text-sm text-slate-700">' . esc_html(isset($satellite['excerpt']) ? $satellite['excerpt'] : '-') . '</td>';
+                echo '<td class="px-4 py-4 text-sm text-slate-700">' . esc_html(isset($satellite['content_angle']) ? $satellite['content_angle'] : '-') . '</td>';
+                echo '<td class="px-4 py-4 text-sm text-slate-700">' . esc_html(isset($satellite['suggestion']) ? $satellite['suggestion'] : '-') . '</td>';
                 echo '</tr>';
             }
             if (empty($satellites)) {
-                echo '<tr><td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">O plano nao trouxe satelites.</td></tr>';
+                echo '<tr><td colspan="6" class="px-4 py-6 text-center text-sm text-slate-500">O plano não trouxe satélites.</td></tr>';
             }
             echo '</tbody>';
             echo '</table>';
@@ -799,6 +1116,22 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             if (!empty($generated_at)) {
                 $plan['generated_at'] = $generated_at;
             }
+            $stored_planning_niche = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_PLANNING_NICHE, true) : '';
+            $stored_planning_custom_prompt = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT, true) : '';
+            $plan_prompt_model_key = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_PROMPT_MODEL_KEY, true) : '';
+            $plan_outline_model_key = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_OUTLINE_MODEL_KEY, true) : '';
+            if ($plan_prompt_model_key !== '') {
+                $plan['recommended_prompt_model_key'] = $plan_prompt_model_key;
+            }
+            if ($plan_outline_model_key !== '') {
+                $plan['recommended_outline_model_key'] = $plan_outline_model_key;
+            }
+            if ($stored_planning_niche !== '' && empty($plan['planning_niche'])) {
+                $plan['planning_niche'] = $stored_planning_niche;
+            }
+            if ($stored_planning_custom_prompt !== '' && empty($plan['planning_custom_prompt'])) {
+                $plan['planning_custom_prompt'] = $stored_planning_custom_prompt;
+            }
 
             $current_generator = null;
             if ($selected_post_id > 0) {
@@ -806,6 +1139,9 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
                     $current_generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
                 }
+            }
+            if (!$current_generator && $selected_post_id > 0) {
+                $current_generator = self::build_default_generator_context($selected_post_id);
             }
 
             $selected_content_model_type = '';
@@ -825,127 +1161,345 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $selected_content_model_type = Alpha_RSS_AI_Generator::get_default_content_model_type();
             }
 
-            ?>
+?>
+            <script>
+                window.tailwind = window.tailwind || {};
+                window.tailwind.config = {
+                    theme: {
+                        extend: {
+                            boxShadow: {
+                                soft: '0 20px 50px -30px rgba(15, 23, 42, 0.35)'
+                            }
+                        }
+                    }
+                };
+            </script>
+            <script src="https://cdn.tailwindcss.com"></script>
             <div class="wrap">
-                <div class="mb-6 rounded-3xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-500">Alpha RSS AI</p>
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                            <h1 class="text-3xl font-semibold tracking-tight text-slate-950">Planejamento de conteúdos</h1>
-                            <p class="mt-2 max-w-3xl text-sm text-slate-600">Escolha um post pilar gerado, peça um plano de satélites e depois use esse mapa para criar os posts e conectar os links internos no lugar certo.</p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generated-posts')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Posts gerados</a>
-                        </div>
-                    </div>
+                <div class="mb-6">
+                    <p class="text-xs font-semibold text-indigo-500">Alpha RSS AI</p>
+                    <h1 class="text-3xl font-semibold tracking-tight text-slate-950">Lincagem automática</h1>
                 </div>
 
                 <?php self::render_notice(); ?>
 
-                <div class="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
-                    <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <h2 class="text-xl font-semibold text-slate-950">Escolher post pilar</h2>
-                        <p class="mt-2 text-sm text-slate-500">Selecione um post já gerado para virar a peça central da malha de satélites.</p>
-
-                        <form method="get" action="<?php echo esc_url(admin_url('admin.php')); ?>" class="mt-5 space-y-4">
-                            <input type="hidden" name="page" value="<?php echo esc_attr(self::PAGE_SLUG); ?>" />
-                            <div>
-                                <label class="mb-1 block text-sm font-medium text-slate-700">Post pilar</label>
-                                <?php self::render_posts_selector($selected_post_id); ?>
+                <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+                    <aside class="space-y-6">
+                        <div class=" border border-slate-200 bg-white p-6 shadow-sm">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <h2 class="text-xl font-semibold text-slate-950">Parâmetros do Plano</h2>
+                                </div>
                             </div>
-                            <div class="flex flex-wrap gap-3">
-                                <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Abrir post</button>
-                            </div>
-                        </form>
+                            <div class="mt-5"><?php self::render_posts_selector($selected_post_id); ?></div>
 
-                        <?php if ($selected_post instanceof WP_Post): ?>
-                            <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                                <div class="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <h3 class="text-lg font-semibold text-slate-950"><?php echo esc_html(get_the_title($selected_post)); ?></h3>
-                                        <p class="mt-1 text-sm text-slate-500">ID <?php echo esc_html($selected_post->ID); ?> · <?php echo esc_html(get_post_type($selected_post)); ?></p>
+                            <div id="arc-plan-options" class="mt-5 space-y-4 <?php echo $selected_post instanceof WP_Post ? '' : 'hidden'; ?>">
+                                <form id="arc-content-plan-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="space-y-4">
+                                    <?php wp_nonce_field('arc_generate_content_plan', 'arc_content_plan_nonce'); ?>
+                                    <input type="hidden" name="action" value="arc_generate_content_plan" />
+                                    <input type="hidden" name="pillar_post_id" id="arc-content-plan-post-id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
+
+                                    <div class="grid gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Qtd. satélites</label>
+                                            <input type="number" min="1" max="12" name="satellite_count" value="<?php echo esc_attr(isset($plan['satellite_count']) ? intval($plan['satellite_count']) : 5); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Nicho editorial</label>
+                                            <input type="text" name="planning_niche" value="<?php echo esc_attr(isset($plan['planning_niche']) ? $plan['planning_niche'] : ''); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex: filmes, séries, tecnologia" />
+                                        </div>
                                     </div>
-                                    <a href="<?php echo esc_url(get_permalink($selected_post)); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Visualizar</a>
-                                </div>
-                                <?php if ($current_generator && !empty($current_generator['name'])): ?>
-                                    <p class="mt-4 text-sm text-slate-700"><strong>Gerador:</strong> <?php echo esc_html($current_generator['name']); ?></p>
-                                <?php endif; ?>
-                                <p class="mt-2 text-sm text-slate-700"><strong>Modelo editorial:</strong> <?php echo esc_html(Alpha_RSS_AI_Generator::get_content_model_label($selected_content_model_type)); ?></p>
-                                <?php if (!empty($plan)): ?>
-                                    <p class="mt-2 text-sm text-slate-700"><strong>Satélites planejados:</strong> <?php echo esc_html(isset($plan['satellite_count']) ? intval($plan['satellite_count']) : count(isset($plan['satellites']) && is_array($plan['satellites']) ? $plan['satellites'] : array())); ?></p>
-                                <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
 
-                    <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <h2 class="text-xl font-semibold text-slate-950">Gerar planejamento</h2>
-                        <p class="mt-2 text-sm text-slate-500">Este passo apenas monta o mapa editorial. A geração dos satélites acontece depois, em uma ação separada.</p>
+                                    <details class="group rounded-2xl border border-slate-200 bg-slate-50">
+                                        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700">
+                                            <span>Prompt personalizado</span>
+                                            <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+                                        </summary>
+                                        <div class="border-t border-slate-200 px-4 py-4">
+                                            <textarea name="planning_custom_prompt" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Instruções extras para a IA, se precisar."><?php echo esc_textarea(isset($plan['planning_custom_prompt']) ? $plan['planning_custom_prompt'] : ''); ?></textarea>
+                                        </div>
+                                    </details>
 
-                        <?php if ($selected_post instanceof WP_Post): ?>
-                            <form id="arc-content-plan-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mt-5 space-y-4">
-                                <?php wp_nonce_field('arc_generate_content_plan', 'arc_content_plan_nonce'); ?>
-                                <input type="hidden" name="action" value="arc_generate_content_plan" />
-                                <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post->ID); ?>" />
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Modelo editorial</label>
-                                    <select name="content_model_type" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="pillar" <?php selected($selected_content_model_type, 'pillar'); ?>>Pilar</option>
-                                        <option value="satellite" <?php selected($selected_content_model_type, 'satellite'); ?>>Satélite</option>
-                                    </select>
-                                    <p class="mt-1 text-xs text-slate-500">Pilar cria a base central. Satélite cria a peça de apoio para linkar ao pilar.</p>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Quantidade de satélites</label>
-                                    <input type="number" min="1" max="12" name="satellite_count" value="<?php echo esc_attr(isset($plan['satellite_count']) ? intval($plan['satellite_count']) : 5); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                                </div>
-                                <div class="flex flex-wrap gap-3">
-                                    <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500">Gerar planejamento</button>
-                                </div>
-                            </form>
-
-                            <?php if (!empty($plan)): ?>
-                                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mt-4">
-                                    <?php wp_nonce_field('arc_generate_content_satellites', 'arc_content_satellites_nonce'); ?>
-                                    <input type="hidden" name="action" value="arc_generate_content_satellites" />
-                                    <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post->ID); ?>" />
-                                    <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-slate-800">Gerar satélites</button>
+                                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500">Gerar lincagem</button>
                                 </form>
-                            <?php endif; ?>
 
-                            <?php if (!empty($plan)): ?>
-                                <div class="mt-4 flex flex-wrap gap-3">
-                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-swal-confirm="Remover o plano salvo deste post pilar?">
+                                <?php if (!empty($plan)): ?>
+                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                                        <?php wp_nonce_field('arc_generate_content_satellites', 'arc_content_satellites_nonce'); ?>
+                                        <input type="hidden" name="action" value="arc_generate_content_satellites" />
+                                        <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
+                                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-slate-800">Gerar satélites</button>
+                                    </form>
+
+                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mt-3" data-swal-confirm="Remover o plano salvo deste post pilar?">
                                         <?php wp_nonce_field('arc_clear_content_plan', 'arc_content_plan_nonce'); ?>
                                         <input type="hidden" name="action" value="arc_clear_content_plan" />
-                                        <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post->ID); ?>" />
-                                        <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100">Limpar plano</button>
+                                        <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
+                                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100">Limpar plano</button>
                                     </form>
-                                </div>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <div class="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                                Escolha um post pilar acima para liberar o planejamento.
+                                <?php endif; ?>
                             </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div class="mt-6">
-                    <?php self::render_plan_table($plan); ?>
-                </div>
-
-                <?php if ($selected_post instanceof WP_Post): ?>
-                    <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div>
-                            <p class="text-sm font-medium text-slate-900">Ação rápida</p>
-                            <p class="mt-1 text-sm text-slate-500">Esse botão repete o planejamento do topo sem precisar voltar na tela.</p>
                         </div>
-                        <button type="submit" form="arc-content-plan-form" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500">Gerar planejamento</button>
-                    </div>
-                <?php endif; ?>
+                    </aside>
+
+                    <main class="min-w-0">
+                        <?php self::render_plan_table($plan); ?>
+                    </main>
+                </div>
             </div>
-            <?php
+            <script>
+                (function () {
+                    const picker = document.getElementById('arc-plan-picker');
+                    const optionsWrap = document.getElementById('arc-plan-options');
+                    const toggleButton = document.getElementById('arc-plan-picker-toggle');
+                    const labelNode = document.getElementById('arc-plan-picker-label');
+                    const menu = document.getElementById('arc-plan-picker-menu');
+                    const searchInput = document.getElementById('arc-plan-picker-search');
+                    const searchButton = document.getElementById('arc-plan-picker-search-btn');
+                    const results = document.getElementById('arc-plan-picker-results');
+                    const loadMoreButton = document.getElementById('arc-plan-picker-load-more');
+                    const emptyState = document.getElementById('arc-plan-picker-empty');
+                    const valueInputs = document.querySelectorAll('input[name="pillar_post_id"]');
+                    const ajaxUrl = picker ? picker.dataset.ajaxUrl : '';
+                    const nonce = picker ? picker.dataset.nonce : '';
+                    const perPage = picker ? parseInt(picker.dataset.perPage || '10', 10) : 10;
+                    let currentPage = picker ? parseInt(picker.dataset.currentPage || '1', 10) : 1;
+                    let hasMore = picker ? picker.dataset.hasMore === '1' : false;
+                    let currentSearch = '';
+                    let selectedPostId = 0;
+                    let loading = false;
+                    let searchTimer = null;
+
+                    if (!picker || !results || !optionsWrap || !toggleButton || !menu || !labelNode) {
+                        return;
+                    }
+
+                    const escapeHtml = (value) => {
+                        return String(value ?? '')
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#039;');
+                    };
+
+                    const setSelectedId = (postId) => {
+                        selectedPostId = parseInt(postId || '0', 10) || 0;
+                        valueInputs.forEach((input) => {
+                            input.value = selectedPostId > 0 ? String(selectedPostId) : '';
+                        });
+                        optionsWrap.classList.toggle('hidden', selectedPostId <= 0);
+                    };
+
+                    const setMenuOpen = (isOpen) => {
+                        menu.classList.toggle('hidden', !isOpen);
+                        toggleButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                        if (isOpen && searchInput) {
+                            window.setTimeout(() => searchInput.focus(), 0);
+                        }
+                    };
+
+                    const syncActiveButtons = () => {
+                        const buttons = results.querySelectorAll('.arc-plan-picker-item');
+                        buttons.forEach((button) => {
+                            const buttonId = parseInt(button.dataset.postId || '0', 10) || 0;
+                            const active = selectedPostId > 0 && buttonId === selectedPostId;
+                            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+                            button.classList.toggle('border-indigo-500', active);
+                            button.classList.toggle('bg-indigo-50', active);
+                            button.classList.toggle('border-slate-200', !active);
+                            button.classList.toggle('bg-white', !active);
+                        });
+                    };
+
+                    const updateLabel = (text) => {
+                        labelNode.textContent = text && String(text).trim() !== '' ? String(text) : 'Selecionar post';
+                    };
+
+                    const selectPost = (item) => {
+                        setSelectedId(item.id);
+                        updateLabel(item.title || 'Selecionar post');
+                        setMenuOpen(false);
+                        syncActiveButtons();
+                    };
+
+                    const renderButton = (item) => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'arc-plan-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
+                        button.dataset.postId = item.id;
+                        button.dataset.postType = item.post_type || 'post';
+                        button.setAttribute('aria-pressed', selectedPostId > 0 && parseInt(item.id || '0', 10) === selectedPostId ? 'true' : 'false');
+                        if (selectedPostId > 0 && parseInt(item.id || '0', 10) === selectedPostId) {
+                            button.classList.add('border-indigo-500', 'bg-indigo-50');
+                        } else {
+                            button.classList.add('border-slate-200', 'bg-white', 'hover:bg-slate-50');
+                        }
+
+                        button.innerHTML = escapeHtml(item.title || 'Post');
+
+                        button.addEventListener('click', () => selectPost(item));
+                        return button;
+                    };
+
+                    const setLoadMoreState = () => {
+                        if (!loadMoreButton) {
+                            return;
+                        }
+                        loadMoreButton.classList.toggle('hidden', !hasMore);
+                    };
+
+                    const setEmptyState = (isEmpty) => {
+                        if (!emptyState) {
+                            return;
+                        }
+                        emptyState.classList.toggle('hidden', !isEmpty);
+                    };
+
+                    const fetchPosts = async ({ search = '', page = 1, append = false } = {}) => {
+                        if (loading) {
+                            return;
+                        }
+                        loading = true;
+                        if (searchButton) {
+                            searchButton.disabled = true;
+                        }
+                        if (loadMoreButton) {
+                            loadMoreButton.disabled = true;
+                        }
+
+                        try {
+                            const response = await fetch(ajaxUrl, {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                                },
+                                body: new URLSearchParams({
+                                    action: 'arc_content_plan_search_posts',
+                                    nonce: nonce,
+                                    search: search,
+                                    page: String(page),
+                                    per_page: String(perPage)
+                                }).toString()
+                            });
+
+                            const payload = await response.json();
+                            if (!payload || !payload.success) {
+                                throw new Error((payload && payload.data && payload.data.message) ? payload.data.message : 'Nao foi possivel carregar os posts.');
+                            }
+
+                            const data = payload.data || {};
+                            const items = Array.isArray(data.items) ? data.items : [];
+                            hasMore = !!data.has_more;
+                            picker.dataset.hasMore = hasMore ? '1' : '0';
+                            currentPage = page;
+
+                            if (!append) {
+                                results.innerHTML = '';
+                            }
+
+                            if (items.length === 0 && !append) {
+                                setEmptyState(true);
+                            } else {
+                                setEmptyState(false);
+                                items.forEach((item) => {
+                                    results.appendChild(renderButton(item));
+                                });
+                            }
+
+                            setLoadMoreState();
+                            syncActiveButtons();
+                        } catch (error) {
+                            console.error(error);
+                            if (!append) {
+                                results.innerHTML = '<p class="text-sm text-rose-600">Falha ao carregar os posts. Tente novamente.</p>';
+                            }
+                            setLoadMoreState();
+                        } finally {
+                            loading = false;
+                            if (searchButton) {
+                                searchButton.disabled = false;
+                            }
+                            if (loadMoreButton) {
+                                loadMoreButton.disabled = false;
+                            }
+                        }
+                    };
+
+                    const runSearch = () => {
+                        currentSearch = searchInput ? searchInput.value.trim() : '';
+                        fetchPosts({ search: currentSearch, page: 1, append: false });
+                    };
+
+                    const initialSelectedInput = Array.from(valueInputs).find((input) => parseInt(input.value || '0', 10) > 0);
+                    if (initialSelectedInput) {
+                        selectedPostId = parseInt(initialSelectedInput.value || '0', 10) || 0;
+                        optionsWrap.classList.remove('hidden');
+                    }
+
+                    if (selectedPostId <= 0) {
+                        optionsWrap.classList.add('hidden');
+                    }
+
+                    setLoadMoreState();
+                    setEmptyState(results.querySelectorAll('.arc-plan-picker-item').length === 0);
+                    syncActiveButtons();
+
+                    if (toggleButton) {
+                        toggleButton.addEventListener('click', () => {
+                            const isOpen = menu.classList.contains('hidden');
+                            setMenuOpen(isOpen);
+                        });
+                    }
+
+                    document.addEventListener('click', (event) => {
+                        if (!picker.contains(event.target)) {
+                            setMenuOpen(false);
+                        }
+                    });
+
+                    document.addEventListener('keydown', (event) => {
+                        if (event.key === 'Escape') {
+                            setMenuOpen(false);
+                        }
+                    });
+
+                    if (searchInput) {
+                        searchInput.addEventListener('input', () => {
+                            window.clearTimeout(searchTimer);
+                            searchTimer = window.setTimeout(runSearch, 250);
+                        });
+                        searchInput.addEventListener('keydown', (event) => {
+                            if (event.key === 'Enter') {
+                                event.preventDefault();
+                                runSearch();
+                            }
+                        });
+                    }
+
+                    if (searchButton) {
+                        searchButton.addEventListener('click', runSearch);
+                    }
+
+                    if (loadMoreButton) {
+                        loadMoreButton.addEventListener('click', () => {
+                            if (!hasMore) {
+                                return;
+                            }
+                            fetchPosts({ search: currentSearch, page: currentPage + 1, append: true });
+                        });
+                    }
+
+                    if (selectedPostId > 0) {
+                        const selectedButton = results.querySelector('.arc-plan-picker-item[aria-pressed="true"]');
+                        if (selectedButton) {
+                            updateLabel(selectedButton.textContent.trim());
+                        }
+                    }
+                })();
+            </script>
+<?php
         }
     }
 }
