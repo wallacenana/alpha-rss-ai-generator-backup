@@ -34,6 +34,8 @@ require_once __DIR__ . '/includes/admin.php';
 require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/generated-posts.php';
+require_once __DIR__ . '/includes/content-plans.php';
+require_once __DIR__ . '/includes/link-suggestions.php';
 require_once __DIR__ . '/includes/related-posts.php';
 require_once __DIR__ . '/includes/updater.php';
 
@@ -150,6 +152,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 new Alpha_RSS_AI_Generated_Posts();
             }
+            if (class_exists('Alpha_RSS_AI_Link_Suggestions')) {
+                new Alpha_RSS_AI_Link_Suggestions();
+            }
+            if (class_exists('Alpha_RSS_AI_Content_Plans')) {
+                new Alpha_RSS_AI_Content_Plans();
+            }
             add_action('admin_menu', array($this, 'admin_menu'));
             add_action('admin_menu', array(new Alpha_RSS_AI_Generator_Admin(), 'admin_menu_late'), 999);
             add_action('admin_post_arc_save_settings', array($this, 'handle_save_settings'));
@@ -213,6 +221,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     $required_generator_columns = array(
                         'prompt_models_json',
                         'prompt_model_key',
+                        'internal_links_count',
                     );
                     foreach ($required_generator_columns as $column_name) {
                         $found_column = $wpdb->get_var($wpdb->prepare(
@@ -302,6 +311,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 related_posts_allow_fallback tinyint(1) NOT NULL DEFAULT 1,
                 related_posts_style varchar(20) NOT NULL DEFAULT 'list',
                 related_posts_phrases longtext DEFAULT NULL,
+                internal_links_count int(11) NOT NULL DEFAULT 0,
                 internal_links_json longtext DEFAULT NULL,
                 source_link_phrases longtext DEFAULT NULL,
                 source_context_filters_json longtext DEFAULT NULL,
@@ -2684,6 +2694,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $payload['related_posts_style'] = 'list';
             }
             $payload['related_posts_phrases'] = isset($raw['related_posts_phrases']) ? sanitize_textarea_field(wp_unslash($raw['related_posts_phrases'])) : '';
+            $payload['internal_links_count'] = isset($raw['internal_links_count']) ? max(0, intval($raw['internal_links_count'])) : 0;
             $payload['source_link_phrases'] = isset($raw['source_link_phrases']) ? sanitize_textarea_field(wp_unslash($raw['source_link_phrases'])) : '';
             $source_context_exclude_phrases = isset($raw['source_context_exclude_phrases']) ? sanitize_textarea_field(wp_unslash($raw['source_context_exclude_phrases'])) : '';
             $source_context_rating_label = isset($raw['source_context_rating_label']) ? sanitize_text_field(wp_unslash($raw['source_context_rating_label'])) : 'IMDb';
@@ -3111,7 +3122,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'max_completion_tokens' => $max_tokens,
             );
 
-            error_log("prompt completo: " . $prompt);
             $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -5730,8 +5740,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'post_title' => $post_title,
                 'post_name' => $post_slug,
                 'post_content' => isset($article['content_html']) ? $article['content_html'] : '',
-                'post_excerpt' => isset($article['excerpt']) ? $article['excerpt'] : '',
             );
+
+            $post_excerpt = '';
+            if (!empty($article['excerpt'])) {
+                $post_excerpt = trim((string) $article['excerpt']);
+            } elseif (!empty($article['meta_description'])) {
+                $post_excerpt = trim((string) $article['meta_description']);
+            } elseif (!empty($article['content_html'])) {
+                $post_excerpt = wp_trim_words(wp_strip_all_tags((string) $article['content_html']), 28);
+            }
+            $post_data['post_excerpt'] = $post_excerpt;
 
             if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list' && !empty($item['date'])) {
                 $post_date = self::bulk_parse_timestamp_value($item['date']);
@@ -5889,22 +5908,47 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             update_post_meta($post_id, '_arc_generator_id', intval($generator['id']));
 
-            if (!empty($generator['seo_enabled'])) {
-                self::sync_seo_meta($post_id, $generator, $article);
-            }
+            self::sync_seo_meta($post_id, $generator, $article);
         }
 
         public static function sync_seo_meta($post_id, $generator, $article)
         {
-            $seo_title = $article['title'];
+            $post = get_post($post_id);
+            $seo_title = !empty($article['title']) ? trim((string) $article['title']) : '';
+            if ($seo_title === '' && $post instanceof WP_Post) {
+                $seo_title = trim((string) get_the_title($post));
+            }
+            if ($seo_title === '' && !empty($article['source_title'])) {
+                $seo_title = trim((string) $article['source_title']);
+            }
+            if ($seo_title === '' && !empty($article['title'])) {
+                $seo_title = trim((string) $article['title']);
+            }
+
             $meta_description = !empty($article['meta_description']) ? trim((string) $article['meta_description']) : '';
             if ($meta_description === '' && !empty($article['excerpt'])) {
                 $meta_description = wp_trim_words(wp_strip_all_tags((string) $article['excerpt']), 28);
             }
+            if ($meta_description === '' && $post instanceof WP_Post && !empty($post->post_excerpt)) {
+                $meta_description = wp_trim_words(wp_strip_all_tags((string) $post->post_excerpt), 28);
+            }
             if ($meta_description === '' && !empty($article['content_html'])) {
                 $meta_description = wp_trim_words(wp_strip_all_tags((string) $article['content_html']), 28);
             }
-            $focus_keyword = !empty($article['focus_keyword']) ? $article['focus_keyword'] : $article['title'];
+            if ($meta_description === '' && $post instanceof WP_Post && !empty($post->post_content)) {
+                $meta_description = wp_trim_words(wp_strip_all_tags((string) $post->post_content), 28);
+            }
+
+            $focus_keyword = !empty($article['focus_keyword']) ? trim((string) $article['focus_keyword']) : '';
+            if ($focus_keyword === '' && !empty($article['source_title'])) {
+                $focus_keyword = trim((string) $article['source_title']);
+            }
+            if ($focus_keyword === '' && $post instanceof WP_Post) {
+                $focus_keyword = trim((string) get_the_title($post));
+            }
+            if ($focus_keyword === '') {
+                $focus_keyword = $seo_title;
+            }
 
             update_post_meta($post_id, '_yoast_wpseo_title', $seo_title);
             update_post_meta($post_id, '_yoast_wpseo_metadesc', $meta_description);
@@ -6397,6 +6441,28 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                             ),
                         ), $post_id, $item['guid'], $item['permalink']);
                     }
+                }
+            }
+
+            $internal_link_rules = array();
+            if (!empty($generator['internal_links_json'])) {
+                $internal_link_rules = Alpha_RSS_AI_Generator_Helper::parse_internal_link_rules($generator['internal_links_json']);
+            }
+            $auto_internal_links_count = isset($generator['internal_links_count']) ? intval($generator['internal_links_count']) : 0;
+            $source_type_for_links = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+            if ($auto_internal_links_count <= 0 && empty($internal_link_rules) && in_array($source_type_for_links, array('rss', 'keyword_list'), true)) {
+                $auto_internal_links_count = 5;
+            }
+            if (empty($internal_link_rules) && $auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
+                $auto_link_result = Alpha_RSS_AI_Link_Suggestions::generate_and_apply_link_suggestions_to_post(
+                    $post_id,
+                    $generator,
+                    $auto_internal_links_count,
+                    '',
+                    (string) get_post_field('post_content', $post_id)
+                );
+                if (is_array($auto_link_result) && !empty($auto_link_result['content_html'])) {
+                    $article['content_html'] = (string) $auto_link_result['content_html'];
                 }
             }
 
@@ -6920,6 +6986,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'related_posts_allow_fallback' => $payload['related_posts_allow_fallback'],
                 'related_posts_style' => $payload['related_posts_style'],
                 'related_posts_phrases' => $payload['related_posts_phrases'],
+                'internal_links_count' => $payload['internal_links_count'],
                 'updated_at' => $now,
             );
 
@@ -7025,6 +7092,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'related_posts_allow_fallback' => isset($generator['related_posts_allow_fallback']) ? $generator['related_posts_allow_fallback'] : 1,
                 'related_posts_style' => isset($generator['related_posts_style']) ? $generator['related_posts_style'] : 'list',
                 'related_posts_phrases' => isset($generator['related_posts_phrases']) ? $generator['related_posts_phrases'] : '',
+                'internal_links_count' => isset($generator['internal_links_count']) ? intval($generator['internal_links_count']) : 0,
             );
 
             return self::save_generator($duplicated);

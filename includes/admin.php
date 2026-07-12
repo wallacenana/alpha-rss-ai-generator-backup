@@ -754,6 +754,10 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                         <button type="button" data-add-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
                                     </div>
+                                    <div class="mt-4 max-w-sm">
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Qtd. total de links internos</label>
+                                        <input type="number" min="0" name="internal_links_count" value="<?php echo esc_attr(isset($editing_generator['internal_links_count']) ? intval($editing_generator['internal_links_count']) : 0); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="0" />
+                                    </div>
                                     <div class="mt-4 space-y-3" data-internal-links-rows></div>
                                     <textarea name="internal_links_json" class="hidden" data-internal-links-json></textarea>
                                 </div>
@@ -877,6 +881,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'related_posts_allow_fallback' => '1',
                                         'related_posts_style' => 'list',
                                         'related_posts_phrases' => Alpha_RSS_AI_Generator::get_default_related_posts_phrases(),
+                                        'internal_links_count' => '0',
                                         'internal_links_json' => '[]',
                                     )); ?>;
                     var editId = <?php echo intval($edit_id); ?>;
@@ -1559,6 +1564,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('related_posts_allow_fallback', defaults.related_posts_allow_fallback);
                         setValue('related_posts_style', defaults.related_posts_style);
                         setValue('related_posts_phrases', defaults.related_posts_phrases);
+                        setValue('internal_links_count', defaults.internal_links_count);
                         setValue('internal_links_json', defaults.internal_links_json);
                         setMultiSelect('category_ids[]', []);
                         setMultiSelect('tags_default[]', []);
@@ -1618,6 +1624,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('related_posts_allow_fallback', String(typeof generator.related_posts_allow_fallback !== 'undefined' ? generator.related_posts_allow_fallback : defaults.related_posts_allow_fallback));
                         setValue('related_posts_style', generator.related_posts_style || defaults.related_posts_style);
                         setValue('related_posts_phrases', generator.related_posts_phrases || defaults.related_posts_phrases);
+                        setValue('internal_links_count', typeof generator.internal_links_count !== 'undefined' ? String(generator.internal_links_count) : defaults.internal_links_count);
                         setValue('internal_links_json', generator.internal_links_json || defaults.internal_links_json);
                         setMultiSelect('category_ids[]', parseListValue(generator.category_ids));
                         setMultiSelect('tags_default[]', parseListValue(generator.tags_default));

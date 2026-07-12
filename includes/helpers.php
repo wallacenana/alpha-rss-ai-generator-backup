@@ -3153,6 +3153,8 @@ class Alpha_RSS_AI_Generator_Helper
         $post_id = !empty($context['post_id']) ? intval($context['post_id']) : 0;
         $raw_rules = isset($generator['internal_links_json']) ? $generator['internal_links_json'] : '';
         $rules = self::parse_internal_link_rules($raw_rules);
+        $max_total_links = isset($generator['internal_links_count']) ? max(0, intval($generator['internal_links_count'])) : 0;
+        $remaining_total_links = $max_total_links > 0 ? $max_total_links : null;
 
         if ($content === '') {
             return $content;
@@ -3201,6 +3203,10 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         foreach ($rules as $rule) {
+            if ($remaining_total_links !== null && $remaining_total_links <= 0) {
+                break;
+            }
+
             $remaining = isset($rule['quantity']) ? max(1, intval($rule['quantity'])) : 1;
             $phrase = isset($rule['phrase']) ? (string) $rule['phrase'] : '';
             $normalized_phrase = self::normalize_internal_link_text($phrase);
@@ -3308,6 +3314,9 @@ class Alpha_RSS_AI_Generator_Helper
                 }
 
                 $node_replacements = min($remaining, count($matches));
+                if ($remaining_total_links !== null) {
+                    $node_replacements = min($node_replacements, $remaining_total_links);
+                }
                 if ($node_replacements <= 0) {
                     continue;
                 }
@@ -3370,6 +3379,12 @@ class Alpha_RSS_AI_Generator_Helper
                 $applied_count += $node_replacements;
                 $rule_applied_count += $node_replacements;
                 $remaining -= $node_replacements;
+                if ($remaining_total_links !== null) {
+                    $remaining_total_links -= $node_replacements;
+                    if ($remaining_total_links <= 0) {
+                        break 2;
+                    }
+                }
             }
         }
 
