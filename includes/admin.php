@@ -71,6 +71,8 @@ class Alpha_RSS_AI_Generator_Admin
         $categories = get_categories(array('hide_empty' => false));
         $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
 
+        ob_start();
+
 ?>
         <style>
             #wpbody-content>.notice,
@@ -501,7 +503,7 @@ class Alpha_RSS_AI_Generator_Admin
                                     <input type="number" min="256" name="max_tokens" value="<?php echo esc_attr(isset($editing_generator['max_tokens']) && $editing_generator['max_tokens'] !== '' ? $editing_generator['max_tokens'] : $settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Extensao do conteudo</label>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Extensão do conteúdo</label>
                                     <select name="content_length_class" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                         <?php $editing_content_length_class = Alpha_RSS_AI_Generator::normalize_content_length_class(isset($editing_generator['content_length_class']) ? $editing_generator['content_length_class'] : Alpha_RSS_AI_Generator::get_default_content_length_class()); ?>
                                         <option value="small" <?php selected($editing_content_length_class, 'small'); ?>>Pequeno (300-500 palavras)</option>
@@ -661,23 +663,23 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div class="hidden md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
-                                            <label class="block text-sm font-semibold text-slate-800">SugestÃµes de posts</label>
-                                            <p class="mt-1 text-xs text-slate-500">Adicione blocos de posts relacionados no meio ou no fim do conteÃºdo. As frases do marcador podem variar entre linhas diferentes.</p>
+                                            <label class="block text-sm font-semibold text-slate-800">Sugestões de posts</label>
+                                            <p class="mt-1 text-xs text-slate-500">Adicione blocos de posts relacionados no meio ou no fim do conteúdo. As frases do marcador podem variar entre linhas diferentes.</p>
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">Ativar sugestÃµes</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Ativar sugestões</label>
                                             <select name="related_posts_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:w-44">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃ£o</option>
+                                                <option value="0">Não</option>
                                             </select>
                                         </div>
                                     </div>
                                     <div class="mt-4 grid gap-4 md:grid-cols-2">
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">PosiÃ§Ã£o</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Posição</label>
                                             <select name="related_posts_position" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                                <option value="end">No final do conteÃºdo</option>
-                                                <option value="paragraphs">A cada X parÃ¡grafos</option>
+                                                <option value="end">No final do conteúdo</option>
+                                                <option value="paragraphs">A cada X parágrafos</option>
                                                 <option value="words">A cada X palavras</option>
                                             </select>
                                         </div>
@@ -686,7 +688,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             <input type="number" min="1" name="related_posts_interval" value="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">MÃ­nimo de H2</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Mínimo de H2</label>
                                             <input type="number" min="0" name="related_posts_min_h2" value="1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
                                         <div>
@@ -697,14 +699,14 @@ class Alpha_RSS_AI_Generator_Admin
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Apenas mesma categoria</label>
                                             <select name="related_posts_same_category_only" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃ£o</option>
+                                                <option value="0">Não</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Permitir fallback</label>
                                             <select name="related_posts_allow_fallback" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                 <option value="1">Sim</option>
-                                                <option value="0">NÃ£o</option>
+                                                <option value="0">Não</option>
                                             </select>
                                         </div>
                                         <div>
@@ -717,8 +719,8 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                         <div class="md:col-span-2">
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Frases do marcador</label>
-                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="VocÃª tambÃ©m pode gostar de:\nLeia tambÃ©m:\nVeja tambÃ©m:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
-                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestÃ£o.</p>
+                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Você também pode gostar de:\nLeia também:\nVeja também:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
+                                            <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestão.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -769,7 +771,7 @@ class Alpha_RSS_AI_Generator_Admin
                                     <div class="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
                                             <label class="block text-sm font-semibold text-slate-800">Modelos de prompt</label>
-                                            <p class="mt-1 text-xs text-slate-500">A IA escolhe o modelo mais adequado antes de chamar o Prompt SEO e o Prompt do conteudo.</p>
+                                            <p class="mt-1 text-xs text-slate-500">A IA escolhe o modelo mais adequado antes de chamar o Prompt SEO e o Prompt do conteúdo.</p>
                                         </div>
                                     </div>
                                     <div class="mt-4 space-y-3">
@@ -801,7 +803,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                         <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][seo_prompt_template]" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['seo_prompt_template']) ? $prompt_model['seo_prompt_template'] : ''); ?></textarea>
                                                     </div>
                                                     <div>
-                                                        <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteudo</label>
+                                                        <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteúdo</label>
                                                         <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][content_prompt_template]" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['content_prompt_template']) ? $prompt_model['content_prompt_template'] : ''); ?></textarea>
                                                     </div>
                                                 </div>
@@ -1914,7 +1916,7 @@ class Alpha_RSS_AI_Generator_Admin
         </div>
     <?php
 
-        return ob_get_clean();
+        echo ob_get_clean();
     }
 
     public function render_global_settings_page()
@@ -2889,7 +2891,7 @@ class Alpha_RSS_AI_Generator_Admin
                             });
 
                             if (!result.ok || !result.payload || !result.payload.success) {
-                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Nao foi possivel calcular a quantidade');
+                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível calcular a quantidade');
                             }
 
                             currentGenerateAvailableCount = parseInt(result.payload.available_count || 0, 10) || 0;
@@ -2964,7 +2966,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 method: 'GET'
                             });
                             if (!result.ok || !result.payload || !result.payload.success) {
-                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Nao foi possivel carregar a lista');
+                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível carregar a lista');
                             }
                             openGenerateModalWithList(result.payload.list || null);
                         } catch (error) {
@@ -3357,7 +3359,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 method: 'GET'
                             });
                             if (!result.ok || !result.payload || !result.payload.success) {
-                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Nao foi possivel carregar a lista');
+                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível carregar a lista');
                             }
 
                             currentDetailList = result.payload.list || null;
@@ -3418,7 +3420,7 @@ class Alpha_RSS_AI_Generator_Admin
                             });
 
                             if (!result.ok || !result.payload || !result.payload.success) {
-                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Nao foi possivel salvar o mapeamento');
+                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível salvar o mapeamento');
                             }
 
                             setStatus(listModalStatus, 'Mapeamento salvo com sucesso.', 'success');
@@ -3454,7 +3456,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 method: 'DELETE'
                             });
                             if (!result.ok || !result.payload || !result.payload.success) {
-                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Nao foi possivel excluir a lista');
+                                throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível excluir a lista');
                             }
                             window.location.reload();
                         } catch (error) {

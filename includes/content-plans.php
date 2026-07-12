@@ -237,7 +237,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         public function ajax_search_posts()
         {
             if (!current_user_can('manage_options')) {
-                wp_send_json_error(array('message' => 'Permissao negada.'), 403);
+                wp_send_json_error(array('message' => 'Permissão negada.'), 403);
             }
 
             check_ajax_referer('arc_content_plan_posts_search', 'nonce');
@@ -515,7 +515,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $lines = array(
                 'Voce é um estrategista editorial e arquiteto de links internos.',
                 'Analise o post abaixo e devolva somente JSON valido.',
-                'Escolha ' . $satellite_count . ' frases viaveis para se tornarem kw de um post satelite.',
+                'Escolha ' . $satellite_count . ' frases viáveis para se tornarem kw de um post satélite.',
                 'A resposta deve trazer as chaves: title, slug, satellites.',
                 'satellites deve ser um array com exatamente ' . $satellite_count . ' objetos.',
                 'Cada objeto deve ter: title, slug, focus_keyword, anchor_phrase, suggestion, content_angle, reason.',
@@ -526,7 +526,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $planning_niche !== '' ? 'Nicho / recorte editorial informado pelo usuario: ' . $planning_niche : '',
                 $planning_custom_prompt !== '' ? 'Prompt personalizado do usuario: ' . $planning_custom_prompt : '',
                 'URL do post pilar: ' . $pillar_url,
-                'Conteudo de referencia do post pilar: ' . $pillar_content,
+                'Conteúdo de referência do post pilar: ' . $pillar_content,
             );
 
             $lines = array_values(array_filter($lines, 'strlen'));
@@ -582,7 +582,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         public function handle_generate_plan()
         {
             if (!current_user_can('manage_options')) {
-                wp_die('Permissao negada.');
+                wp_die('Permissão negada.');
             }
 
             check_admin_referer('arc_generate_content_plan', 'arc_content_plan_nonce');
@@ -677,7 +677,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         public function handle_clear_plan()
         {
             if (!current_user_can('manage_options')) {
-                wp_die('Permissao negada.');
+                wp_die('Permissão negada.');
             }
 
             check_admin_referer('arc_clear_content_plan', 'arc_content_plan_nonce');
@@ -746,11 +746,11 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $anchor_phrase = !empty($satellite['anchor_phrase']) ? self::normalize_plain_text((string) $satellite['anchor_phrase']) : '';
             $source_content = implode("\n", array_filter(array(
                 'Pilar: ' . $pillar_title,
-                $pillar_content !== '' ? 'Conteudo do pilar: ' . $pillar_content : '',
-                $suggestion !== '' ? 'Sugestao editorial: ' . $suggestion : '',
-                $content_angle !== '' ? 'Tipo de conteudo: ' . $content_angle : '',
-                $reason !== '' ? 'Motivo do satelite: ' . $reason : '',
-                $anchor_phrase !== '' ? 'Ancora planejada: ' . $anchor_phrase : '',
+                $pillar_content !== '' ? 'Conteúdo do pilar: ' . $pillar_content : '',
+                $suggestion !== '' ? 'Sugestão editorial: ' . $suggestion : '',
+                $content_angle !== '' ? 'Tipo de conteúdo: ' . $content_angle : '',
+                $reason !== '' ? 'Motivo do satélite: ' . $reason : '',
+                $anchor_phrase !== '' ? 'Âncora planejada: ' . $anchor_phrase : '',
             )));
 
             return array(
@@ -880,7 +880,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         public function handle_generate_satellites()
         {
             if (!current_user_can('manage_options')) {
-                wp_die('Permissao negada.');
+                wp_die('Permissão negada.');
             }
 
             check_admin_referer('arc_generate_content_satellites', 'arc_content_satellites_nonce');
@@ -906,7 +906,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     'page' => self::PAGE_SLUG,
                     'post_id' => $post_id,
                     'arc_notice' => 'satellite_error',
-                    'arc_message' => 'Nao existe plano salvo com satelites para gerar.',
+                    'arc_message' => 'Não existe plano salvo com satélites para gerar.',
                 ), admin_url('admin.php'));
                 wp_safe_redirect($redirect);
                 exit;
@@ -956,7 +956,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $redirect_args['arc_count'] = count($generated_posts);
             } else {
                 $redirect_args['arc_notice'] = 'satellite_error';
-                $redirect_args['arc_message'] = !empty($errors) ? implode(' | ', array_slice($errors, 0, 3)) : 'Nao foi possivel gerar os satelites.';
+                $redirect_args['arc_message'] = !empty($errors) ? implode(' | ', array_slice($errors, 0, 3)) : 'Não foi possível gerar os satélites.';
             }
 
             $redirect = add_query_arg($redirect_args, admin_url('admin.php'));
@@ -1106,7 +1106,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         public function render_page()
         {
             if (!current_user_can('manage_options')) {
-                wp_die('Permissao negada.');
+                wp_die('Permissão negada.');
             }
 
             if (function_exists('nocache_headers')) {
@@ -1390,7 +1390,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
                             const payload = await response.json();
                             if (!payload || !payload.success) {
-                                throw new Error((payload && payload.data && payload.data.message) ? payload.data.message : 'Nao foi possivel carregar os posts.');
+                                throw new Error((payload && payload.data && payload.data.message) ? payload.data.message : 'Não foi possível carregar os posts.');
                             }
 
                             const data = payload.data || {};
