@@ -1109,6 +1109,10 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 wp_die('Permissao negada.');
             }
 
+            if (function_exists('nocache_headers')) {
+                nocache_headers();
+            }
+
             $selected_post_id = intval(self::get_request_param('post_id', 0));
             $selected_post = $selected_post_id > 0 ? get_post($selected_post_id) : null;
             $plan = $selected_post_id > 0 ? self::get_plan_meta($selected_post_id) : array();

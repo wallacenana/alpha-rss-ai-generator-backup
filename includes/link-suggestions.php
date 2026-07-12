@@ -1416,6 +1416,10 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 wp_die('Acesso negado.');
             }
 
+            if (function_exists('nocache_headers')) {
+                nocache_headers();
+            }
+
             $selected_post_id = intval(self::get_request_param('post_id', 0));
             $plan = $selected_post_id > 0 ? self::get_suggestions_meta($selected_post_id) : array();
             $stored_generated_at = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_GENERATED_AT, true) : '';

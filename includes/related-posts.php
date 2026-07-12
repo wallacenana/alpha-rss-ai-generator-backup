@@ -106,6 +106,10 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
                 wp_die('Acesso negado.');
             }
 
+            if (function_exists('nocache_headers')) {
+                nocache_headers();
+            }
+
             $settings = self::get_settings();
             $saved = isset($_GET['arc_notice']) && sanitize_key(wp_unslash($_GET['arc_notice'])) === 'saved';
             ?>

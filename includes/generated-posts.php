@@ -691,6 +691,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 wp_die('Acesso negado.');
             }
 
+            if (function_exists('nocache_headers')) {
+                nocache_headers();
+            }
+
             $paged = max(1, intval(self::get_request_param('paged', 1)));
             $per_page = 20;
             $search = self::get_request_param('s', '');

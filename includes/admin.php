@@ -56,6 +56,10 @@ class Alpha_RSS_AI_Generator_Admin
             wp_die('Acesso negado.');
         }
 
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+
         $settings = Alpha_RSS_AI_Generator::get_settings();
         $generators = Alpha_RSS_AI_Generator::get_generators(200);
         $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
@@ -1919,6 +1923,10 @@ class Alpha_RSS_AI_Generator_Admin
             wp_die('Acesso negado.');
         }
 
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+
         $settings = Alpha_RSS_AI_Generator::get_settings();
 
         ob_start();
@@ -2000,6 +2008,10 @@ class Alpha_RSS_AI_Generator_Admin
 
     public function render_keyword_lists_page()
     {
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+
         $global_settings = Alpha_RSS_AI_Generator::get_settings();
         $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
         $summary = array(
