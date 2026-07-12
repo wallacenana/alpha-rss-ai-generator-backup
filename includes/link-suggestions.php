@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 if (!defined('ABSPATH')) {
     exit;
@@ -33,8 +33,8 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
         {
             add_submenu_page(
                 'alpha-rss-ai-generator',
-                'Sugestoes de links',
-                'Sugestoes de links',
+                'Sugestões de links',
+                'Sugestões de links',
                 'manage_options',
                 self::PAGE_SLUG,
                 array($this, 'render_page')
@@ -68,7 +68,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 return $actions;
             }
 
-            $actions['alpha_rss_ai_link_suggestions'] = '<a href="' . esc_url($url) . '" aria-label="Lincagem automatica" title="Lincagem automatica">Lincagem automatica</a>';
+            $actions['alpha_rss_ai_link_suggestions'] = '<a href="' . esc_url($url) . '" aria-label="Lincagem automática" title="Lincagem automática">Lincagem automática</a>';
             return $actions;
         }
 
@@ -319,7 +319,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $post_id = intval($post_id);
             $post = $post_id > 0 ? get_post($post_id) : null;
             if (!$post instanceof WP_Post) {
-                return new WP_Error('arc_link_suggestions_post_missing', 'Post nao encontrado.');
+                return new WP_Error('arc_link_suggestions_post_missing', 'Post não encontrado.');
             }
 
             $generator = array();
@@ -479,9 +479,13 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
         private static function render_picker_post_button($item, $selected_post_id = 0)
         {
             $item = is_array($item) ? $item : array();
-            $button = '<button type="button" class="arc-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200" data-post-id="' . esc_attr(isset($item['id']) ? intval($item['id']) : 0) . '">';
+            $post_id = isset($item['id']) ? intval($item['id']) : 0;
+            $post_title = isset($item['title']) ? self::normalize_plain_text($item['title']) : '';
+            $post_type = isset($item['post_type']) ? self::normalize_plain_text($item['post_type']) : 'post';
+            $is_active = $selected_post_id > 0 && $post_id === intval($selected_post_id);
+            $button = '<button type="button" class="arc-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200' . ($is_active ? ' border-indigo-500 bg-indigo-50' : ' border-slate-200 bg-white hover:bg-slate-50') . '" data-post-id="' . esc_attr($post_id) . '" data-post-title="' . esc_attr($post_title) . '" data-post-type="' . esc_attr($post_type) . '" aria-pressed="' . ($is_active ? 'true' : 'false') . '">';
             $button .= '<div class="font-medium text-slate-900">' . esc_html(isset($item['label']) && $item['label'] !== '' ? $item['label'] : (isset($item['title']) ? $item['title'] : 'Post')) . '</div>';
-            $button .= '<div class="mt-1 text-xs text-slate-500">ID ' . esc_html(isset($item['id']) ? intval($item['id']) : 0) . '</div>';
+            $button .= '<div class="mt-1 text-xs text-slate-500">ID ' . esc_html($post_id) . ' · ' . esc_html($post_type) . '</div>';
             $button .= '</button>';
             return $button;
         }
@@ -503,7 +507,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             echo '<input type="hidden" name="source_post_id" id="arc-link-picker-value" value="' . esc_attr($selected_post_id) . '" />';
             echo '<button type="button" id="arc-link-picker-toggle" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false">';
             echo '<span id="arc-link-picker-label">' . esc_html($button_label) . '</span>';
-            echo '<span class="text-slate-400">âŒ„</span>';
+            echo '<svg class="h-4 w-4 shrink-0 text-slate-400 transition" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             echo '</button>';
             echo '<div id="arc-link-picker-menu" class="absolute left-0 right-0 top-full z-20 mt-2 hidden rounded-2xl border border-slate-200 bg-white shadow-soft">';
             echo '<div class="flex items-center gap-2 border-b border-slate-200 p-3">';
@@ -591,7 +595,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             }
 
             $reason = '';
-            foreach (array('reason', 'motivo', 'description', 'suggestion', 'sugestao', 'sugestÃ£o') as $key) {
+            foreach (array('reason', 'motivo', 'description', 'suggestion', 'sugestao', 'sugestão') as $key) {
                 if (!empty($item[$key])) {
                     $reason = sanitize_textarea_field((string) $item[$key]);
                     break;
@@ -724,17 +728,17 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $custom_prompt = self::normalize_plain_text($custom_prompt);
 
             $lines = array(
-                'Analise o conteudo de origem e encontre frases que possam receber links internos.',
+                'Analise o conteúdo de origem e encontre frases que possam receber links internos.',
                 'ID do post de origem: ' . (!empty($source_payload['id']) ? intval($source_payload['id']) : 0) . '.',
-                'Nao invente titulos, IDs ou URLs.',
+                'Não invente títulos, IDs ou URLs.',
                 'Nunca sugira o post de origem.',
-                'Nao repita o mesmo post alvo.',
-                'Seria interessante que fossem escolhidos termos por todo o conteudo permitido, ou seja, do inicio ao fim e que evitasse que fossem muito proximos ou até mesmo no mesmo paragrafo.',
+                'Não repita o mesmo post alvo.',
+                'Seria interessante que fossem escolhidos termos por todo o conteúdo permitido, ou seja, do início ao fim e que evitasse que fossem muito próximos ou até mesmo no mesmo parágrafo.',
                 'Cada sugestao deve ter somente: anchor e post_id.',
-                'Nao use frase completa, nao use o primeiro paragrafo, nao use headings, legendas e botoes.',
-                'Retorne ate ' . $requested_count . ' sugestões.',
-                'Nao complete a lista repetindo o mesmo post_id.',
-                $custom_prompt !== '' ? 'Observacao do usuario: ' . $custom_prompt : '',
+                'Não use frase completa, não use o primeiro parágrafo, não use headings, legendas e botoes.',
+                'Retorne até ' . $requested_count . ' sugestões.',
+                'Não complete a lista repetindo o mesmo post_id.',
+                $custom_prompt !== '' ? 'Observação do usuário: ' . $custom_prompt : '',
                 'Conteudo de origem em JSON: ' . wp_json_encode($source_payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'Posts candidatos em JSON: ' . wp_json_encode($candidate_payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'FORMATO DE SAIDA',
@@ -990,14 +994,14 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             if ($notice === 'generated') {
                 $count = intval(self::get_request_param('arc_count', 0));
-                $message = $count > 0 ? sprintf('Sugestoes geradas com sucesso. %d item(s) pronto(s) para aplicar.', $count) : 'Sugestoes geradas com sucesso.';
+                $message = $count > 0 ? sprintf('Sugestões geradas com sucesso. %d item(s) pronto(s) para aplicar.', $count) : 'Sugestões geradas com sucesso.';
             } elseif ($notice === 'applied') {
                 $count = intval(self::get_request_param('arc_count', 0));
                 $message = $count > 0 ? sprintf('Links aplicados com sucesso. %d link(s) inserido(s).', $count) : 'Links aplicados com sucesso.';
             } elseif ($notice === 'cleared') {
-                $message = 'Sugestoes removidas.';
+                $message = 'Sugestões removidas.';
             } elseif ($notice === 'error') {
-                $message = self::get_request_param('arc_message', 'Nao foi possivel concluir a operacao.');
+                $message = self::get_request_param('arc_message', 'Não foi possivel concluir a operacao.');
                 $class = 'notice-error';
             }
 
@@ -1017,7 +1021,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             $suggestions = !empty($plan['suggestions']) && is_array($plan['suggestions']) ? $plan['suggestions'] : array();
             if (empty($suggestions)) {
-                echo '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">A IA nao retornou sugestoes validas.</div>';
+                echo '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">A IA não retornou sugestões válidas.</div>';
                 return;
             }
 
@@ -1025,7 +1029,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             echo '<div class="border-b border-slate-200 px-6 py-4">';
             echo '<div class="flex flex-wrap items-start justify-between gap-3">';
             echo '<div>';
-            echo '<h2 class="text-lg font-semibold text-slate-950">Sugestoes salvas</h2>';
+            echo '<h2 class="text-lg font-semibold text-slate-950">Sugestões salvas</h2>';
             if (!empty($plan['generated_at'])) {
                 echo '<p class="mt-1 text-sm text-slate-500">Gerado em ' . esc_html($plan['generated_at']) . '</p>';
             }
@@ -1124,7 +1128,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             delete_post_meta($post_id, self::META_APPLIED_COUNT);
 
             if (empty($normalized['suggestions'])) {
-                $this->redirect_with_notice('Nao foi possivel montar sugestoes validas.', 'error', array(
+                $this->redirect_with_notice('Não foi possivel montar sugestoes validas.', 'error', array(
                     'post_id' => $post_id,
                 ));
             }
@@ -1153,7 +1157,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $plan = self::get_suggestions_meta($post_id);
             $suggestions = !empty($plan['suggestions']) && is_array($plan['suggestions']) ? $plan['suggestions'] : array();
             if (empty($suggestions)) {
-                $this->redirect_with_notice('Nao existem sugestoes para aplicar.', 'error', array(
+                $this->redirect_with_notice('Não existem sugestoes para aplicar.', 'error', array(
                     'post_id' => $post_id,
                 ));
             }
@@ -1167,7 +1171,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             $content = (string) get_post_field('post_content', $post_id);
             if ($content === '') {
-                $this->redirect_with_notice('O post nao possui conteudo para receber links.', 'error', array(
+                $this->redirect_with_notice('O post não possui conteúdo para receber links.', 'error', array(
                     'post_id' => $post_id,
                 ));
             }
@@ -1185,7 +1189,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             );
 
             if ($updated_content === '' || $updated_content === $content) {
-                $this->redirect_with_notice('Nenhum link foi inserido no conteudo.', 'error', array(
+                $this->redirect_with_notice('Nenhum link foi inserido no conteúdo.', 'error', array(
                     'post_id' => $post_id,
                 ));
             }
@@ -1215,7 +1219,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $post_id = intval($post_id);
             $post = $post_id > 0 ? get_post($post_id) : null;
             if (!$post instanceof WP_Post) {
-                return new WP_Error('arc_link_suggestions_post_missing', 'Post nao encontrado.');
+                return new WP_Error('arc_link_suggestions_post_missing', 'Post não encontrado.');
             }
 
             self::lift_execution_time_limit(300);
@@ -1400,7 +1404,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $html = '<div id="arc-link-selected-card" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm' . esc_attr($hidden_class) . '">';
             $html .= '<div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Post selecionado</div>';
             $html .= '<div id="arc-link-selected-title" class="mt-2 text-base font-semibold text-slate-950">' . esc_html($title) . '</div>';
-            $html .= '<div id="arc-link-selected-meta" class="mt-1 text-sm text-slate-500">' . ($selected_post instanceof WP_Post ? 'ID ' . esc_html($selected_post_id) . ' Â· ' . esc_html($post_type) : '') . '</div>';
+            $html .= '<div id="arc-link-selected-meta" class="mt-1 text-sm text-slate-500">' . ($selected_post instanceof WP_Post ? 'ID ' . esc_html($selected_post_id) . ' · ' . esc_html($post_type) : '') . '</div>';
             $html .= '</div>';
 
             return $html;
@@ -1429,7 +1433,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             $selected_post = $selected_post_id > 0 ? get_post($selected_post_id) : null;
             $selected_title = $selected_post instanceof WP_Post ? self::normalize_plain_text(get_the_title($selected_post)) : '';
-            $selected_meta = $selected_post instanceof WP_Post ? 'ID ' . intval($selected_post_id) . ' Â· ' . $selected_post->post_type : '';
+            $selected_meta = $selected_post instanceof WP_Post ? 'ID ' . intval($selected_post_id) . ' · ' . $selected_post->post_type : '';
 
             ?>
             <script>
@@ -1448,7 +1452,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
                 <div class="mb-6">
                     <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
-                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Sugestoes de links</h1>
+                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Sugestões de links</h1>
                 </div>
 
                 <?php self::render_notice(); ?>
@@ -1482,14 +1486,14 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                                     <details class="group rounded-2xl border border-slate-200 bg-slate-50">
                                         <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700">
                                             <span>Prompt personalizado</span>
-                                            <span class="text-slate-400 transition group-open:rotate-180">âŒ„</span>
+                                            <svg class="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-180" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                         </summary>
                                         <div class="border-t border-slate-200 px-4 py-4">
                                             <textarea name="custom_prompt" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Instrucoes extras para a IA, se precisar."><?php echo esc_textarea(isset($plan['custom_prompt']) ? $plan['custom_prompt'] : ''); ?></textarea>
                                         </div>
                                     </details>
 
-                                    <button type="submit" id="arc-link-generate-button" <?php echo $selected_post instanceof WP_Post ? '' : 'disabled="disabled"'; ?> class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500 <?php echo $selected_post instanceof WP_Post ? '' : 'opacity-50 cursor-not-allowed'; ?>">Gerar sugestoes</button>
+                                    <button type="submit" id="arc-link-generate-button" <?php echo $selected_post instanceof WP_Post ? '' : 'disabled="disabled"'; ?> class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500 <?php echo $selected_post instanceof WP_Post ? '' : 'opacity-50 cursor-not-allowed'; ?>">Gerar sugestões</button>
                                 </form>
 
                                 <?php if (!empty($plan) && !empty($plan['suggestions']) && is_array($plan['suggestions'])): ?>
@@ -1504,7 +1508,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                                         <?php wp_nonce_field('arc_clear_link_suggestions', 'arc_link_suggestions_nonce'); ?>
                                         <input type="hidden" name="action" value="arc_clear_link_suggestions" />
                                         <input type="hidden" name="source_post_id" value="<?php echo esc_attr($selected_post_id); ?>" />
-                                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100">Limpar sugestoes</button>
+                                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100">Limpar sugestões</button>
                                     </form>
                                 <?php endif; ?>
                             </div>
@@ -1606,6 +1610,25 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                         });
                     };
 
+                    if (results) {
+                        results.addEventListener('click', (event) => {
+                            const button = event.target.closest('.arc-link-picker-item');
+                            if (!button || !results.contains(button)) {
+                                return;
+                            }
+
+                            const item = {
+                                id: parseInt(button.dataset.postId || '0', 10) || 0,
+                                title: button.dataset.postTitle || button.textContent || 'Post',
+                                post_type: button.dataset.postType || 'post'
+                            };
+
+                            if (item.id > 0) {
+                                selectPost(item);
+                            }
+                        });
+                    }
+
                     const updateLabel = (text) => {
                         labelNode.textContent = text && String(text).trim() !== '' ? String(text) : 'Selecionar post';
                     };
@@ -1617,7 +1640,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                             selectedTitle.textContent = item.title || 'Post';
                         }
                         if (selectedMeta) {
-                            selectedMeta.textContent = 'ID ' + String(item.id || 0) + ' Â· ' + String(item.post_type || 'post');
+                            selectedMeta.textContent = 'ID ' + String(item.id || 0) + ' · ' + String(item.post_type || 'post');
                         }
                         setMenuOpen(false);
                         syncActiveButtons();
@@ -1628,6 +1651,8 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                         button.type = 'button';
                         button.className = 'arc-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
                         button.dataset.postId = item.id;
+                        button.dataset.postTitle = item.title || '';
+                        button.dataset.postType = item.post_type || 'post';
                         button.setAttribute('aria-pressed', selectedPostId > 0 && parseInt(item.id || '0', 10) === selectedPostId ? 'true' : 'false');
                         if (selectedPostId > 0 && parseInt(item.id || '0', 10) === selectedPostId) {
                             button.classList.add('border-indigo-500', 'bg-indigo-50');
@@ -1635,8 +1660,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                             button.classList.add('border-slate-200', 'bg-white', 'hover:bg-slate-50');
                         }
 
-                        button.innerHTML = '<div class="font-medium text-slate-900">' + escapeHtml(item.label || item.title || 'Post') + '</div><div class="mt-1 text-xs text-slate-500">ID ' + escapeHtml(item.id || 0) + ' Â· ' + escapeHtml(item.post_type || 'post') + '</div>';
-                        button.addEventListener('click', () => selectPost(item));
+                        button.innerHTML = '<div class="font-medium text-slate-900">' + escapeHtml(item.label || item.title || 'Post') + '</div><div class="mt-1 text-xs text-slate-500">ID ' + escapeHtml(item.id || 0) + ' · ' + escapeHtml(item.post_type || 'post') + '</div>';
                         return button;
                     };
 
@@ -1684,7 +1708,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
                             const payload = await response.json();
                             if (!payload || !payload.success) {
-                                throw new Error((payload && payload.data && payload.data.message) ? payload.data.message : 'Nao foi possivel carregar os posts.');
+                                throw new Error((payload && payload.data && payload.data.message) ? payload.data.message : 'Não foi possivel carregar os posts.');
                             }
 
                             const data = payload.data || {};

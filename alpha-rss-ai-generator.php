@@ -11,6 +11,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!ob_get_level()) {
+    // Keep redirects safe even if an include emits stray output.
+    ob_start();
+}
+
 if (!defined('ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE')) {
     define('ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE', __FILE__);
 }
@@ -296,7 +301,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 content_selector varchar(255) NOT NULL DEFAULT '',
                 content_image_size varchar(20) NOT NULL DEFAULT 'medium',
                 seo_enabled tinyint(1) NOT NULL DEFAULT 1,
-                generation_language varchar(80) NOT NULL DEFAULT 'PortuguÃªs do Brasil',
+                generation_language varchar(80) NOT NULL DEFAULT 'Português do Brasil',
                 prompt_template longtext DEFAULT NULL,
                 content_prompt_template longtext DEFAULT NULL,
                 prompt_models_json longtext DEFAULT NULL,
@@ -570,44 +575,44 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'target_h2_min' => 2,
                     'target_h2_max' => 3,
                     'blocks' => array(
-                        array('type' => 'intro_without_h2', 'label' => 'Introducao sem H2', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'intro_without_h2', 'label' => 'Introdução sem H2', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                         array('type' => 'h2', 'label' => 'H2 principal', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'paragraph', 'label' => 'Paragrafo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
-                        array('type' => 'conclusion', 'label' => 'Conclusao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'paragraph', 'label' => 'Parágrafo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
+                        array('type' => 'conclusion', 'label' => 'Conclusão', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                     ),
                 ),
                 array(
                     'key' => 'list_article',
                     'name' => 'Lista / ranking',
-                    'description' => 'Modelo para artigos em lista, rankings e selecoes com blocos visuais.',
+                    'description' => 'Modelo para artigos em lista, rankings e seleções com blocos visuais.',
                     'target_h2_min' => 4,
                     'target_h2_max' => 6,
                     'blocks' => array(
-                        array('type' => 'intro_with_title', 'label' => 'Introducao com titulo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'intro_with_title', 'label' => 'Introdução com título', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                         array('type' => 'h2', 'label' => 'H2 da lista', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'paragraph', 'label' => 'Paragrafo', 'notes' => '', 'quantity_min' => 2, 'quantity_max' => 4),
+                        array('type' => 'paragraph', 'label' => 'Parágrafo', 'notes' => '', 'quantity_min' => 2, 'quantity_max' => 4),
                         array('type' => 'bullet', 'label' => 'Lista em bullets', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 3),
                         array('type' => 'table', 'label' => 'Tabela', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
                         array('type' => 'image', 'label' => 'Imagem', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'button', 'label' => 'Botao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'conclusion', 'label' => 'Conclusao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'button', 'label' => 'Botão', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'conclusion', 'label' => 'Conclusão', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                     ),
                 ),
                 array(
                     'key' => 'guide_long',
                     'name' => 'Guia longo',
-                    'description' => 'Modelo mais completo, pensado para conteudo longo com mais profundidade e ritmo editorial.',
+                    'description' => 'Modelo mais completo, pensado para conteúdo longo com mais profundidade e ritmo editorial.',
                     'target_h2_min' => 5,
                     'target_h2_max' => 8,
                     'blocks' => array(
-                        array('type' => 'intro_with_title', 'label' => 'Introducao com titulo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'intro_with_title', 'label' => 'Introdução com título', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                         array('type' => 'h2', 'label' => 'H2 principal', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'paragraph', 'label' => 'Paragrafo', 'notes' => '', 'quantity_min' => 2, 'quantity_max' => 4),
+                        array('type' => 'paragraph', 'label' => 'Parágrafo', 'notes' => '', 'quantity_min' => 2, 'quantity_max' => 4),
                         array('type' => 'list', 'label' => 'Lista', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
                         array('type' => 'table', 'label' => 'Tabela', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
                         array('type' => 'image', 'label' => 'Imagem', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'button', 'label' => 'Botao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
-                        array('type' => 'conclusion', 'label' => 'Conclusao', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'button', 'label' => 'Botão', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
+                        array('type' => 'conclusion', 'label' => 'Conclusão', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                     ),
                 ),
             );
@@ -629,48 +634,48 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'name' => 'Artigo',
                     'description' => 'Modelo para artigos, guias e textos mais profundos.',
                     'outline_model_key' => 'guide_long',
-                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize artigo, guia e explicacao aprofundada, sem cara de lista.",
-                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: desenvolva um artigo editorial com contexto, transicoes fluidas e aprofundamento progressivo.",
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDireção editorial: priorize artigo, guia e explicação aprofundada, sem cara de lista.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDireção editorial: desenvolva um artigo editorial com contexto, transições fluidas e aprofundamento progressivo.",
                 ),
                 array(
                     'key' => 'noticia',
                     'name' => 'Noticia',
-                    'description' => 'Modelo para noticias curtas, objetivas e diretas ao ponto.',
+                    'description' => 'Modelo para notícias curtas, objetivas e diretas ao ponto.',
                     'outline_model_key' => 'news_short',
-                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize noticia curta, objetiva, factual e com entrada rapida.",
-                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: escreva como noticia curta, com lead forte, contexto rapido e fechamento enxuto.",
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDireção editorial: priorize notícia curta, objetiva, factual e com entrada rápida.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDireção editorial: escreva como notícia curta, com lead forte, contexto rápido e fechamento enxuto.",
                 ),
                 array(
                     'key' => 'review',
                     'name' => 'Review',
-                    'description' => 'Modelo para reviews, resenhas e avaliacoes comparativas.',
+                    'description' => 'Modelo para reviews, resenhas e avaliações comparativas.',
                     'outline_model_key' => 'guide_long',
-                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize review, resenha e avaliacao critica com conclusao clara e criterio editorial.",
-                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: escreva uma review detalhada, com contexto, pontos fortes, pontos fracos e veredito final.",
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDireção editorial: priorize review, resenha e avaliação crítica com conclusão clara e critério editorial.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDireção editorial: escreva uma review detalhada, com contexto, pontos fortes, pontos fracos e veredito final.",
                 ),
                 array(
                     'key' => 'faq',
                     'name' => 'FAQ',
                     'description' => 'Modelo para perguntas e respostas objetivas.',
                     'outline_model_key' => 'guide_long',
-                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize perguntas frequentes, respostas objetivas e estrutura direta para duvidas comuns.",
-                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: organize o conteudo em perguntas e respostas curtas, claras e praticas.",
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDireção editorial: priorize perguntas frequentes, respostas objetivas e estrutura direta para dúvidas comuns.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDireção editorial: organize o conteúdo em perguntas e respostas curtas, claras e práticas.",
                 ),
                 array(
                     'key' => 'tutorial',
                     'name' => 'Tutorial',
-                    'description' => 'Modelo para passo a passo, instrucoes e guias praticos.',
+                    'description' => 'Modelo para passo a passo, instruções e guias práticos.',
                     'outline_model_key' => 'guide_long',
-                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize passo a passo, instrucoes claras e aplicacao pratica do tema.",
-                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: escreva como tutorial, com etapas numeradas, orientacao pratica e progressao logica.",
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDireção editorial: priorize passo a passo, instruções claras e aplicação prática do tema.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDireção editorial: escreva como tutorial, com etapas numeradas, orientação prática e progressão lógica.",
                 ),
                 array(
                     'key' => 'comparativo',
                     'name' => 'Comparativo',
-                    'description' => 'Modelo para comparacoes, versus e analises lado a lado.',
+                    'description' => 'Modelo para comparações, versus e análises lado a lado.',
                     'outline_model_key' => 'list_article',
-                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDirecao editorial: priorize comparacao, contraste entre opcoes e criterios objetivos de escolha.",
-                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDirecao editorial: apresente os itens em comparacao direta, deixando diferencas, semelhanças e conclusao final claras.",
+                    'seo_prompt_template' => self::get_default_prompt_template() . "\n\nDireção editorial: priorize comparação, contraste entre opções e critérios objetivos de escolha.",
+                    'content_prompt_template' => self::get_default_content_prompt_template_visible() . "\n\nDireção editorial: apresente os itens em comparação direta, deixando diferenças, semelhanças e conclusão final claras.",
                 ),
             );
         }
@@ -680,22 +685,22 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return "Você é um editor especializado em SEO, Google Discover e portais de entretenimento.\n"
                 . "Analise a notícia fornecida e gere apenas os metadados da publicação.\n\n"
                 . "REGRAS GERAIS\n"
-                . "Estritamente proibido colocar ano diferente de 2026, pois estamos em 2026 a não ser que a kw peça, mas tem que colocar coisas criativas, como \"filmes de 2013 que ainda fazem sucesso\" (só exemplo, não use isso em todo título).\n"
-                . "Escreva tudo em Portugues do Brasil.\n"
+                . "Estritamente proibido colocar ano diferente de 2026, pois estamos em 2026, a não ser que a kw peça, mas tem que colocar coisas criativas, como \"filmes de 2013 que ainda fazem sucesso\" (só exemplo, não use isso em todo título).\n"
+                . "Escreva tudo em Português do Brasil.\n"
                 . "Use o nome da obra mais conhecido pelo público brasileiro.\n"
-                . "Tudo o que for relacionado a medidas, kilometetragem, distancia, dentre tudo isso, deve ser sempre no padrão brasileiro (km/h, metros, kg etc)\n\n"
+                . "Tudo o que for relacionado a medidas, quilometragem, distância, dentre tudo isso, deve ser sempre no padrão brasileiro (km/h, metros, kg etc)\n\n"
                 . "TÍTULO\n"
                 . "Use essa forma:\n"
-                . "[numero (até 10)/Filmes/Séries/Plataforma/genero do filme] (brinque com a ordem) + [curiosidade/descoberta/problema/comparação com outra série ou filme (brinque com a ordem)]\n"
+                . "[número (até 10)/Filmes/Séries/Plataforma/gênero do filme] (brinque com a ordem) + [curiosidade/descoberta/problema/comparação com outra série ou filme (brinque com a ordem)]\n"
                 . "Evite capitalização desnecessária, somente em nomes, siglas e primeira letra\n"
-                . "O numero, streaming e genero, devem estar no começo do título\n"
+                . "O número, streaming e gênero devem estar no começo do título\n"
                 . "Não gere títulos genéricos, como \"que parecem joias escondidas\"\n"
-                . "Cada título, deve ter a dor real dos usuários, por exemplo, se um título for comparado com interestellar, um possivel sentimento é a saudade e isso pode ser explorado, cada título deve ser explorado um sentimento diferente, pode sim ser a saudade, mas não necessariamente a saudade.\n"
+                . "Cada título deve ter a dor real dos usuários. Por exemplo, se um título for comparado com interestellar, um possível sentimento é a saudade e isso pode ser explorado. Cada título deve trabalhar um sentimento diferente; pode ser a saudade, mas não necessariamente a saudade.\n"
                 . "Prefira o nome oficial da obra no Brasil.\n"
                 . "Evite nomes de atores pouco conhecidos.\n"
-                . "Sentimento de Polêmica/Validação: Para quem gosta de julgar ou entender por que a internet está brigando por um filme (ex: que dividem opiniões desde 2024).\n"
-                . "Regra de Data Imutável: Estamos em 2026. Se a fonte falar de filmes lançados em 2024, brinque com o tempo de forma criativa (ex: \"filmes de 2024 que você ainda precisa ver em 2026\" ou \"que envelheceram bem\"). Nunca cite anos passados como se fossem o ano atual.\n"
-                . "Limite de Tamanho: O título final deve ter obrigatoriamente entre 55 e 70 caracteres (contando espaços).\n"
+                . "Sentimento de Polêmica/Validação: para quem gosta de julgar ou entender por que a internet está brigando por um filme (ex.: que dividem opiniões desde 2024).\n"
+                . "Regra de Data Imutável: estamos em 2026. Se a fonte falar de filmes lançados em 2024, brinque com o tempo de forma criativa (ex.: \"filmes de 2024 que você ainda precisa ver em 2026\" ou \"que envelheceram bem\"). Nunca cite anos passados como se fossem o ano atual.\n"
+                . "Limite de Tamanho: o título final deve ter obrigatoriamente entre 55 e 70 caracteres (contando espaços).\n"
                 . "Localização: Use sempre os nomes oficiais das obras no Brasil e evite citar atores pouco conhecidos pelo público geral brasileiro.\n\n"
                 . "Exemplos:\n"
                 . "5 animações da Netflix que os adultos acabam gostando mais que as crianças\n"
@@ -754,9 +759,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function get_prompt_output_suffix()
         {
             return "FORMATO DE SAIDA\n"
-                . "Retorne exclusivamente o JSON valido com exatamente estas chaves:\n"
+                . "Retorne exclusivamente o JSON válido com exatamente estas chaves:\n"
                 . "JSON{\n"
-                . '  "titulo": "",' . "\n"
+                . '  "title": "",' . "\n"
                 . '  "slug": "",' . "\n"
                 . '  "resumo": "",' . "\n"
                 . '  "meta_descricao": "",' . "\n"
@@ -1143,18 +1148,18 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function get_outline_block_label($type)
         {
             $map = array(
-                'intro' => 'Introducao',
-                'intro_with_title' => 'Introducao com titulo',
-                'intro_without_h2' => 'Introducao sem H2',
+                'intro' => 'Introdução',
+                'intro_with_title' => 'Introdução com título',
+                'intro_without_h2' => 'Introdução sem H2',
                 'h2' => 'H2',
                 'h3' => 'H3',
-                'paragraph' => 'Paragrafo',
+                'paragraph' => 'Parágrafo',
                 'list' => 'Lista',
                 'bullet' => 'Bullet',
                 'table' => 'Tabela',
                 'image' => 'Imagem',
-                'button' => 'Botao',
-                'conclusion' => 'Conclusao',
+                'button' => 'Botão',
+                'conclusion' => 'Conclusão',
             );
 
             $type = sanitize_key((string) $type);
@@ -1785,10 +1790,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             return array(
                 'keyword_column' => $find(array('keyword', 'keywords', 'frasechave', 'frase-chave', 'termo', 'termos')),
-                'source_title_column' => $find(array('title', 'titulo', 'titulooriginal', 'headline')),
+                'source_title_column' => $find(array('title', 'título', 'títulooriginal', 'headline')),
                 'source_url_column' => $source_url_column,
                 'slug_column' => $find(array('slug', 'finalslug', 'final_url', 'finalurl')) ?: $source_url_column,
-                'content_column' => $find(array('content', 'conteudo', 'body', 'text')),
+                'content_column' => $find(array('content', 'conteúdo', 'body', 'text')),
                 'tags_column' => $find(array('tags', 'tag')),
             );
         }
@@ -2707,13 +2712,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'keep_unrated' => $source_context_keep_unrated ? 1 : 0,
             ));
             if ($payload['name'] === '') {
-                return new WP_Error('arc_invalid_generator', 'Nome do gerador é obrigatÃ³rio.');
+                return new WP_Error('arc_invalid_generator', 'Nome do gerador é obrigatório.');
             }
             if ($payload['source_type'] === 'keyword_list' && $payload['list_id'] <= 0) {
                 return new WP_Error('arc_invalid_generator', 'Selecione uma lista de palavras-chave.');
             }
             if ($payload['source_type'] !== 'keyword_list' && $payload['feed_url'] === '') {
-                return new WP_Error('arc_invalid_generator', 'URL do feed é obrigatÃ³ria para geradores RSS.');
+                return new WP_Error('arc_invalid_generator', 'URL do feed é obrigatória para geradores RSS.');
             }
             if (trim($payload['prompt_template']) === '') {
                 $payload['prompt_template'] = self::get_default_prompt_template();
@@ -2787,39 +2792,39 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_default_prompt_template()
         {
-            return "Voce e um editor SEO. Sua tarefa e gerar apenas os elementos editoriais do artigo em {{generation_language}}.\n"
-                . "Retorne somente JSON valido com estas chaves: title, slug, excerpt, tags, pexels_tags, meta_description, focus_keyword.\n"
-                . "Nao gere content_html nesta etapa. O corpo do artigo sera criado em uma segunda chamada interna.\n"
-                . "Use a fonte apenas como base factual. Nao invente fatos, nao copie frases e nao use Markdown.\n"
-                . "O titulo deve ser natural, fiel aos fatos e adequado ao idioma final.\n"
-                . "A slug deve ser curta, limpa e coerente com o titulo.\n"
+            return "Você é um editor SEO. Sua tarefa é gerar apenas os elementos editoriais do artigo em {{generation_language}}.\n"
+                . "Retorne somente JSON válido com estas chaves: title, slug, excerpt, tags, pexels_tags, meta_description, focus_keyword.\n"
+                . "Não gere content_html nesta etapa. O corpo do artigo será criado em uma segunda chamada interna.\n"
+                . "Use a fonte apenas como base factual. Não invente fatos, não copie frases e não use Markdown.\n"
+                . "O título deve ser natural, fiel aos fatos e adequado ao idioma final.\n"
+                . "A slug deve ser curta, limpa e coerente com o título.\n"
                 . "A meta description deve ser objetiva e curta.\n"
-                . "As tags devem ter no maximo 4 termos.\n"
-                . "Pexels_tags deve ser um array com no maximo 4 termos visuais, concretos e especificos, sem palavras genericas.\n"
+                . "As tags devem ter no máximo 4 termos.\n"
+                . "Pexels_tags deve ser um array com no máximo 4 termos visuais, concretos e específicos, sem palavras genéricas.\n"
                 . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
                 . "Se a lista estiver vazia, retorne [].\n"
                 . "Regras:\n"
                 . "- Foque em title, slug, excerpt, tags, meta description e focus keyword.\n"
-                . "- Nao escreva o corpo do artigo nesta resposta.\n"
+                . "- Não escreva o corpo do artigo nesta resposta.\n"
                 . "- Mantenha o tom factual e direto.\n"
                 . "- Se a fonte for pobre, simplifique em vez de inventar.\n"
-                . "- Se a pauta for entretenimento, mantenha nomes proprios, obras e entidades reais quando existirem no contexto.\n"
-                . "- Se houver selecao de tags no gerador, use apenas esses termos nas tags finais; se nao houver selecao, retorne [] para tags.";
+                . "- Se a pauta for entretenimento, mantenha nomes próprios, obras e entidades reais quando existirem no contexto.\n"
+                . "- Se houver seleção de tags no gerador, use apenas esses termos nas tags finais; se não houver seleção, retorne [] para tags.";
         }
 
         public static function get_default_keyword_prompt_template()
         {
-            return "Voce e um editor de conteudo especializado em criar artigos originais a partir de planilhas e palavras-chave.\n"
+            return "Você é um editor de conteúdo especializado em criar artigos originais a partir de planilhas e palavras-chave.\n"
                 . "Escreva o texto final em {{generation_language}}.\n"
-                . "Retorne somente JSON valido com estas chaves: title, slug, excerpt, tags, pexels_tags, meta_description, focus_keyword.\n"
-                . "Nao gere content_html nesta etapa. O corpo do artigo sera criado em uma segunda chamada interna.\n"
+                . "Retorne somente JSON válido com estas chaves: title, slug, excerpt, tags, pexels_tags, meta_description, focus_keyword.\n"
+                . "Não gere content_html nesta etapa. O corpo do artigo será criado em uma segunda chamada interna.\n"
                 . "Use a keyword, a URL de origem e os dados da linha apenas como base factual.\n"
-                . "O titulo deve ser natural, fiel aos fatos e adequado ao idioma final.\n"
+                . "O título deve ser natural, fiel aos fatos e adequado ao idioma final.\n"
                 . "A slug final deve permanecer exatamente igual a {{final_slug}}.\n"
                 . "A meta description deve ser curta e objetiva.\n"
-                . "As tags devem ter no maximo 4 termos e, quando houver selecao no gerador, somente termos dessa lista.\n"
-                . "Pexels_tags deve ser um array com no maximo 4 termos visuais, concretos e especificos, sem palavras genericas.\n"
-                . "Se houver titulo na planilha, use-o como base principal; se nao houver, crie um titulo forte e natural a partir da keyword.\n"
+                . "As tags devem ter no máximo 4 termos e, quando houver seleção no gerador, somente termos dessa lista.\n"
+                . "Pexels_tags deve ser um array com no máximo 4 termos visuais, concretos e específicos, sem palavras genéricas.\n"
+                . "Se houver título na planilha, use-o como base principal; se não houver, crie um título forte e natural a partir da keyword.\n"
                 . "Keyword: {{keyword}}\n"
                 . "Slug final: {{final_slug}}\n"
                 . "Dados da linha: {{row_data}}\n"
@@ -2827,43 +2832,43 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Se a lista estiver vazia, retorne [].\n"
                 . "Regras:\n"
                 . "- Preserve os fatos, mas reescreva do zero.\n"
-                . "- Nao invente fatos fora da keyword, da URL e dos dados da linha.\n"
-                . "- Nao use Markdown; use apenas JSON.\n"
-                . "- Se a pauta for entretenimento, mantenha nomes proprios e entidades reais quando existirem no contexto.\n"
-                . "- Se houver selecao de tags no gerador, use apenas esses termos nas tags finais; se nao houver selecao, retorne [] para tags.";
+                . "- Não invente fatos fora da keyword, da URL e dos dados da linha.\n"
+                . "- Não use Markdown; use apenas JSON.\n"
+                . "- Se a pauta for entretenimento, mantenha nomes próprios e entidades reais quando existirem no contexto.\n"
+                . "- Se houver seleção de tags no gerador, use apenas esses termos nas tags finais; se não houver seleção, retorne [] para tags.";
         }
 
         public static function prompt_template_looks_like_keyword_default($prompt_template)
         {
             $prompt_template = (string) $prompt_template;
-            return strpos($prompt_template, 'VocÃª é um editor de conteÃºdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== false;
+            return strpos($prompt_template, 'Você é um editor de conteúdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== false;
         }
 
         public static function get_default_content_prompt_template()
         {
-            return "Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista."
+            return "Você é um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista."
                 . "Escreva em {{generation_language}}. \n"
                 . "Objetivo:\n"
                 . "- Escrever um artigo com cara de texto humano, natural, completo e fiel aos fatos.\n"
                 . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
-                . "- Use 2 a 3 paragrafos curtos na introducao, sem frases genericas.\n"
+                . "- Use 2 a 3 parágrafos curtos na introdução, sem frases genéricas.\n"
                 . "- Crie um H2 para cada item da lista.\n"
-                . "- Formato do H2: 01. Nome do item (ano ou informacao adicional se a fonte mencionar).\n"
-                . "- Se a fonte nao trouxer ano ou informacao adicional, use apenas o nome do item.\n"
-                . "- Mantenha a ordem dos H2 exatamente na mesma sequencia do esboço interno; nao reordene, nao agrupe e nao pule itens.\n"
-                . "- Depois de cada H2, escreva 2 a 3 paragrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
-                . "- Nao insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
-                . "- A conclusao deve usar um H2 criativo, sem a palavra conclusao, e apontar para o proximo passo.\n"
-                . "- Mantenha o foco no titulo ja definido e desenvolva o texto ao redor dele.\n"
+                . "- Formato do H2: 01. Nome do item (ano ou informação adicional se a fonte mencionar).\n"
+                . "- Se a fonte não trouxer ano ou informação adicional, use apenas o nome do item.\n"
+                . "- Mantenha a ordem dos H2 exatamente na mesma sequência do esboço interno; não reordene, não agrupe e não pule itens.\n"
+                . "- Depois de cada H2, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
+                . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
+                . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
+                . "- Mantenha o foco no título já definido e desenvolva o texto ao redor dele.\n"
                 . "- Use HTML simples apenas no content_html.\n"
-                . "- Nao repita os mesmos argumentos e nao invente informacoes.\n"
-                . "- Se a fonte for pobre, encurte em vez de encher lingui?a.\n"
+                . "- Não repita os mesmos argumentos e não invente informações.\n"
+                . "- Se a fonte for pobre, encurte em vez de encher linguiça.\n"
                 . "- Se a pauta for entretenimento, escreva de forma concreta, visual e direta."
-                . "Retorne apenas JSON valido com a chave content_html.\n"
-                . "Nao gere title, slug, tags ou meta dados nesta etapa.\n"
-                . "Use o titulo ja definido: {{generated_title}}.\n"
-                . "Use o focus keyword ja definido: {{generated_focus_keyword}}.\n"
-                . "Use a meta description ja definida: {{generated_meta_description}}.\n"
+                . "Retorne apenas JSON válido com a chave content_html.\n"
+                . "Não gere title, slug, tags ou metadados nesta etapa.\n"
+                . "Use o título já definido: {{generated_title}}.\n"
+                . "Use o focus keyword já definido: {{generated_focus_keyword}}.\n"
+                . "Use a meta description já definida: {{generated_meta_description}}.\n"
                 . "Use a fonte apenas como base factual.\n"
                 . "Conteudo da fonte: {{source_content}}\n"
                 . "Resumo da fonte: {{source_excerpt}}\n"
@@ -2876,47 +2881,47 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_default_content_prompt_template_visible()
         {
-            return "Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista.\n"
+            return "Você é um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista.\n"
                 . "Escreva um texto final natural, completo e fiel aos fatos.\n"
-                . "Retorne apenas JSON valido com a chave content_html.\n"
-                . "Nao gere title, slug, tags ou meta dados nesta etapa.\n"
+                . "Retorne apenas JSON válido com a chave content_html.\n"
+                . "Não gere title, slug, tags ou metadados nesta etapa.\n"
                 . "Use apenas HTML simples no content_html.\n"
                 . "Objetivo:\n"
                 . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
-                . "- Use 2 a 3 paragrafos curtos na introducao, sem frases genericas.\n"
+                . "- Use 2 a 3 parágrafos curtos na introdução, sem frases genéricas.\n"
                 . "- Crie um H2 para cada item da lista.\n"
-                . "- Formato do H2: 01. Nome do item (ano ou informacao adicional se a fonte mencionar).\n"
-                . "- Se a fonte nao trouxer ano ou informacao adicional, use apenas o nome do item.\n"
-                . "- Mantenha a ordem dos H2 exatamente na mesma sequencia do esboço interno; nao reordene, nao agrupe e nao pule itens.\n"
-                . "- Depois de cada H2, escreva 2 a 3 paragrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
-                . "- Nao insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
-                . "- A conclusao deve usar um H2 criativo, sem a palavra conclusao, e apontar para o proximo passo.\n"
-                . "- Escreva com tom humano, sem soar mecanico.\n"
+                . "- Formato do H2: 01. Nome do item (ano ou informação adicional se a fonte mencionar).\n"
+                . "- Se a fonte não trouxer ano ou informação adicional, use apenas o nome do item.\n"
+                . "- Mantenha a ordem dos H2 exatamente na mesma sequência do esboço interno; não reordene, não agrupe e não pule itens.\n"
+                . "- Depois de cada H2, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
+                . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
+                . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
+                . "- Escreva com tom humano, sem soar mecânico.\n"
                 . "- Priorize 1000 a 1800 palavras quando houver material suficiente.\n"
-                . "- Use paragrafos curtos e ajuste o numero de H2 conforme a densidade do tema e o outline interno.\n"
-                . "- Avance com fatos novos em cada bloco e evite repeticao de ideias.\n"
-                . "- Nao use Markdown.\n"
-                . "- Nao invente informacoes.";
+                . "- Use parágrafos curtos e ajuste o número de H2 conforme a densidade do tema e o outline interno.\n"
+                . "- Avance com fatos novos em cada bloco e evite repetição de ideias.\n"
+                . "- Não use Markdown.\n"
+                . "- Não invente informações.";
         }
 
         public static function content_prompt_template_looks_like_legacy_default($prompt_template)
         {
             $prompt_template = (string) $prompt_template;
-            return strpos($prompt_template, 'Voce e um redator editorial focado exclusivamente em escrever o corpo do artigo.') !== false
-                && strpos($prompt_template, 'Use o titulo ja definido:') !== false
-                && strpos($prompt_template, 'Use o focus keyword ja definido:') !== false
-                && strpos($prompt_template, 'Retorne apenas JSON valido com a chave content_html.') !== false
+            return strpos($prompt_template, 'Você é um redator editorial focado exclusivamente em escrever o corpo do artigo.') !== false
+                && strpos($prompt_template, 'Use o título já definido:') !== false
+                && strpos($prompt_template, 'Use o focus keyword já definido:') !== false
+                && strpos($prompt_template, 'Retorne apenas JSON válido com a chave content_html.') !== false
                 && (
-                    strpos($prompt_template, 'Use paragrafos curtos e 2 a 4 H2 para quebrar o texto.') !== false
-                    || strpos($prompt_template, 'Use paragrafos curtos, 2 a 4 H2, e avance com fatos novos em cada bloco.') !== false
-                    || strpos($prompt_template, 'Use paragrafos curtos e ajuste o numero de H2 conforme a densidade do tema e o outline interno.') !== false
+                    strpos($prompt_template, 'Use parágrafos curtos e 2 a 4 H2 para quebrar o texto.') !== false
+                    || strpos($prompt_template, 'Use parágrafos curtos, 2 a 4 H2, e avance com fatos novos em cada bloco.') !== false
+                    || strpos($prompt_template, 'Use parágrafos curtos e ajuste o número de H2 conforme a densidade do tema e o outline interno.') !== false
                 );
         }
 
         public static function prompt_template_looks_like_rss_default($prompt_template)
         {
             $prompt_template = (string) $prompt_template;
-            return strpos($prompt_template, 'VocÃª é um editor jornalÃ­stico especializado em reescrever conteÃºdo de RSS.') !== false
+            return strpos($prompt_template, 'Você é um editor jornalístico especializado em reescrever conteúdo de RSS.') !== false
                 || strpos($prompt_template, 'Voc? ? um jornalista de portal focado em SEO e no estilo GEO') !== false
                 || strpos($prompt_template, '[DIRETRIZES DE ESCRITA E ESTILO (GEO)]') !== false;
         }
@@ -3095,7 +3100,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $settings = self::get_settings();
             $api_key = trim((string) $settings['openai_api_key']);
             if ($api_key === '') {
-                return new WP_Error('arc_missing_openai_key', 'A chave da API da OpenAI nao esta configurada.');
+                return new WP_Error('arc_missing_openai_key', 'A chave da API da OpenAI não esta configurada.');
             }
 
             $model = trim((string) $generator['model']);
@@ -3111,7 +3116,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => 'VocÃª é um editor jornalÃ­stico especializado. Retorne apenas JSON vÃ¡lido.'
+                        'content' => 'Você é um editor jornalístico especializado. Retorne apenas JSON válido.'
                     ),
                     array(
                         'role' => 'user',
@@ -3163,7 +3168,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return self::normalize_generated_article($data, $context);
             }
 
-            return new WP_Error('arc_invalid_ai_json', 'A resposta da OpenAI nao veio em JSON valido.');
+            return new WP_Error('arc_invalid_ai_json', 'A resposta da OpenAI não veio em JSON valido.');
         }
 
         public static function normalize_generated_article($data, $context = array())
@@ -3171,10 +3176,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $allow_missing_content_html = !empty($context['allow_missing_content_html']);
             $preserve_extra_fields = !empty($context['preserve_extra_fields']);
             $article = array();
-            $article['title'] = isset($data['title']) ? sanitize_text_field($data['title']) : (isset($data['titulo']) ? sanitize_text_field($data['titulo']) : '');
+            $article['title'] = isset($data['title']) ? sanitize_text_field($data['title']) : (isset($data['título']) ? sanitize_text_field($data['título']) : '');
             $article['slug'] = isset($data['slug']) ? sanitize_title($data['slug']) : '';
             $article['excerpt'] = isset($data['excerpt']) ? sanitize_textarea_field($data['excerpt']) : (isset($data['resumo']) ? sanitize_textarea_field($data['resumo']) : '');
-            $article['content_html'] = isset($data['content_html']) ? wp_kses_post($data['content_html']) : (isset($data['conteudo_html']) ? wp_kses_post($data['conteudo_html']) : '');
+            $article['content_html'] = isset($data['content_html']) ? wp_kses_post($data['content_html']) : (isset($data['conteúdo_html']) ? wp_kses_post($data['conteúdo_html']) : '');
             $article['meta_description'] = isset($data['meta_description']) ? sanitize_text_field($data['meta_description']) : (isset($data['meta_descricao']) ? sanitize_text_field($data['meta_descricao']) : '');
             $article['focus_keyword'] = isset($data['focus_keyword']) ? sanitize_text_field($data['focus_keyword']) : (isset($data['palavra_chave_foco']) ? sanitize_text_field($data['palavra_chave_foco']) : '');
             $article['tags'] = array();
@@ -3209,7 +3214,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             if ($article['title'] === '') {
-                $article['title'] = 'Artigo sem titulo';
+                $article['title'] = 'Artigo sem título';
             }
             if ($article['slug'] === '') {
                 $article['slug'] = sanitize_title($article['title']);
@@ -4883,7 +4888,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
                 $line = $label . ': ' . $value;
                 $normalized_label = remove_accents((string) $label);
-                if (preg_match('/(keyword|palavra.?chave|url|slug|title|titulo|content|conteu|excerpt|descricao|meta|tags?|author|autor)/i', $normalized_label)) {
+                if (preg_match('/(keyword|palavra.?chave|url|slug|title|título|content|conteu|excerpt|descricao|meta|tags?|author|autor)/i', $normalized_label)) {
                     $preferred[] = $line;
                 } else {
                     $fallback[] = $line;
@@ -5005,7 +5010,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $tables = self::bulk_tables();
             $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$tables['lists']} WHERE id = %d", intval($list_id)), ARRAY_A);
             if (!$list) {
-                return new WP_Error('arc_keyword_list_missing', 'Lista nao encontrada');
+                return new WP_Error('arc_keyword_list_missing', 'Lista não encontrada');
             }
 
             $limit = max(1, intval($limit));
@@ -5029,7 +5034,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $tables = self::bulk_tables();
             $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$tables['lists']} WHERE id = %d", intval($list_id)), ARRAY_A);
             if (!$list) {
-                return new WP_Error('arc_keyword_list_missing', 'Lista nao encontrada');
+                return new WP_Error('arc_keyword_list_missing', 'Lista não encontrada');
             }
 
             $generator_record = $generator_id > 0 ? self::get_generator($generator_id) : array();
@@ -5103,7 +5108,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!$generator) {
                 return new WP_REST_Response(array(
                     'success' => false,
-                    'message' => 'Gerador nÃ£o encontrado.',
+                    'message' => 'Gerador não encontrado.',
                 ), 404);
             }
 
@@ -5111,7 +5116,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 if (empty($generator['list_id'])) {
                     return new WP_REST_Response(array(
                         'success' => false,
-                        'message' => 'Este gerador nao possui uma lista vinculada.',
+                        'message' => 'Este gerador não possui uma lista vinculada.',
                     ), 400);
                 }
 
@@ -5222,7 +5227,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $tables = self::bulk_tables();
             $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$tables['lists']} WHERE id = %d", $list_id), ARRAY_A);
             if (!$list) {
-                return new WP_Error('arc_keyword_list_missing', 'Lista nao encontrada', array('status' => 404));
+                return new WP_Error('arc_keyword_list_missing', 'Lista não encontrada', array('status' => 404));
             }
 
             self::bulk_refresh_list_counts($list_id);
@@ -5337,7 +5342,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $tables = self::bulk_tables();
             $list = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$tables['lists']} WHERE id = %d", $list_id));
             if (!$list) {
-                return new WP_Error('arc_keyword_list_missing', 'Lista nao encontrada', array('status' => 404));
+                return new WP_Error('arc_keyword_list_missing', 'Lista não encontrada', array('status' => 404));
             }
 
             $wpdb->delete($tables['rows'], array('list_id' => $list_id), array('%d'));
@@ -5363,12 +5368,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $selected_item = null;
             if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list') {
                 if (empty($generator['list_id'])) {
-                    return new WP_Error('arc_missing_list', 'Este gerador nÃ£o possui uma lista vinculada.');
+                    return new WP_Error('arc_missing_list', 'Este gerador não possui uma lista vinculada.');
                 }
 
                 $row = self::get_keyword_list_row_by_guid(intval($generator['list_id']), $item_guid);
                 if (!$row) {
-                    return new WP_Error('arc_item_not_found', 'O item selecionado nÃ£o foi encontrado na lista.');
+                    return new WP_Error('arc_item_not_found', 'O item selecionado não foi encontrado na lista.');
                 }
                 $selected_item = self::build_keyword_list_item_from_row(
                     self::get_keyword_list(intval($generator['list_id'])),
@@ -5405,7 +5410,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
 
                 if (!$selected_item) {
-                    return new WP_Error('arc_item_not_found', 'O item selecionado nÃ£o foi encontrado no feed.');
+                    return new WP_Error('arc_item_not_found', 'O item selecionado não foi encontrado no feed.');
                 }
             }
 
@@ -6608,10 +6613,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'dalle_enabled' => $use_dalle ? 1 : 0,
                 ));
             } else {
-                // Fonte jÃ¡ inserida com sucesso; nÃ£o faz fallback.
+                // Fonte já inserida com sucesso; não faz fallback.
             }
             if ($treat_like_rss && $use_source_video) {
-                self::insert_run_log($generator['id'], 'info', 'Checagem de vÃ­deo da fonte', array(
+                self::insert_run_log($generator['id'], 'info', 'Checagem de vídeo da fonte', array(
                     'request' => array(
                         'post_id' => $post_id,
                         'item_guid' => $item['guid'],
@@ -6677,16 +6682,16 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'request' => array('manual' => $manual),
                 ));
                 self::update_next_run_after_attempt($generator);
-                return new WP_Error('arc_missing_list', 'Este gerador nÃ£o possui uma lista vinculada.');
+                return new WP_Error('arc_missing_list', 'Este gerador não possui uma lista vinculada.');
             }
 
             $list = self::get_keyword_list($list_id);
             if (!$list) {
-                self::insert_run_log($generator['id'], 'error', 'Lista vinculada nao encontrada', array(
+                self::insert_run_log($generator['id'], 'error', 'Lista vinculada não encontrada', array(
                     'request' => array('manual' => $manual, 'list_id' => $list_id),
                 ));
                 self::update_next_run_after_attempt($generator);
-                return new WP_Error('arc_missing_list', 'Lista vinculada nÃ£o encontrada.');
+                return new WP_Error('arc_missing_list', 'Lista vinculada não encontrada.');
             }
 
             $filters = array();
@@ -6889,7 +6894,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $created++;
             }
 
-            $message = sprintf('Criados %d post(s), ignorados %d item(s) jÃ¡ processados, falharam %d item(s).', $created, $skipped, $failed);
+            $message = sprintf('Criados %d post(s), ignorados %d item(s) já processados, falharam %d item(s).', $created, $skipped, $failed);
             self::insert_run_log($generator['id'], 'success', $message, array(
                 'request' => array('manual' => $manual),
                 'response' => array('created' => $created, 'skipped' => $skipped, 'failed' => $failed),
@@ -7022,7 +7027,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $generator = self::get_generator($id);
             if (!$generator) {
-                return new WP_Error('arc_missing_generator', 'Gerador nÃ£o encontrado.');
+                return new WP_Error('arc_missing_generator', 'Gerador não encontrado.');
             }
 
             $duplicated_list_id = !empty($generator['list_id']) ? intval($generator['list_id']) : 0;
@@ -7104,12 +7109,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $list_id = intval($list_id);
             if ($list_id <= 0) {
-                return new WP_Error('arc_keyword_list_invalid', 'Lista invÃ¡lida.');
+                return new WP_Error('arc_keyword_list_invalid', 'Lista inválida.');
             }
 
             $source_list = self::get_keyword_list($list_id);
             if (!$source_list) {
-                return new WP_Error('arc_keyword_list_missing', 'Lista nÃ£o encontrada.');
+                return new WP_Error('arc_keyword_list_missing', 'Lista não encontrada.');
             }
 
             $tables = self::bulk_tables();
@@ -7141,7 +7146,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
 
             if ($inserted === false || empty($wpdb->insert_id)) {
-                return new WP_Error('arc_keyword_list_duplicate_failed', 'Nao foi possivel duplicar a lista.');
+                return new WP_Error('arc_keyword_list_duplicate_failed', 'Não foi possivel duplicar a lista.');
             }
 
             $new_list_id = intval($wpdb->insert_id);
@@ -7241,7 +7246,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $generator = self::get_generator($id);
             if (!$generator) {
-                return new WP_Error('arc_missing_generator', 'Gerador nÃ£o encontrado.');
+                return new WP_Error('arc_missing_generator', 'Gerador não encontrado.');
             }
 
             return array(
@@ -7254,7 +7259,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function import_generators_from_payload($payload)
         {
             if (!is_array($payload)) {
-                return new WP_Error('arc_invalid_import_payload', 'Payload invÃ¡lido.');
+                return new WP_Error('arc_invalid_import_payload', 'Payload inválido.');
             }
 
             $generators = array();
@@ -7346,7 +7351,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             check_admin_referer('arc_duplicate_generator', 'arc_duplicate_nonce');
             $id = isset($_POST['generator_id']) ? intval($_POST['generator_id']) : 0;
-            $result = $id > 0 ? self::duplicate_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador invÃ¡lido.');
+            $result = $id > 0 ? self::duplicate_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador inválido.');
             if (is_wp_error($result)) {
                 self::redirect_with_notice($result->get_error_message(), 'error');
             }
@@ -7361,7 +7366,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             check_admin_referer('arc_export_generator', 'arc_export_generator_nonce');
 
             $id = isset($_POST['generator_id']) ? intval($_POST['generator_id']) : 0;
-            $result = $id > 0 ? self::export_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador invÃ¡lido.');
+            $result = $id > 0 ? self::export_generator($id) : new WP_Error('arc_invalid_generator', 'Gerador inválido.');
             if (is_wp_error($result)) {
                 self::redirect_with_notice($result->get_error_message(), 'error');
             }
@@ -7426,7 +7431,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 self::redirect_with_notice('Falha no upload do arquivo JSON.', 'error');
             }
             if (empty($uploaded_file['tmp_name']) || !is_uploaded_file($uploaded_file['tmp_name'])) {
-                self::redirect_with_notice('Arquivo JSON invÃ¡lido.', 'error');
+                self::redirect_with_notice('Arquivo JSON inválido.', 'error');
             }
 
             $json = '';
@@ -7438,12 +7443,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $json = trim($json);
 
             if ($json === '') {
-                self::redirect_with_notice('O arquivo JSON estÃ¡ vazio.', 'error');
+                self::redirect_with_notice('O arquivo JSON está vazio.', 'error');
             }
 
             $decoded = json_decode($json, true);
             if (!is_array($decoded) || json_last_error() !== JSON_ERROR_NONE) {
-                self::redirect_with_notice('JSON invÃ¡lido.', 'error');
+                self::redirect_with_notice('JSON inválido.', 'error');
             }
 
             $result = self::import_generators_from_payload($decoded);
