@@ -1,7 +1,7 @@
 {
   "name": "Alpha RSS AI Generator",
   "slug": "alpha-rss-ai-generator",
-  "version": "1.8.15",
+  "version": "1.8.16",
   "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -12,7 +12,7 @@
   "last_updated": "2026-07-13",
   "sections": {
     "description": "Atualização via GitHub para o plugin Alpha RSS AI Generator.",
-    "changelog": "<ul><li>Correção de caracteres especiais na interface do plugin.</li><li>Atualização da release para 1.8.15.</li><li>Links internos automáticos agora são aplicados mesmo com regras manuais.</li></ul>",
+    "changelog": "<ul><li>Correção de caracteres especiais na interface do plugin.</li><li>Atualização da release para 1.8.16.</li><li>Links internos automáticos continuam funcionando mesmo com regras manuais.</li><li>Integração inicial com Tavily para enriquecer pautas e conteúdo.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote é distribuído a partir do branch main do repositório.",
     "screenshots": ""

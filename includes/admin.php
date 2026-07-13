@@ -264,6 +264,17 @@ class Alpha_RSS_AI_Generator_Admin
                                     <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Tavily</label>
+                                    <div class="flex items-center gap-3 rounded-xl border border-slate-300 px-3 py-2">
+                                        <input type="checkbox" name="tavily_enabled" value="1" <?php checked(!empty($settings['tavily_enabled'])); ?> class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                        <span class="text-sm text-slate-600">Usar busca externa para enriquecer pauta e conteúdo. Se a chave ficar vazia, o sistema tenta modo keyless.</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Tavily</label>
+                                    <input type="password" name="tavily_api_key" value="<?php echo esc_attr($settings['tavily_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                </div>
+                                <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
                                     <input type="text" name="default_model" value="<?php echo esc_attr($settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
@@ -1977,6 +1988,17 @@ class Alpha_RSS_AI_Generator_Admin
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
                             <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Tavily</label>
+                            <div class="flex items-center gap-3 rounded-xl border border-slate-300 px-3 py-2">
+                                <input type="checkbox" name="tavily_enabled" value="1" <?php checked(!empty($settings['tavily_enabled'])); ?> class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                <span class="text-sm text-slate-600">Usar busca externa para enriquecer pauta e conteúdo. Se a chave ficar vazia, o sistema tenta modo keyless.</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Tavily</label>
+                            <input type="password" name="tavily_api_key" value="<?php echo esc_attr($settings['tavily_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                         </div>
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>

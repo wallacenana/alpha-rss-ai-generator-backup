@@ -331,6 +331,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             }
 
             $item = Alpha_RSS_AI_Generator::maybe_enrich_rss_item_context($generator, $item);
+            $item = Alpha_RSS_AI_Generator::maybe_enrich_item_context_with_tavily($generator, $item);
             $item = Alpha_RSS_AI_Generator::resolve_item_media_for_generation($generator, $item);
 
             return array(
@@ -451,6 +452,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $generator = $context['generator'];
             $item = $context['item'];
             $post = $context['post'];
+            $item = Alpha_RSS_AI_Generator::maybe_enrich_item_context_with_tavily($generator, $item);
 
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
             if (is_wp_error($article)) {

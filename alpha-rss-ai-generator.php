@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.15
+Version: 1.8.16
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.15');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.16');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.15';
+        const VERSION = '1.8.16';
         const DB_VERSION = '1.8.3';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -433,6 +433,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return array(
                 'openai_api_key' => '',
                 'pexels_api_key' => '',
+                'tavily_api_key' => '',
+                'tavily_enabled' => 0,
                 'default_model' => 'gpt-4.1-mini',
                 'default_temperature' => 0.7,
                 'default_max_tokens' => 3000,
@@ -1619,6 +1621,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $current = self::get_settings();
             $current['openai_api_key'] = isset($raw['openai_api_key']) ? sanitize_text_field(wp_unslash($raw['openai_api_key'])) : '';
             $current['pexels_api_key'] = isset($raw['pexels_api_key']) ? sanitize_text_field(wp_unslash($raw['pexels_api_key'])) : '';
+            $current['tavily_api_key'] = isset($raw['tavily_api_key']) ? sanitize_text_field(wp_unslash($raw['tavily_api_key'])) : '';
+            $current['tavily_enabled'] = !empty($raw['tavily_enabled']) ? 1 : 0;
             $current['default_model'] = isset($raw['default_model']) ? sanitize_text_field(wp_unslash($raw['default_model'])) : $current['default_model'];
             $current['default_temperature'] = isset($raw['default_temperature']) ? floatval($raw['default_temperature']) : $current['default_temperature'];
             $current['default_max_tokens'] = isset($raw['default_max_tokens']) ? max(256, intval($raw['default_max_tokens'])) : $current['default_max_tokens'];
@@ -3811,6 +3815,204 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!empty($page_context['outline']) && is_array($page_context['outline'])) {
                 $item['source_page_outline_sections'] = $page_context['outline'];
             }
+            $item['source_context_enriched'] = 1;
+
+            return $item;
+        }
+
+        public static function tavily_is_enabled($generator = array())
+        {
+            $generator = is_array($generator) ? $generator : array();
+            if (isset($generator['tavily_enabled'])) {
+                return !empty($generator['tavily_enabled']);
+            }
+
+            $settings = self::get_settings();
+            return !empty($settings['tavily_enabled']);
+        }
+
+        public static function build_tavily_query_for_item($generator, $item)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $item = is_array($item) ? $item : array();
+
+            $parts = array();
+            foreach (array('source_title', 'title', 'feed_title', 'excerpt', 'content') as $key) {
+                if (empty($item[$key])) {
+                    continue;
+                }
+
+                $value = trim((string) $item[$key]);
+                if ($value !== '') {
+                    $parts[] = $value;
+                }
+            }
+
+            if (!empty($generator['name'])) {
+                $parts[] = trim((string) $generator['name']);
+            }
+
+            $query = self::normalize_plain_text(implode(' ', $parts));
+            if ($query === '') {
+                return '';
+            }
+
+            if (function_exists('mb_substr')) {
+                $query = mb_substr($query, 0, 360, 'UTF-8');
+            } else {
+                $query = substr($query, 0, 360);
+            }
+
+            return trim($query);
+        }
+
+        public static function request_tavily_search($generator, $query)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $query = trim((string) $query);
+            if ($query === '') {
+                return new WP_Error('arc_tavily_empty_query', 'Consulta da Tavily vazia.');
+            }
+
+            if (!self::tavily_is_enabled($generator)) {
+                return new WP_Error('arc_tavily_disabled', 'Tavily esta desativado.');
+            }
+
+            $settings = self::get_settings();
+            $api_key = trim((string) $settings['tavily_api_key']);
+            $body = array(
+                'query' => $query,
+                'auto_parameters' => false,
+                'topic' => 'general',
+                'search_depth' => 'basic',
+                'chunks_per_source' => 3,
+                'max_results' => 3,
+                'include_answer' => false,
+                'include_raw_content' => false,
+                'include_images' => false,
+                'include_image_descriptions' => false,
+                'include_favicon' => false,
+                'include_domains' => array(),
+                'exclude_domains' => array(),
+                'include_usage' => false,
+            );
+
+            $headers = array(
+                'Content-Type' => 'application/json',
+            );
+            if ($api_key !== '') {
+                $headers['Authorization'] = 'Bearer ' . $api_key;
+            } else {
+                $headers['X-Tavily-Access-Mode'] = 'keyless';
+            }
+
+            $response = wp_remote_post('https://api.tavily.com/search', array(
+                'timeout' => 30,
+                'headers' => $headers,
+                'body' => wp_json_encode($body),
+            ));
+
+            if (is_wp_error($response)) {
+                return $response;
+            }
+
+            $code = intval(wp_remote_retrieve_response_code($response));
+            $raw_body = (string) wp_remote_retrieve_body($response);
+            if ($code < 200 || $code >= 300) {
+                return new WP_Error('arc_tavily_http_error', 'Erro na consulta Tavily.', array(
+                    'status' => $code,
+                    'body' => $raw_body,
+                ));
+            }
+
+            $data = json_decode($raw_body, true);
+            if (!is_array($data)) {
+                return new WP_Error('arc_tavily_invalid_json', 'A resposta da Tavily nao veio em JSON valido.');
+            }
+
+            return $data;
+        }
+
+        public static function format_tavily_context_for_prompt($tavily_response, $query = '')
+        {
+            $tavily_response = is_array($tavily_response) ? $tavily_response : array();
+            $query = trim((string) $query);
+            $lines = array();
+
+            if ($query !== '') {
+                $lines[] = 'Consulta Tavily: ' . $query;
+            }
+
+            if (!empty($tavily_response['answer'])) {
+                $lines[] = 'Resposta Tavily: ' . self::normalize_plain_text((string) $tavily_response['answer']);
+            }
+
+            if (!empty($tavily_response['results']) && is_array($tavily_response['results'])) {
+                $lines[] = 'Resultados Tavily:';
+                $index = 1;
+                foreach ($tavily_response['results'] as $result) {
+                    if (!is_array($result)) {
+                        continue;
+                    }
+
+                    $title = !empty($result['title']) ? self::normalize_plain_text((string) $result['title']) : '';
+                    $url = !empty($result['url']) ? esc_url_raw((string) $result['url']) : '';
+                    $content = !empty($result['content']) ? self::normalize_plain_text((string) $result['content']) : '';
+
+                    $line = $index . '. ';
+                    if ($title !== '') {
+                        $line .= $title;
+                    }
+                    if ($url !== '') {
+                        $line .= ' | ' . $url;
+                    }
+                    if ($content !== '') {
+                        if (function_exists('mb_substr')) {
+                            $content = mb_substr($content, 0, 280, 'UTF-8');
+                        } else {
+                            $content = substr($content, 0, 280);
+                        }
+                        $line .= ' | ' . $content;
+                    }
+
+                    $lines[] = $line;
+                    $index++;
+                    if ($index > 3) {
+                        break;
+                    }
+                }
+            }
+
+            return trim(implode("\n", $lines));
+        }
+
+        public static function maybe_enrich_item_context_with_tavily($generator, $item)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $item = is_array($item) ? $item : array();
+
+            if (!self::tavily_is_enabled($generator)) {
+                return $item;
+            }
+
+            $query = self::build_tavily_query_for_item($generator, $item);
+            if ($query === '') {
+                return $item;
+            }
+
+            $response = self::request_tavily_search($generator, $query);
+            if (is_wp_error($response)) {
+                return $item;
+            }
+
+            $context = self::format_tavily_context_for_prompt($response, $query);
+            if ($context === '') {
+                return $item;
+            }
+
+            $item['source_tavily_query'] = $query;
+            $item['source_tavily_context'] = $context;
+            $item['source_tavily_results'] = !empty($response['results']) && is_array($response['results']) ? $response['results'] : array();
             $item['source_context_enriched'] = 1;
 
             return $item;
@@ -6348,6 +6550,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function create_post_from_generator_item($generator, $item)
         {
             $item = self::maybe_enrich_rss_item_context($generator, $item);
+            $item = self::maybe_enrich_item_context_with_tavily($generator, $item);
             $use_source_page_context = self::generator_uses_source_page_context($generator);
             if ($use_source_page_context) {
                 $item = self::resolve_item_media_for_generation($generator, $item);

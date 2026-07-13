@@ -2604,6 +2604,8 @@ class Alpha_RSS_AI_Generator_Helper
         } elseif (!empty($item['permalink'])) {
             $source_url = self::normalize_prompt_context_text($item['permalink']);
         }
+        $source_tavily_query = !empty($item['source_tavily_query']) ? self::normalize_prompt_context_text($item['source_tavily_query']) : '';
+        $source_tavily_context = !empty($item['source_tavily_context']) ? self::normalize_prompt_context_text($item['source_tavily_context']) : '';
         $source_content_html = '';
         foreach (array('source_page_content_html', 'content_html', 'source_page_html') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
@@ -2648,6 +2650,8 @@ class Alpha_RSS_AI_Generator_Helper
             'Escolha recommended_prompt_model_key usando somente uma das chaves validas do modelo base abaixo.',
             'Titulo da fonte: ' . $source_title,
             'URL da fonte: ' . $source_url,
+            'Consulta Tavily: ' . $source_tavily_query,
+            'Contexto Tavily: ' . $source_tavily_context,
             'Fonte em HTML filtrado:',
             $source_content_html !== '' ? $source_content_html : '[sem html de referencia]',
             'Conteudo textual da fonte: ' . $source_content,
@@ -2891,6 +2895,8 @@ class Alpha_RSS_AI_Generator_Helper
         $outline_model_name = !empty($outline_context['outline_model_name']) ? (string) $outline_context['outline_model_name'] : '';
         $prompt_model_name = !empty($prompt_model['name']) ? (string) $prompt_model['name'] : '';
         $prompt_model_key = !empty($prompt_model['key']) ? (string) $prompt_model['key'] : '';
+        $source_tavily_query = !empty($item['source_tavily_query']) ? (string) $item['source_tavily_query'] : '';
+        $source_tavily_context = !empty($item['source_tavily_context']) ? (string) $item['source_tavily_context'] : '';
 
         $hidden_context = array(
             'Contexto interno:',
@@ -2906,6 +2912,8 @@ class Alpha_RSS_AI_Generator_Helper
             'Resumo da fonte: {{source_excerpt}}',
             'Conteúdo da fonte: {{source_content}}',
             'Slug final: {{generated_slug}}',
+            'Consulta Tavily: {{source_tavily_query}}',
+            'Contexto Tavily: {{source_tavily_context}}',
             'Palavras-chave selecionadas: {{selected_tags}}',
             'Numero sugerido no titulo (apenas indicio): {{generated_title_outline_count}}',
             'Modelo de outline: {{outline_model_name}}',
@@ -2931,6 +2939,8 @@ class Alpha_RSS_AI_Generator_Helper
             '{{source_page_outline}}' => isset($item['source_page_outline']) ? $item['source_page_outline'] : '',
             '{{source_excerpt}}' => $item['excerpt'],
             '{{source_content}}' => $item['content'],
+            '{{source_tavily_query}}' => $source_tavily_query,
+            '{{source_tavily_context}}' => $source_tavily_context,
             '{{final_slug}}' => isset($item['final_slug']) ? $item['final_slug'] : '',
             '{{row_data}}' => isset($item['row_data']) && is_array($item['row_data']) ? wp_json_encode($item['row_data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
             '{{site_name}}' => get_bloginfo('name'),
