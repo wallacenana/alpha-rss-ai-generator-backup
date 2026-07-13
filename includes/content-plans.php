@@ -32,7 +32,14 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
         public function admin_menu()
         {
-            return;
+            add_submenu_page(
+                'alpha-rss-ai-generator',
+                'Sugestões de posts',
+                'Sugestões de posts',
+                'manage_options',
+                self::PAGE_SLUG,
+                array($this, 'render_page')
+            );
         }
 
         private static function get_request_param($key, $default = '')
@@ -106,7 +113,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             return $filtered;
         }
 
-        private static function build_plan_url($post_id)
+        public static function build_plan_url($post_id)
         {
             $post_id = intval($post_id);
             if ($post_id <= 0) {
@@ -121,7 +128,18 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
         public function register_row_action_filters()
         {
-            return;
+            if (!is_admin()) {
+                return;
+            }
+
+            $post_types = get_post_types(array('show_ui' => true), 'names');
+            if (empty($post_types) || !is_array($post_types)) {
+                return;
+            }
+
+            foreach ($post_types as $post_type) {
+                add_filter($post_type . '_row_actions', array($this, 'add_plan_row_action'), 20, 2);
+            }
         }
 
         public function add_plan_row_action($actions, $post)
