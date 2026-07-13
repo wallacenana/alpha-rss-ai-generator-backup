@@ -2597,6 +2597,13 @@ class Alpha_RSS_AI_Generator_Helper
 
         $source_excerpt = isset($item['excerpt']) ? self::normalize_prompt_context_text($item['excerpt']) : '';
         $source_content = isset($item['content']) ? self::normalize_prompt_context_text($item['content']) : '';
+        $source_title = isset($item['source_title']) ? self::normalize_prompt_context_text($item['source_title']) : '';
+        $source_url = '';
+        if (!empty($item['source_url'])) {
+            $source_url = self::normalize_prompt_context_text($item['source_url']);
+        } elseif (!empty($item['permalink'])) {
+            $source_url = self::normalize_prompt_context_text($item['permalink']);
+        }
         $source_content_html = '';
         foreach (array('source_page_content_html', 'content_html', 'source_page_html') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
@@ -2633,9 +2640,14 @@ class Alpha_RSS_AI_Generator_Helper
             'Voce e um planejador editorial interno.',
             'Analise o conteudo de referencia e escolha apenas UM modelo de prompt da lista disponivel.',
             'Nao escreva outline final nem o corpo do artigo aqui.',
+            'Considere apenas a estrutura principal do conteudo. Ignore rodape, sidebar, widgets, listas de navegacao e blocos auxiliares.',
+            'Escolha noticia quando a pauta for uma noticia ou atualizacao editorial, mesmo que existam bullets ou listas secundarias no HTML.',
+            'Escolha list_article somente quando a estrutura principal for realmente uma lista, ranking ou selecao de itens.',
             'Escreva em ' . $generation_language . '.',
             'Retorne apenas JSON valido com estas chaves: content_type, funnel_level, tone, primary_pain, focus_keyword, recommended_prompt_model_key, outline_notes.',
             'Escolha recommended_prompt_model_key usando somente uma das chaves validas do modelo base abaixo.',
+            'Titulo da fonte: ' . $source_title,
+            'URL da fonte: ' . $source_url,
             'Fonte em HTML filtrado:',
             $source_content_html !== '' ? $source_content_html : '[sem html de referencia]',
             'Conteudo textual da fonte: ' . $source_content,

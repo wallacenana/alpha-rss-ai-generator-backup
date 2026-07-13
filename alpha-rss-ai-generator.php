@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.14
+Version: 1.8.15
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.14');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.15');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.14';
+        const VERSION = '1.8.15';
         const DB_VERSION = '1.8.3';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -991,6 +991,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     $outline_context,
                     $generator
                 );
+            }
+
+            if ($prompt_model_key === '' && !empty($generator['prompt_model_key'])) {
+                $prompt_model_key = sanitize_key((string) $generator['prompt_model_key']);
             }
 
             if ($prompt_model_key === '' && !empty($outline_context['recommended_outline_model_key'])) {
@@ -6458,7 +6462,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($auto_internal_links_count <= 0 && empty($internal_link_rules) && in_array($source_type_for_links, array('rss', 'keyword_list'), true)) {
                 $auto_internal_links_count = 5;
             }
-            if (empty($internal_link_rules) && $auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
+            if ($auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 $auto_link_result = Alpha_RSS_AI_Link_Suggestions::generate_and_apply_link_suggestions_to_post(
                     $post_id,
                     $generator,

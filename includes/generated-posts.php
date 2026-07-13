@@ -557,7 +557,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             if ($auto_internal_links_count <= 0 && empty($internal_link_rules) && in_array($source_type, array('rss', 'keyword_list'), true)) {
                 $auto_internal_links_count = 5;
             }
-            if (empty($internal_link_rules) && $auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
+            if ($auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 $auto_link_result = Alpha_RSS_AI_Link_Suggestions::generate_and_apply_link_suggestions_to_post(
                     $post_id,
                     $generator,
