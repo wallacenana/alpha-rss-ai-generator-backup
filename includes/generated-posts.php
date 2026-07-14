@@ -860,6 +860,12 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                             <span class="sr-only">Regerar indisponivel</span>
                                                         </span>
                                                     <?php endif; ?>
+                                                    <?php if (class_exists('Alpha_RSS_AI_Content_Plans')): ?>
+                                                        <a href="<?php echo esc_url(Alpha_RSS_AI_Content_Plans::build_plan_url($post_id)); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700 shadow-sm transition hover:bg-emerald-50 hover:text-emerald-800" aria-label="Planejar" title="Planejar">
+                                                            <span class="dashicons dashicons-chart-area text-[16px] leading-none"></span>
+                                                            <span class="sr-only">Planejar</span>
+                                                        </a>
+                                                    <?php endif; ?>
                                                     <a href="<?php echo esc_url(add_query_arg(array('page' => 'alpha-rss-ai-link-suggestions', 'post_id' => $post_id), admin_url('admin.php'))); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Lincagem automática" title="Lincagem automática">
                                                         <span class="dashicons dashicons-admin-links text-[16px] leading-none"></span>
                                                         <span class="sr-only">Lincagem automática</span>

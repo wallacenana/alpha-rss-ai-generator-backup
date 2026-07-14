@@ -32,7 +32,14 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
         public function admin_menu()
         {
-            return;
+            add_submenu_page(
+                'alpha-rss-ai-generator',
+                'Sugestões de posts',
+                'Sugestões de posts',
+                'manage_options',
+                self::PAGE_SLUG,
+                array($this, 'render_page')
+            );
         }
 
         private static function get_request_param($key, $default = '')
@@ -106,7 +113,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             return $filtered;
         }
 
-        private static function build_plan_url($post_id)
+        public static function build_plan_url($post_id)
         {
             $post_id = intval($post_id);
             if ($post_id <= 0) {
@@ -121,7 +128,18 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
         public function register_row_action_filters()
         {
-            return;
+            if (!is_admin()) {
+                return;
+            }
+
+            $post_types = get_post_types(array('show_ui' => true), 'names');
+            if (empty($post_types) || !is_array($post_types)) {
+                return;
+            }
+
+            foreach ($post_types as $post_type) {
+                add_filter($post_type . '_row_actions', array($this, 'add_plan_row_action'), 20, 2);
+            }
         }
 
         public function add_plan_row_action($actions, $post)
@@ -1316,6 +1334,25 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                         });
                     };
 
+                    if (results) {
+                        results.addEventListener('click', (event) => {
+                            const button = event.target.closest('.arc-plan-picker-item');
+                            if (!button || !results.contains(button)) {
+                                return;
+                            }
+
+                            const item = {
+                                id: parseInt(button.dataset.postId || '0', 10) || 0,
+                                title: button.dataset.postTitle || button.textContent || 'Post',
+                                post_type: button.dataset.postType || 'post'
+                            };
+
+                            if (item.id > 0) {
+                                selectPost(item);
+                            }
+                        });
+                    }
+
                     const updateLabel = (text) => {
                         labelNode.textContent = text && String(text).trim() !== '' ? String(text) : 'Selecionar post';
                     };
@@ -1333,6 +1370,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                         button.className = 'arc-plan-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
                         button.dataset.postId = item.id;
                         button.dataset.postType = item.post_type || 'post';
+                        button.dataset.postTitle = item.title || '';
                         button.setAttribute('aria-pressed', selectedPostId > 0 && parseInt(item.id || '0', 10) === selectedPostId ? 'true' : 'false');
                         if (selectedPostId > 0 && parseInt(item.id || '0', 10) === selectedPostId) {
                             button.classList.add('border-indigo-500', 'bg-indigo-50');
@@ -1341,8 +1379,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                         }
 
                         button.innerHTML = escapeHtml(item.title || 'Post');
-
-                        button.addEventListener('click', () => selectPost(item));
                         return button;
                     };
 
