@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.8.19
+Version: 1.8.20
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.19');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.20');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.19';
+        const VERSION = '1.8.20';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -4063,13 +4063,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             $title = self::extract_page_title_from_html($html);
             $content = self::extract_page_content_from_html($html, $content_selector);
-            $content_html = '';
-            if (trim((string) $content_selector) !== '') {
-                $content_html = Alpha_RSS_AI_Generator_Helper::extract_html_from_html_using_selector($html, $content_selector);
-            }
-            if ($content_html === '') {
-                $content_html = $html;
-            }
+            $content_html = Alpha_RSS_AI_Generator_Helper::extract_html_from_html_with_fallbacks($html, $content_selector);
             $excerpt = $content !== '' ? wp_trim_words($content, 24) : '';
             $outline = Alpha_RSS_AI_Generator_Helper::extract_page_outline_from_html($html, $url, 50, 10, 5, $image_selector_class, $link_selector_class, $content_selector);
             $page_context = array(

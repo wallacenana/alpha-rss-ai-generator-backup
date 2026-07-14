@@ -503,6 +503,76 @@ class Alpha_RSS_AI_Generator_Helper
         return $best_html;
     }
 
+    public static function extract_html_from_html_with_fallbacks($html, $selector = '')
+    {
+        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        if ($html === '') {
+            return '';
+        }
+
+        $selector = trim((string) $selector);
+        if ($selector !== '') {
+            $selected_html = self::extract_html_from_html_using_selector($html, $selector);
+            if ($selected_html !== '') {
+                return $selected_html;
+            }
+        }
+
+        libxml_use_internal_errors(true);
+        $dom = new DOMDocument();
+        if (!@$dom->loadHTML('<?xml encoding="UTF-8">' . $html)) {
+            return '';
+        }
+
+        $xpath = new DOMXPath($dom);
+        $selectors = array(
+            '//article',
+            '//*[@role="main"]',
+            '//main',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " entry-content ")]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " post-content ")]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " content ")]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " article-body ")]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " story-body ")]',
+            '//*[@id="content"]',
+            '//*[@id="main"]',
+        );
+
+        $best_html = '';
+        $best_length = 0;
+        foreach ($selectors as $scope_selector) {
+            $nodes = $xpath->query($scope_selector);
+            if (!$nodes || $nodes->length === 0) {
+                continue;
+            }
+
+            for ($i = 0; $i < min(2, $nodes->length); $i++) {
+                $node = $nodes->item($i);
+                if (!($node instanceof DOMNode)) {
+                    continue;
+                }
+
+                $candidate = $dom->saveHTML($node);
+                $candidate = is_string($candidate) ? trim($candidate) : '';
+                if ($candidate === '') {
+                    continue;
+                }
+
+                $candidate_length = strlen($candidate);
+                if ($candidate_length > $best_length) {
+                    $best_length = $candidate_length;
+                    $best_html = $candidate;
+                }
+            }
+        }
+
+        if ($best_html !== '') {
+            return $best_html;
+        }
+
+        return $html;
+    }
+
     public static function extract_selector_media_candidate_from_html($html, $base_url = '', $selector_class = '', $kind = 'image')
     {
         $result = array(
@@ -826,7 +896,7 @@ class Alpha_RSS_AI_Generator_Helper
 
         $content_selector = trim((string) $content_selector);
         if ($content_selector !== '') {
-            $selected_html = self::extract_html_from_html_using_selector($html, $content_selector);
+            $selected_html = self::extract_html_from_html_with_fallbacks($html, $content_selector);
             if ($selected_html !== '') {
                 $html = $selected_html;
             }

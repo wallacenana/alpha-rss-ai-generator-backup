@@ -1,7 +1,7 @@
 {
   "name": "Alpha RSS AI Generator",
   "slug": "alpha-rss-ai-generator",
-  "version": "1.8.19",
+  "version": "1.8.20",
   "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -11,10 +11,10 @@
   "author_url": "https://github.com/wallacenana",
   "last_updated": "2026-07-14",
   "sections": {
-    "description": "Atualização via GitHub para o plugin Alpha RSS AI Generator.",
-    "changelog": "<ul><li>Integração opcional do Tavily nas Configurações globais para enriquecer o planejamento editorial.</li><li>Ajuste do upgrade de schema para evitar avisos de colunas duplicadas no wp_arc_items.</li><li>Atualização da release para 1.8.19 com deduplicação semântica por embeddings.</li></ul>",
+    "description": "Atualizacao via GitHub para o plugin Alpha RSS AI Generator.",
+    "changelog": "<ul><li>Fallback de conteudo para &lt;article&gt;, &lt;main&gt; e areas comuns quando o seletor de conteudo nao existir.</li><li>Melhoria no HTML bruto repassado para RSS e Google Alerts.</li><li>Atualizacao da release para 1.8.20.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
-    "faq": "O pacote é distribuído a partir do branch main do repositório.",
+    "faq": "O pacote e distribuido a partir do branch main do repositorio.",
     "screenshots": ""
   }
 }
