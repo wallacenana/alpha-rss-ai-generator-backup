@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.16
+Version: 1.8.17
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.16');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.17');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,8 +48,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.16';
-        const DB_VERSION = '1.8.3';
+        const VERSION = '1.8.17';
+        const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
         const OPTION_KEY_OUTLINE_MODELS = 'alpha_rss_ai_outline_models';
@@ -408,6 +408,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 item_title text DEFAULT NULL,
                 post_id bigint(20) unsigned DEFAULT NULL,
                 item_hash varchar(64) DEFAULT NULL,
+                title_embedding_model varchar(120) DEFAULT NULL,
+                title_embedding_json longtext DEFAULT NULL,
+                semantic_duplicate_post_id bigint(20) unsigned DEFAULT NULL,
+                semantic_duplicate_score decimal(6,4) DEFAULT NULL,
+                semantic_duplicate_method varchar(40) DEFAULT NULL,
                 created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
                 UNIQUE KEY generator_item (generator_id, item_guid(191)),
@@ -436,6 +441,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'default_model' => 'gpt-4.1-mini',
                 'default_temperature' => 0.7,
                 'default_max_tokens' => 3000,
+                'semantic_dedup_enabled' => 1,
+                'semantic_dedup_model' => 'text-embedding-3-small',
+                'semantic_dedup_threshold' => 0.88,
+                'semantic_dedup_lookback' => 300,
             );
         }
 
@@ -1622,6 +1631,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $current['default_model'] = isset($raw['default_model']) ? sanitize_text_field(wp_unslash($raw['default_model'])) : $current['default_model'];
             $current['default_temperature'] = isset($raw['default_temperature']) ? floatval($raw['default_temperature']) : $current['default_temperature'];
             $current['default_max_tokens'] = isset($raw['default_max_tokens']) ? max(256, intval($raw['default_max_tokens'])) : $current['default_max_tokens'];
+            $current['semantic_dedup_enabled'] = isset($raw['semantic_dedup_enabled']) ? (!empty($raw['semantic_dedup_enabled']) ? 1 : 0) : $current['semantic_dedup_enabled'];
+            $current['semantic_dedup_model'] = isset($raw['semantic_dedup_model']) ? sanitize_text_field(wp_unslash($raw['semantic_dedup_model'])) : $current['semantic_dedup_model'];
+            $current['semantic_dedup_threshold'] = isset($raw['semantic_dedup_threshold']) ? max(0.0, min(1.0, floatval($raw['semantic_dedup_threshold']))) : $current['semantic_dedup_threshold'];
+            $current['semantic_dedup_lookback'] = isset($raw['semantic_dedup_lookback']) ? max(25, intval($raw['semantic_dedup_lookback'])) : $current['semantic_dedup_lookback'];
             return $current;
         }
 
@@ -3155,6 +3168,325 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
             return self::parse_ai_json($text, $context);
+        }
+
+        protected static function normalize_semantic_title_text($text)
+        {
+            $text = html_entity_decode(wp_strip_all_tags((string) $text), ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+            $text = trim(preg_replace('/\s+/u', ' ', $text));
+            $text = preg_replace('/^\s*\d{1,3}\s*[\.\)\-:\/]*\s*/u', '', $text);
+            $text = preg_replace('/\s*\((?:19|20)\d{2}(?:\s*[\-â€“—]\s*(?:19|20)\d{2})?\)\s*$/u', '', $text);
+            $text = remove_accents($text);
+            $text = function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+            $text = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $text);
+            $text = trim(preg_replace('/\s+/u', ' ', $text));
+
+            return $text;
+        }
+
+        protected static function calculate_semantic_title_fallback_score($needle, $haystack)
+        {
+            $needle = self::normalize_semantic_title_text($needle);
+            $haystack = self::normalize_semantic_title_text($haystack);
+            if ($needle === '' || $haystack === '') {
+                return 0.0;
+            }
+
+            if ($needle === $haystack) {
+                return 1.0;
+            }
+
+            $score = 0.0;
+            if (strpos($haystack, $needle) !== false || strpos($needle, $haystack) !== false) {
+                $score += 0.45;
+            }
+
+            $similarity = 0.0;
+            similar_text($needle, $haystack, $similarity);
+            $score += min(0.4, max(0.0, floatval($similarity) / 100.0));
+
+            $needle_tokens = array_values(array_filter(preg_split('/\s+/', $needle)));
+            $haystack_tokens = array_values(array_filter(preg_split('/\s+/', $haystack)));
+            if (!empty($needle_tokens) && !empty($haystack_tokens)) {
+                $common_tokens = array_intersect($needle_tokens, $haystack_tokens);
+                $score += min(0.15, count($common_tokens) * 0.03);
+            }
+
+            return min(1.0, $score);
+        }
+
+        protected static function normalize_embedding_vector($embedding)
+        {
+            if (!is_array($embedding) || empty($embedding)) {
+                return array();
+            }
+
+            $vector = array();
+            $norm = 0.0;
+            foreach ($embedding as $value) {
+                $float_value = floatval($value);
+                $vector[] = $float_value;
+                $norm += $float_value * $float_value;
+            }
+
+            if ($norm <= 0) {
+                return array();
+            }
+
+            $norm = sqrt($norm);
+            foreach ($vector as $index => $value) {
+                $vector[$index] = $value / $norm;
+            }
+
+            return $vector;
+        }
+
+        protected static function cosine_similarity_between_vectors($left, $right)
+        {
+            if (!is_array($left) || !is_array($right) || empty($left) || empty($right)) {
+                return 0.0;
+            }
+
+            $count = min(count($left), count($right));
+            if ($count <= 0) {
+                return 0.0;
+            }
+
+            $dot = 0.0;
+            $left_norm = 0.0;
+            $right_norm = 0.0;
+            for ($i = 0; $i < $count; $i++) {
+                $left_value = floatval($left[$i]);
+                $right_value = floatval($right[$i]);
+                $dot += $left_value * $right_value;
+                $left_norm += $left_value * $left_value;
+                $right_norm += $right_value * $right_value;
+            }
+
+            if ($left_norm <= 0 || $right_norm <= 0) {
+                return 0.0;
+            }
+
+            return max(0.0, min(1.0, $dot / (sqrt($left_norm) * sqrt($right_norm))));
+        }
+
+        public static function request_openai_embedding($text, $model = 'text-embedding-3-small')
+        {
+            $settings = self::get_settings();
+            $api_key = trim((string) $settings['openai_api_key']);
+            if ($api_key === '') {
+                return new WP_Error('arc_missing_openai_key', 'A chave da API da OpenAI não esta configurada.');
+            }
+
+            $text = trim((string) $text);
+            if ($text === '') {
+                return new WP_Error('arc_empty_embedding_input', 'Não foi possível gerar embedding para texto vazio.');
+            }
+
+            $model = trim((string) $model);
+            if ($model === '') {
+                $model = 'text-embedding-3-small';
+            }
+
+            $response = wp_remote_post('https://api.openai.com/v1/embeddings', array(
+                'timeout' => 120,
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $api_key,
+                    'Content-Type' => 'application/json',
+                ),
+                'body' => wp_json_encode(array(
+                    'model' => $model,
+                    'input' => $text,
+                )),
+            ));
+
+            if (is_wp_error($response)) {
+                return $response;
+            }
+
+            $code = wp_remote_retrieve_response_code($response);
+            $response_body = wp_remote_retrieve_body($response);
+            $data = json_decode($response_body, true);
+
+            if ($code !== 200) {
+                $message = isset($data['error']['message']) ? $data['error']['message'] : 'Erro desconhecido ao gerar embedding';
+                return new WP_Error('arc_openai_embedding_error', $message);
+            }
+
+            if (empty($data['data'][0]['embedding']) || !is_array($data['data'][0]['embedding'])) {
+                return new WP_Error('arc_invalid_embedding_json', 'A resposta de embeddings da OpenAI não veio no formato esperado.');
+            }
+
+            $embedding = array_map('floatval', $data['data'][0]['embedding']);
+            $normalized_embedding = self::normalize_embedding_vector($embedding);
+            if (empty($normalized_embedding)) {
+                return new WP_Error('arc_empty_embedding_vector', 'Não foi possível normalizar o embedding gerado.');
+            }
+
+            return array(
+                'model' => $model,
+                'embedding' => $normalized_embedding,
+                'raw_embedding' => $embedding,
+                'dimensions' => count($normalized_embedding),
+            );
+        }
+
+        protected static function get_semantic_duplicate_candidates($limit = 300)
+        {
+            global $wpdb;
+            $limit = max(25, intval($limit));
+
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, post_id, item_title, item_guid, item_permalink, title_embedding_model, title_embedding_json, semantic_duplicate_post_id, semantic_duplicate_score FROM " . self::$table_items . " WHERE post_id > 0 AND item_title <> '' ORDER BY created_at DESC LIMIT %d",
+                $limit
+            ), ARRAY_A);
+
+            return is_array($rows) ? $rows : array();
+        }
+
+        protected static function upsert_item_title_embedding_row($row_id, $embedding_data)
+        {
+            global $wpdb;
+            $row_id = intval($row_id);
+            if ($row_id <= 0 || !is_array($embedding_data) || empty($embedding_data['embedding'])) {
+                return 0;
+            }
+
+            $update = array(
+                'title_embedding_model' => !empty($embedding_data['model']) ? sanitize_text_field((string) $embedding_data['model']) : '',
+                'title_embedding_json' => wp_json_encode(array_values(array_map('floatval', (array) $embedding_data['embedding']))),
+            );
+
+            return $wpdb->update(
+                self::$table_items,
+                $update,
+                array('id' => $row_id),
+                array('%s', '%s'),
+                array('%d')
+            );
+        }
+
+        public static function find_semantic_duplicate_for_title($title, $generator = array(), $context = array())
+        {
+            $title = trim((string) $title);
+            $settings = self::get_settings();
+            $enabled = !empty($settings['semantic_dedup_enabled']);
+            $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(1.0, floatval($settings['semantic_dedup_threshold']))) : 0.88;
+            $lookback = isset($settings['semantic_dedup_lookback']) ? max(25, intval($settings['semantic_dedup_lookback'])) : 300;
+            $model = !empty($settings['semantic_dedup_model']) ? sanitize_text_field((string) $settings['semantic_dedup_model']) : 'text-embedding-3-small';
+
+            $result = array(
+                'post_id' => 0,
+                'score' => 0.0,
+                'method' => 'fallback',
+                'matched_title' => '',
+                'matched_item_id' => 0,
+                'embedding_model' => $model,
+                'embedding_json' => '',
+                'embedding_raw' => array(),
+                'normalized_title' => self::normalize_semantic_title_text($title),
+            );
+
+            if ($title === '') {
+                return $result;
+            }
+
+            $candidates = self::get_semantic_duplicate_candidates($lookback);
+            if (empty($candidates)) {
+                return $result;
+            }
+
+            $normalized_title = $result['normalized_title'];
+            if ($normalized_title !== '') {
+                foreach ($candidates as $candidate) {
+                    $candidate_title = isset($candidate['item_title']) ? (string) $candidate['item_title'] : '';
+                    if ($candidate_title === '') {
+                        continue;
+                    }
+
+                    if (self::normalize_semantic_title_text($candidate_title) === $normalized_title) {
+                        $post_id = !empty($candidate['post_id']) ? intval($candidate['post_id']) : 0;
+                        if ($post_id > 0 && get_post($post_id)) {
+                            $result['post_id'] = $post_id;
+                            $result['score'] = 1.0;
+                            $result['method'] = 'exact';
+                            $result['matched_title'] = $candidate_title;
+                            $result['matched_item_id'] = !empty($candidate['id']) ? intval($candidate['id']) : 0;
+                            return $result;
+                        }
+                    }
+                }
+            }
+
+            if (!$enabled) {
+                return $result;
+            }
+
+            $embedding_payload = self::request_openai_embedding($title, $model);
+            $embedding_available = !is_wp_error($embedding_payload);
+            if ($embedding_available) {
+                $result['embedding_model'] = !empty($embedding_payload['model']) ? (string) $embedding_payload['model'] : $model;
+                $result['embedding_json'] = wp_json_encode(array_values(array_map('floatval', (array) $embedding_payload['embedding'])));
+                $result['embedding_raw'] = !empty($embedding_payload['raw_embedding']) && is_array($embedding_payload['raw_embedding']) ? $embedding_payload['raw_embedding'] : array();
+            } else {
+                $result['method'] = 'fallback';
+            }
+
+            $best_score = 0.0;
+            $best_candidate = null;
+            foreach ($candidates as $candidate) {
+                $candidate_title = isset($candidate['item_title']) ? trim((string) $candidate['item_title']) : '';
+                if ($candidate_title === '') {
+                    continue;
+                }
+
+                $candidate_score = 0.0;
+                $candidate_method = 'fallback';
+                $candidate_embedding = array();
+                $candidate_embedding_model = '';
+                if (!empty($candidate['title_embedding_json'])) {
+                    $candidate_embedding = json_decode((string) $candidate['title_embedding_json'], true);
+                    if (!is_array($candidate_embedding)) {
+                        $candidate_embedding = array();
+                    }
+                    $candidate_embedding = self::normalize_embedding_vector($candidate_embedding);
+                    $candidate_embedding_model = !empty($candidate['title_embedding_model']) ? sanitize_text_field((string) $candidate['title_embedding_model']) : '';
+                }
+
+                if ($embedding_available && !empty($candidate_embedding) && $candidate_embedding_model === $result['embedding_model']) {
+                    $candidate_score = self::cosine_similarity_between_vectors($embedding_payload['embedding'], $candidate_embedding);
+                    $candidate_method = 'embedding';
+                } else {
+                    $fallback_score = self::calculate_semantic_title_fallback_score($title, $candidate_title);
+                    $candidate_score = $fallback_score;
+                }
+
+                if ($candidate_score > $best_score) {
+                    $best_score = $candidate_score;
+                    $best_candidate = array(
+                        'row_id' => !empty($candidate['id']) ? intval($candidate['id']) : 0,
+                        'post_id' => !empty($candidate['post_id']) ? intval($candidate['post_id']) : 0,
+                        'title' => $candidate_title,
+                        'score' => $candidate_score,
+                        'method' => $candidate_method,
+                    );
+                }
+            }
+
+            $effective_threshold = $threshold;
+            if (is_array($best_candidate) && !empty($best_candidate['method']) && $best_candidate['method'] === 'fallback') {
+                $effective_threshold = max($effective_threshold, 0.94);
+            }
+
+            if (is_array($best_candidate) && !empty($best_candidate['post_id']) && $best_score >= $effective_threshold && get_post(intval($best_candidate['post_id']))) {
+                $result['post_id'] = intval($best_candidate['post_id']);
+                $result['score'] = floatval($best_score);
+                $result['method'] = !empty($best_candidate['method']) ? (string) $best_candidate['method'] : 'embedding';
+                $result['matched_title'] = !empty($best_candidate['title']) ? (string) $best_candidate['title'] : '';
+                $result['matched_item_id'] = !empty($best_candidate['row_id']) ? intval($best_candidate['row_id']) : 0;
+            }
+
+            return $result;
         }
 
         public static function parse_ai_json($text, $context = array())
@@ -5511,6 +5843,18 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $item_permalink = isset($item['permalink']) ? (string) $item['permalink'] : '';
             $item_title = isset($item['title']) ? (string) $item['title'] : '';
             $item_hash = md5($item_guid . '|' . $item_permalink);
+            $title_embedding_json = '';
+            if (!empty($item['title_embedding_json'])) {
+                if (is_array($item['title_embedding_json'])) {
+                    $title_embedding_json = wp_json_encode(array_values(array_map('floatval', $item['title_embedding_json'])));
+                } else {
+                    $title_embedding_json = trim((string) $item['title_embedding_json']);
+                }
+            }
+            $title_embedding_model = !empty($item['title_embedding_model']) ? sanitize_text_field((string) $item['title_embedding_model']) : '';
+            $semantic_duplicate_post_id = !empty($item['semantic_duplicate_post_id']) ? intval($item['semantic_duplicate_post_id']) : 0;
+            $semantic_duplicate_score = isset($item['semantic_duplicate_score']) ? max(0.0, min(1.0, floatval($item['semantic_duplicate_score']))) : 0.0;
+            $semantic_duplicate_method = !empty($item['semantic_duplicate_method']) ? sanitize_key((string) $item['semantic_duplicate_method']) : '';
 
             if ($generator_id <= 0 || $item_guid === '') {
                 return 0;
@@ -5525,9 +5869,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'item_title' => $item_title,
                     'post_id' => intval($post_id),
                     'item_hash' => $item_hash,
+                    'title_embedding_model' => $title_embedding_model,
+                    'title_embedding_json' => $title_embedding_json,
+                    'semantic_duplicate_post_id' => $semantic_duplicate_post_id,
+                    'semantic_duplicate_score' => $semantic_duplicate_score,
+                    'semantic_duplicate_method' => $semantic_duplicate_method,
                     'created_at' => current_time('mysql'),
                 ),
-                array('%d', '%s', '%s', '%s', '%d', '%s', '%s')
+                array('%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s', '%s')
             );
         }
 
@@ -6432,6 +6781,44 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     }
                     return $item;
                 }
+            }
+
+            $semantic_title = '';
+            if (!empty($item['source_title'])) {
+                $semantic_title = trim((string) $item['source_title']);
+            } elseif (!empty($item['title'])) {
+                $semantic_title = trim((string) $item['title']);
+            }
+
+            $semantic_duplicate = self::find_semantic_duplicate_for_title($semantic_title, $generator, array(
+                'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : '',
+            ));
+            $item['title_embedding_model'] = !empty($semantic_duplicate['embedding_model']) ? $semantic_duplicate['embedding_model'] : '';
+            $item['title_embedding_json'] = !empty($semantic_duplicate['embedding_json']) ? $semantic_duplicate['embedding_json'] : '';
+            if (is_array($semantic_duplicate) && !empty($semantic_duplicate['post_id'])) {
+                $duplicate_post_id = intval($semantic_duplicate['post_id']);
+                $duplicate_score = isset($semantic_duplicate['score']) ? floatval($semantic_duplicate['score']) : 0.0;
+                $duplicate_method = !empty($semantic_duplicate['method']) ? (string) $semantic_duplicate['method'] : 'embedding';
+                $item['semantic_duplicate_post_id'] = $duplicate_post_id;
+                $item['semantic_duplicate_score'] = $duplicate_score;
+                $item['semantic_duplicate_method'] = $duplicate_method;
+
+                self::insert_run_log($generator['id'], 'info', 'Item semantico reaproveitado', array(
+                    'request' => array(
+                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        'semantic_title' => $semantic_title,
+                    ),
+                    'response' => array(
+                        'post_id' => $duplicate_post_id,
+                        'matched_title' => !empty($semantic_duplicate['matched_title']) ? $semantic_duplicate['matched_title'] : '',
+                        'score' => $duplicate_score,
+                        'method' => $duplicate_method,
+                    ),
+                ), $duplicate_post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+
+                self::mark_item_processed($generator['id'], $item, $duplicate_post_id);
+                return $duplicate_post_id;
             }
 
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
