@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: Alpha RSS AI Generator
-Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.17
+Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
+Version: 1.8.18
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.17');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.18');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.17';
+        const VERSION = '1.8.18';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -197,53 +197,87 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             global $wpdb;
 
             $stored_version = get_option('alpha_rss_ai_db_version', '0');
-            $needs_upgrade = ($stored_version !== self::DB_VERSION);
+            $needs_create_tables = false;
 
-            if (!$needs_upgrade) {
-                $required_tables = array(
-                    self::$table_generators,
-                    self::$table_runs,
-                    self::$table_items,
-                    self::$table_lists,
-                    self::$table_list_rows,
-                    self::$table_import_logs,
-                );
+            $required_tables = array(
+                self::$table_generators,
+                self::$table_runs,
+                self::$table_items,
+                self::$table_lists,
+                self::$table_list_rows,
+                self::$table_import_logs,
+            );
 
-                foreach ($required_tables as $table_name) {
-                    if (empty($table_name)) {
-                        $needs_upgrade = true;
-                        break;
-                    }
-
-                    $found_table = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table_name)));
-                    if ($found_table !== $table_name) {
-                        $needs_upgrade = true;
-                        break;
-                    }
+            foreach ($required_tables as $table_name) {
+                if (empty($table_name)) {
+                    $needs_create_tables = true;
+                    break;
                 }
 
-                if (!$needs_upgrade && !empty(self::$table_generators)) {
-                    $required_generator_columns = array(
-                        'prompt_models_json',
-                        'prompt_model_key',
-                        'internal_links_count',
-                    );
-                    foreach ($required_generator_columns as $column_name) {
-                        $found_column = $wpdb->get_var($wpdb->prepare(
-                            "SHOW COLUMNS FROM `" . self::$table_generators . "` LIKE %s",
-                            $column_name
-                        ));
-                        if (empty($found_column)) {
-                            $needs_upgrade = true;
-                            break;
-                        }
+                $found_table = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table_name)));
+                if ($found_table !== $table_name) {
+                    $needs_create_tables = true;
+                    break;
+                }
+            }
+
+            if (!$needs_create_tables && !empty(self::$table_generators)) {
+                $required_generator_columns = array(
+                    'prompt_models_json',
+                    'prompt_model_key',
+                    'internal_links_count',
+                );
+                foreach ($required_generator_columns as $column_name) {
+                    $found_column = $wpdb->get_var($wpdb->prepare(
+                        "SHOW COLUMNS FROM `" . self::$table_generators . "` LIKE %s",
+                        $column_name
+                    ));
+                    if (empty($found_column)) {
+                        $needs_create_tables = true;
+                        break;
                     }
                 }
             }
 
-            if ($needs_upgrade) {
+            if ($needs_create_tables) {
                 self::create_tables();
                 update_option('alpha_rss_ai_db_version', self::DB_VERSION, false);
+                return;
+            }
+
+            self::maybe_upgrade_items_schema_columns();
+
+            if ($stored_version !== self::DB_VERSION) {
+                update_option('alpha_rss_ai_db_version', self::DB_VERSION, false);
+            }
+        }
+
+        protected static function maybe_upgrade_items_schema_columns()
+        {
+            global $wpdb;
+
+            if (empty(self::$table_items)) {
+                return;
+            }
+
+            $columns_to_check = array(
+                'title_embedding_model' => 'varchar(120) DEFAULT NULL',
+                'title_embedding_json' => 'longtext DEFAULT NULL',
+                'semantic_duplicate_post_id' => 'bigint(20) unsigned DEFAULT NULL',
+                'semantic_duplicate_score' => 'decimal(6,4) DEFAULT NULL',
+                'semantic_duplicate_method' => 'varchar(40) DEFAULT NULL',
+            );
+
+            foreach ($columns_to_check as $column_name => $column_definition) {
+                $found_column = $wpdb->get_var($wpdb->prepare(
+                    "SHOW COLUMNS FROM `" . self::$table_items . "` LIKE %s",
+                    $column_name
+                ));
+                if (!empty($found_column)) {
+                    continue;
+                }
+
+                $wpdb->query("ALTER TABLE `" . self::$table_items . "` ADD COLUMN `" . $column_name . "` " . $column_definition);
             }
         }
 
@@ -438,6 +472,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return array(
                 'openai_api_key' => '',
                 'pexels_api_key' => '',
+                'tavily_api_key' => '',
+                'tavily_enabled' => 0,
+                'tavily_max_results' => 3,
+                'tavily_include_answer' => 1,
+                'tavily_search_depth' => 'basic',
                 'default_model' => 'gpt-4.1-mini',
                 'default_temperature' => 0.7,
                 'default_max_tokens' => 3000,
@@ -1628,6 +1667,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $current = self::get_settings();
             $current['openai_api_key'] = isset($raw['openai_api_key']) ? sanitize_text_field(wp_unslash($raw['openai_api_key'])) : '';
             $current['pexels_api_key'] = isset($raw['pexels_api_key']) ? sanitize_text_field(wp_unslash($raw['pexels_api_key'])) : '';
+            $current['tavily_api_key'] = isset($raw['tavily_api_key']) ? sanitize_text_field(wp_unslash($raw['tavily_api_key'])) : $current['tavily_api_key'];
+            $current['tavily_enabled'] = isset($raw['tavily_enabled']) ? (!empty($raw['tavily_enabled']) ? 1 : 0) : 0;
+            $current['tavily_max_results'] = isset($raw['tavily_max_results']) ? max(1, min(10, intval($raw['tavily_max_results']))) : $current['tavily_max_results'];
+            $current['tavily_include_answer'] = isset($raw['tavily_include_answer']) ? (!empty($raw['tavily_include_answer']) ? 1 : 0) : 0;
+            $current['tavily_search_depth'] = isset($raw['tavily_search_depth']) ? sanitize_key(wp_unslash($raw['tavily_search_depth'])) : $current['tavily_search_depth'];
+            if (!in_array($current['tavily_search_depth'], array('basic', 'advanced'), true)) {
+                $current['tavily_search_depth'] = 'basic';
+            }
             $current['default_model'] = isset($raw['default_model']) ? sanitize_text_field(wp_unslash($raw['default_model'])) : $current['default_model'];
             $current['default_temperature'] = isset($raw['default_temperature']) ? floatval($raw['default_temperature']) : $current['default_temperature'];
             $current['default_max_tokens'] = isset($raw['default_max_tokens']) ? max(256, intval($raw['default_max_tokens'])) : $current['default_max_tokens'];

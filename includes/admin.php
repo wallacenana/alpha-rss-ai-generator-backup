@@ -1978,6 +1978,39 @@ class Alpha_RSS_AI_Generator_Admin
                             <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
                             <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                         </div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="mb-3">
+                                <h3 class="text-sm font-semibold text-slate-900">Tavily</h3>
+                                <p class="mt-1 text-xs text-slate-500">Busca externa opcional para enriquecer o planejamento com dados recentes.</p>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Tavily</label>
+                                    <input type="password" name="tavily_api_key" value="<?php echo esc_attr($settings['tavily_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                </div>
+                                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Modo Tavily</label>
+                                        <select name="tavily_search_depth" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                            <option value="basic" <?php selected($settings['tavily_search_depth'], 'basic'); ?>>Basic</option>
+                                            <option value="advanced" <?php selected($settings['tavily_search_depth'], 'advanced'); ?>>Advanced</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-slate-700">Máximo de resultados</label>
+                                        <input type="number" min="1" max="10" name="tavily_max_results" value="<?php echo esc_attr($settings['tavily_max_results']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                    </div>
+                                </div>
+                                <label class="flex items-center gap-3 text-sm text-slate-700">
+                                    <input type="checkbox" name="tavily_enabled" value="1" <?php checked(!empty($settings['tavily_enabled'])); ?> class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                    Ativar pesquisa Tavily
+                                </label>
+                                <label class="flex items-center gap-3 text-sm text-slate-700">
+                                    <input type="checkbox" name="tavily_include_answer" value="1" <?php checked(!empty($settings['tavily_include_answer'])); ?> class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                    Incluir resposta resumida no prompt
+                                </label>
+                            </div>
+                        </div>
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
                             <input type="text" name="default_model" value="<?php echo esc_attr($settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
