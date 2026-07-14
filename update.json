@@ -12,7 +12,7 @@
   "last_updated": "2026-07-14",
   "sections": {
     "description": "Atualização via GitHub para o plugin Alpha RSS AI Generator.",
-    "changelog": "<ul><li>Integração opcional do Tavily nas Configurações globais para enriquecer o planejamento editorial.</li><li>Ajuste do upgrade de schema para evitar avisos de colunas duplicadas no wp_arc_items.</li><li>Atualização da release para 1.8.18 com deduplicação semântica por embeddings.</li></ul>",
+    "changelog": "<ul><li>Integração opcional do Tavily nas Configurações globais para enriquecer o planejamento editorial.</li><li>Ajuste do upgrade de schema para evitar avisos de colunas duplicadas no wp_arc_items.</li><li>Atualização da release para 1.8.19 com deduplicação semântica por embeddings.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote é distribuído a partir do branch main do repositório.",
     "screenshots": ""
