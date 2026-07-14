@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execuções manuais e agendamento aleatório.
-Version: 1.8.15
+Version: 1.8.16
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.15');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.16');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.15';
+        const VERSION = '1.8.16';
         const DB_VERSION = '1.8.3';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -1534,7 +1534,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $prompt_template = self::normalize_prompt_template_for_source_type($source_type, '', $keyword_list_mode);
             }
             $content_prompt_template = isset($generator['content_prompt_template']) ? trim((string) $generator['content_prompt_template']) : '';
-            if ($content_prompt_template === '' || self::content_prompt_template_looks_like_legacy_default($content_prompt_template)) {
+            if ($content_prompt_template === '') {
                 $content_prompt_template = self::get_default_content_prompt_template_visible();
             }
             $prompt_models = array();
@@ -2659,7 +2659,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['prompt_template'] = isset($raw['prompt_template']) ? wp_kses_post(wp_unslash($raw['prompt_template'])) : '';
             $payload['prompt_template'] = self::normalize_prompt_template_for_source_type($payload['source_type'], $payload['prompt_template'], $payload['keyword_list_mode']);
             $payload['content_prompt_template'] = isset($raw['content_prompt_template']) ? wp_kses_post(wp_unslash($raw['content_prompt_template'])) : '';
-            if (trim($payload['content_prompt_template']) === '' || self::content_prompt_template_looks_like_legacy_default($payload['content_prompt_template'])) {
+            if (trim($payload['content_prompt_template']) === '') {
                 $payload['content_prompt_template'] = self::get_default_content_prompt_template_visible();
             }
             $payload['prompt_model_key'] = isset($raw['prompt_model_key']) ? sanitize_key(wp_unslash($raw['prompt_model_key'])) : '';
@@ -2850,17 +2850,15 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_default_content_prompt_template()
         {
-            return "Você é um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista."
+            return "Você é um redator editorial focado exclusivamente em escrever o corpo do artigo."
                 . "Escreva em {{generation_language}}. \n"
                 . "Objetivo:\n"
                 . "- Escrever um artigo com cara de texto humano, natural, completo e fiel aos fatos.\n"
                 . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
                 . "- Use 2 a 3 parágrafos curtos na introdução, sem frases genéricas.\n"
-                . "- Crie um H2 para cada item da lista.\n"
-                . "- Formato do H2: 01. Nome do item (ano ou informação adicional se a fonte mencionar).\n"
-                . "- Se a fonte não trouxer ano ou informação adicional, use apenas o nome do item.\n"
-                . "- Mantenha a ordem dos H2 exatamente na mesma sequência do esboço interno; não reordene, não agrupe e não pule itens.\n"
-                . "- Depois de cada H2, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
+                . "- Use a estrutura editorial indicada pelo outline interno e pelo modelo selecionado.\n"
+                . "- Se houver seções, mantenha a ordem definida pelo esboço interno; não reordene, não agrupe e não pule itens.\n"
+                . "- Depois de cada bloco principal, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
                 . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
                 . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
                 . "- Mantenha o foco no título já definido e desenvolva o texto ao redor dele.\n"
@@ -2885,7 +2883,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_default_content_prompt_template_visible()
         {
-            return "Você é um redator editorial focado exclusivamente em escrever o corpo do artigo em formato de lista.\n"
+            return "Você é um redator editorial focado exclusivamente em escrever o corpo do artigo.\n"
                 . "Escreva um texto final natural, completo e fiel aos fatos.\n"
                 . "Retorne apenas JSON válido com a chave content_html.\n"
                 . "Não gere title, slug, tags ou metadados nesta etapa.\n"
@@ -2893,16 +2891,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Objetivo:\n"
                 . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
                 . "- Use 2 a 3 parágrafos curtos na introdução, sem frases genéricas.\n"
-                . "- Crie um H2 para cada item da lista.\n"
-                . "- Formato do H2: 01. Nome do item (ano ou informação adicional se a fonte mencionar).\n"
-                . "- Se a fonte não trouxer ano ou informação adicional, use apenas o nome do item.\n"
-                . "- Mantenha a ordem dos H2 exatamente na mesma sequência do esboço interno; não reordene, não agrupe e não pule itens.\n"
-                . "- Depois de cada H2, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
+                . "- Use a estrutura editorial indicada pelo outline interno e pelo modelo selecionado.\n"
+                . "- Se houver seções, mantenha a ordem definida pelo esboço interno; não reordene, não agrupe e não pule itens.\n"
+                . "- Depois de cada bloco principal, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
                 . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
                 . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
                 . "- Escreva com tom humano, sem soar mecânico.\n"
                 . "- Priorize 1000 a 1800 palavras quando houver material suficiente.\n"
-                . "- Use parágrafos curtos e ajuste o número de H2 conforme a densidade do tema e o outline interno.\n"
+                . "- Use parágrafos curtos e ajuste a estrutura conforme a densidade do tema e o outline interno.\n"
                 . "- Avance com fatos novos em cada bloco e evite repetição de ideias.\n"
                 . "- Não use Markdown.\n"
                 . "- Não invente informações.";
@@ -3668,7 +3664,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 );
             }
 
-            $html = Alpha_RSS_AI_Generator_Helper::fetch_source_page_html($url, 5, 'page_context');
+            $html_result = Alpha_RSS_AI_Generator_Helper::fetch_source_page_html_result($url, 5, 'page_context');
+            if (is_array($html_result) && !empty($html_result['status_code']) && intval($html_result['status_code']) === 403) {
+                return new WP_Error('arc_source_forbidden', !empty($html_result['error_message']) ? (string) $html_result['error_message'] : 'A fonte retornou 403 e o acesso foi bloqueado.');
+            }
+            $html = is_array($html_result) && isset($html_result['html']) ? (string) $html_result['html'] : '';
             if ($html === '') {
                 return array(
                     'title' => '',
@@ -3777,6 +3777,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $link_selector_class = !empty($generator['link_selector_class']) ? $generator['link_selector_class'] : '';
             $content_selector = !empty($generator['content_selector']) ? $generator['content_selector'] : '';
             $page_context = self::extract_page_context($permalink, $video_selector_class, $image_selector_class, $link_selector_class, self::get_generator_source_context_filters($generator), $content_selector);
+            if (is_wp_error($page_context)) {
+                return $page_context;
+            }
             if (empty($page_context) || (!empty($page_context['title']) === false && !empty($page_context['content']) === false && !empty($page_context['excerpt']) === false && !empty($page_context['outline_text']) === false)) {
                 return $item;
             }
@@ -5774,6 +5777,71 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return $post_data;
         }
 
+        public static function create_source_access_denied_draft($generator, $item, $reason = '')
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $item = is_array($item) ? $item : array();
+            $reason = trim((string) $reason);
+            if ($reason === '') {
+                $reason = 'A fonte retornou 403 e o conteúdo não pôde ser acessado.';
+            }
+
+            $permalink = !empty($item['permalink']) ? esc_url_raw(trim((string) $item['permalink'])) : '';
+            $source_title = !empty($item['source_title']) ? sanitize_text_field((string) $item['source_title']) : '';
+            $post_title = 'Erro, sem acesso';
+            $post_content_parts = array(
+                '<p><strong>' . esc_html($post_title) . '</strong></p>',
+                '<p>' . esc_html($reason) . '</p>',
+            );
+
+            if ($source_title !== '') {
+                $post_content_parts[] = '<p>Fonte original: ' . esc_html($source_title) . '</p>';
+            }
+            if ($permalink !== '') {
+                $post_content_parts[] = '<p>URL da fonte: <a href="' . esc_url($permalink) . '">' . esc_html($permalink) . '</a></p>';
+            }
+
+            $post_data = array(
+                'post_type' => !empty($generator['post_type']) && post_type_exists($generator['post_type']) ? $generator['post_type'] : 'post',
+                'post_status' => 'draft',
+                'post_author' => self::normalize_content_author_id(!empty($generator['author_id']) ? intval($generator['author_id']) : get_current_user_id()),
+                'post_title' => $post_title,
+                'post_content' => implode("\n", $post_content_parts),
+                'post_excerpt' => $reason,
+                'post_date' => current_time('mysql'),
+            );
+
+            $post_id = wp_insert_post($post_data, true);
+            if (is_wp_error($post_id)) {
+                return $post_id;
+            }
+
+            if (!empty($generator['id'])) {
+                self::mark_item_processed(intval($generator['id']), $item, intval($post_id));
+            }
+            self::insert_run_log(
+                !empty($generator['id']) ? intval($generator['id']) : 0,
+                'warning',
+                $reason,
+                array(
+                    'request' => array(
+                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        'permalink' => $permalink,
+                    ),
+                    'response' => array(
+                        'post_id' => intval($post_id),
+                        'post_status' => 'draft',
+                        'title' => $post_title,
+                    ),
+                ),
+                intval($post_id),
+                !empty($item['guid']) ? $item['guid'] : '',
+                $permalink
+            );
+
+            return intval($post_id);
+        }
+
         public static function apply_taxonomies_and_meta($post_id, $generator, $article, $item)
         {
             $categories = json_decode((string) $generator['category_ids'], true);
@@ -6347,10 +6415,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function create_post_from_generator_item($generator, $item)
         {
+            $original_item = is_array($item) ? $item : array();
             $item = self::maybe_enrich_rss_item_context($generator, $item);
+            if (is_wp_error($item)) {
+                if ($item->get_error_code() === 'arc_source_forbidden') {
+                    return self::create_source_access_denied_draft($generator, $original_item, $item->get_error_message());
+                }
+                return $item;
+            }
             $use_source_page_context = self::generator_uses_source_page_context($generator);
             if ($use_source_page_context) {
                 $item = self::resolve_item_media_for_generation($generator, $item);
+                if (is_wp_error($item)) {
+                    if ($item->get_error_code() === 'arc_source_forbidden') {
+                        return self::create_source_access_denied_draft($generator, $original_item, $item->get_error_message());
+                    }
+                    return $item;
+                }
             }
 
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);

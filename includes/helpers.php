@@ -6,11 +6,17 @@ if (!defined('ABSPATH')) {
 
 class Alpha_RSS_AI_Generator_Helper
 {
-    public static function fetch_source_page_html($url, $cache_ttl = 5, $log_prefix = 'page_context')
+    public static function fetch_source_page_html_result($url, $cache_ttl = 5, $log_prefix = 'page_context')
     {
         $url = esc_url_raw(trim((string) $url));
         if ($url === '') {
-            return '';
+            return array(
+                'html' => '',
+                'status_code' => 0,
+                'blocked' => false,
+                'error_code' => '',
+                'error_message' => '',
+            );
         }
 
         $cache_ttl = max(1, intval($cache_ttl));
@@ -20,17 +26,35 @@ class Alpha_RSS_AI_Generator_Helper
 
         $blocked_until = get_transient($blocked_key);
         if (!empty($blocked_until) && intval($blocked_until) > time()) {
-            return '';
+            return array(
+                'html' => '',
+                'status_code' => 403,
+                'blocked' => true,
+                'error_code' => 'arc_source_forbidden',
+                'error_message' => 'A fonte retornou 403 e o acesso ficou bloqueado temporariamente.',
+            );
         }
 
         $cached_day_html = get_transient($day_cache_key);
         if (is_string($cached_day_html) && $cached_day_html !== '') {
-            return $cached_day_html;
+            return array(
+                'html' => $cached_day_html,
+                'status_code' => 200,
+                'blocked' => false,
+                'error_code' => '',
+                'error_message' => '',
+            );
         }
 
         $cached_html = get_transient($cache_key);
         if (is_string($cached_html) && $cached_html !== '') {
-            return $cached_html;
+            return array(
+                'html' => $cached_html,
+                'status_code' => 200,
+                'blocked' => false,
+                'error_code' => '',
+                'error_message' => '',
+            );
         }
 
         $request_args = array(
@@ -58,25 +82,55 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         if (is_wp_error($response)) {
-            return '';
+            return array(
+                'html' => '',
+                'status_code' => 0,
+                'blocked' => false,
+                'error_code' => $response->get_error_code(),
+                'error_message' => $response->get_error_message(),
+            );
         }
 
         if ($code < 200 || $code >= 300) {
             if ($code === 403) {
                 set_transient($blocked_key, time() + 300, 300);
             }
-            return '';
+            return array(
+                'html' => '',
+                'status_code' => $code,
+                'blocked' => $code === 403,
+                'error_code' => $code === 403 ? 'arc_source_forbidden' : 'arc_source_http_error',
+                'error_message' => $code === 403 ? 'A fonte retornou 403 e o acesso ficou bloqueado temporariamente.' : 'A fonte retornou um status HTTP inesperado.',
+            );
         }
 
         $html = (string) wp_remote_retrieve_body($response);
         if ($html === '') {
-            return '';
+            return array(
+                'html' => '',
+                'status_code' => $code,
+                'blocked' => false,
+                'error_code' => 'arc_source_empty',
+                'error_message' => 'A fonte respondeu sem conteúdo.',
+            );
         }
 
         set_transient($cache_key, $html, $cache_ttl);
         set_transient($day_cache_key, $html, DAY_IN_SECONDS);
 
-        return $html;
+        return array(
+            'html' => $html,
+            'status_code' => $code,
+            'blocked' => false,
+            'error_code' => '',
+            'error_message' => '',
+        );
+    }
+
+    public static function fetch_source_page_html($url, $cache_ttl = 5, $log_prefix = 'page_context')
+    {
+        $result = self::fetch_source_page_html_result($url, $cache_ttl, $log_prefix);
+        return is_array($result) && isset($result['html']) ? (string) $result['html'] : '';
     }
 
     public static function resolve_url_against_base($url, $base_url = '')
@@ -2395,6 +2449,7 @@ class Alpha_RSS_AI_Generator_Helper
         $source_page_title = isset($item['source_page_title']) ? self::normalize_prompt_context_text($item['source_page_title']) : '';
         $source_page_excerpt = isset($item['source_page_excerpt']) ? self::normalize_prompt_context_text($item['source_page_excerpt']) : '';
         $source_page_content = isset($item['source_page_content']) ? self::normalize_prompt_context_text($item['source_page_content']) : '';
+        $source_page_html = isset($item['source_page_html']) ? trim((string) $item['source_page_html']) : '';
         $source_page_content_html = isset($item['source_page_content_html']) ? trim((string) $item['source_page_content_html']) : '';
         $site_name = self::normalize_prompt_context_text(get_bloginfo('name'));
         $generation_language = !empty($generator['generation_language'])
@@ -2426,7 +2481,10 @@ class Alpha_RSS_AI_Generator_Helper
         if ($source_page_content !== '') {
             $lines[] = 'Conteudo da pagina de origem: ' . $source_page_content;
         }
-        if ($source_page_content_html !== '') {
+        if ($source_page_html !== '') {
+            $lines[] = 'HTML completo da pagina de origem: ' . $source_page_html;
+        }
+        if ($source_page_content_html !== '' && ($source_page_html === '' || $source_page_content_html !== $source_page_html)) {
             $lines[] = 'Conteudo bruto em HTML da pagina de origem: ' . $source_page_content_html;
         }
         if ($site_name !== '') {
@@ -2466,7 +2524,6 @@ class Alpha_RSS_AI_Generator_Helper
             'outline_target_h2_count' => !empty($outline_model['target_h2_count']) ? intval($outline_model['target_h2_count']) : 0,
         );
     }
-
     public static function infer_outline_model_key_from_source_context($generator, $item, $seo_article = array(), $outline_context = array())
     {
         $generator = is_array($generator) ? $generator : array();
@@ -2494,22 +2551,34 @@ class Alpha_RSS_AI_Generator_Helper
         if (!empty($seo_article['excerpt'])) {
             $source_bits[] = (string) $seo_article['excerpt'];
         }
+
         $source_blob = strtolower(implode("\n\n", $source_bits));
         $source_text = self::normalize_prompt_context_text($source_blob);
         $combined = strtolower(trim($title . ' ' . $source_text));
         $content_length = strlen($source_text);
 
-        $has_list_markers = (bool) preg_match('/<li\b|<\/li>|^\s*(?:[-*â€¢]|\d+[.)])\s+/m', $source_blob)
-            || (bool) preg_match('/\b(?:lista|ranking|top\s+\d+|melhores|best\s+\d+|seleção|recomendação)\b/ui', $combined);
         $has_guide_markers = (bool) preg_match('/\b(?:como|guia|tutorial|passo a passo|dicas|aprenda|entenda|saiba|por que|melhor(es)?|manual)\b/i', $combined);
-        $has_news_markers = (bool) preg_match('/\b(?:revela|anuncia|confirma|chega|estreia|lança|polêmica|escândalo|investigação|morte|prisão|denuncia|caso)\b/ui', $combined);
+        $has_news_markers = (bool) preg_match('/\b(?:revela|anuncia|confirma|chega|estreia|lan[aç]a|pol[êe]mica|esc[âa]ndalo|investiga[cç][aã]o|morte|pris[aã]o|denuncia|caso|trailer|nova?\s+temporada|this\s+week|coming\s+soon|what(?:\'|’)s\s+coming|coming\s+to\s+netflix|new\s+on\s+netflix)\b/ui', $combined);
 
-        if ($has_list_markers) {
-            return 'list_article';
+        $list_marker_hits = 0;
+        if (preg_match('/<li\b|<\/li>/i', $source_blob)) {
+            $list_marker_hits++;
+        }
+        if (preg_match('/^\s*(?:[-*•]|\d+[.)])\s+/m', $source_blob)) {
+            $list_marker_hits++;
+        }
+        if (preg_match('/\b(?:lista|ranking|top\s+\d+|melhores|best\s+\d+|sele[cç][aã]o|recomenda[cç][aã]o)\b/ui', $combined)) {
+            $list_marker_hits++;
         }
 
-        if ($has_news_markers && !$has_guide_markers && $content_length < 6000) {
-            return 'news_short';
+        if (($has_news_markers || $content_length < 9000) && !$has_guide_markers) {
+            if ($list_marker_hits < 2 || $has_news_markers) {
+                return 'news_short';
+            }
+        }
+
+        if ($list_marker_hits >= 2 && !$has_guide_markers && !$has_news_markers) {
+            return 'list_article';
         }
 
         if ($has_guide_markers || $content_length >= 6000) {
@@ -2518,7 +2587,6 @@ class Alpha_RSS_AI_Generator_Helper
 
         return $content_length <= 2600 ? 'news_short' : 'guide_long';
     }
-
     public static function format_outline_analysis_for_prompt($outline_context)
     {
         $outline_context = is_array($outline_context) ? $outline_context : array();
@@ -2727,6 +2795,12 @@ class Alpha_RSS_AI_Generator_Helper
 
         $outline_context = self::normalize_outline_analysis_context($outline_response, $outline_context);
 
+        if (!empty($outline_model_hint_key) && $outline_model_hint_key === 'news_short') {
+            $outline_context['content_type'] = 'news_short';
+            $outline_context['recommended_outline_model_key'] = 'news_short';
+            $outline_context['recommended_prompt_model_key'] = 'noticia';
+        }
+
         $prompt_models = Alpha_RSS_AI_Generator::get_prompt_models($generator);
         $available_prompt_model_keys = array();
         foreach ($prompt_models as $prompt_model) {
@@ -2903,6 +2977,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Titulo da pagina de origem: {{source_page_title}}',
             'Resumo da pagina de origem: {{source_page_excerpt}}',
             'Conteudo da pagina de origem: {{source_page_content}}',
+            'HTML completo da pagina de origem: {{source_page_html}}',
             'Resumo da fonte: {{source_excerpt}}',
             'Conteúdo da fonte: {{source_content}}',
             'Slug final: {{generated_slug}}',
@@ -2928,6 +3003,7 @@ class Alpha_RSS_AI_Generator_Helper
             '{{source_page_title}}' => isset($item['source_page_title']) ? $item['source_page_title'] : '',
             '{{source_page_excerpt}}' => isset($item['source_page_excerpt']) ? $item['source_page_excerpt'] : '',
             '{{source_page_content}}' => isset($item['source_page_content']) ? $item['source_page_content'] : '',
+            '{{source_page_html}}' => isset($item['source_page_html']) ? $item['source_page_html'] : '',
             '{{source_page_outline}}' => isset($item['source_page_outline']) ? $item['source_page_outline'] : '',
             '{{source_excerpt}}' => $item['excerpt'],
             '{{source_content}}' => $item['content'],
