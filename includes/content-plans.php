@@ -1011,7 +1011,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $current_content = (string) get_post_field('post_content', $pillar_post_id);
             $pillar_links = array();
             $satellite_ids = array();
-            $related_posts = array();
             foreach ($generated_satellite_posts as $generated) {
                 if (empty($generated['post_id'])) {
                     continue;
@@ -1027,10 +1026,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     'anchor_phrase' => !empty($generated['anchor_phrase']) ? $generated['anchor_phrase'] : '',
                     'slug' => !empty($generated['slug']) ? $generated['slug'] : get_post_field('post_name', $post_id),
                 );
-                $satellite_post = get_post($post_id);
-                if ($satellite_post instanceof WP_Post) {
-                    $related_posts[] = $satellite_post;
-                }
             }
 
             if (!empty($pillar_links)) {
@@ -1040,30 +1035,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     'pillar',
                     'Você também pode gostar de:'
                 );
-                if (!empty($related_posts)) {
-                    $related_markup = Alpha_RSS_AI_Generator_Helper::build_related_posts_markup(
-                        $pillar_post_id,
-                        array(
-                            'related_posts_enabled' => 1,
-                            'related_posts_style' => 'list',
-                            'related_posts_phrases' => "Você também pode gostar de:",
-                        ),
-                        $related_posts
-                    );
-
-                    if ($related_markup !== '') {
-                        $updated_content = preg_replace(
-                            '~<!-- arc-content-plan-related-start -->.*?<!-- arc-content-plan-related-end -->\s*~s',
-                            '',
-                            $current_content
-                        );
-                        if (is_string($updated_content)) {
-                            $current_content = $updated_content;
-                        }
-                        $current_content = rtrim($current_content) . "\n\n<!-- arc-content-plan-related-start -->\n" . $related_markup . "\n<!-- arc-content-plan-related-end -->\n";
-                    }
-                }
-
                 wp_update_post(array(
                     'ID' => $pillar_post_id,
                     'post_content' => $current_content,

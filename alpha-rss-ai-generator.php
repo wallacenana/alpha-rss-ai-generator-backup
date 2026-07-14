@@ -3289,7 +3289,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return $vector;
         }
 
-        protected static function cosine_similarity_between_vectors($left, $right)
+        public static function cosine_similarity_between_vectors($left, $right)
         {
             if (!is_array($left) || !is_array($right) || empty($left) || empty($right)) {
                 return 0.0;
@@ -3376,6 +3376,93 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'embedding' => $normalized_embedding,
                 'raw_embedding' => $embedding,
                 'dimensions' => count($normalized_embedding),
+            );
+        }
+
+        public static function request_openai_embeddings_batch($texts, $model = 'text-embedding-3-small')
+        {
+            $settings = self::get_settings();
+            $api_key = trim((string) $settings['openai_api_key']);
+            if ($api_key === '') {
+                return new WP_Error('arc_missing_openai_key', 'A chave da API da OpenAI não esta configurada.');
+            }
+
+            $model = trim((string) $model);
+            if ($model === '') {
+                $model = 'text-embedding-3-small';
+            }
+
+            $normalized_texts = array();
+            foreach ((array) $texts as $text) {
+                $text = trim((string) $text);
+                if ($text !== '') {
+                    $normalized_texts[] = $text;
+                }
+            }
+
+            if (empty($normalized_texts)) {
+                return new WP_Error('arc_empty_embedding_input', 'Não foi possível gerar embedding para texto vazio.');
+            }
+
+            $response = wp_remote_post('https://api.openai.com/v1/embeddings', array(
+                'timeout' => 120,
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $api_key,
+                    'Content-Type' => 'application/json',
+                ),
+                'body' => wp_json_encode(array(
+                    'model' => $model,
+                    'input' => $normalized_texts,
+                )),
+            ));
+
+            if (is_wp_error($response)) {
+                return $response;
+            }
+
+            $code = wp_remote_retrieve_response_code($response);
+            $response_body = wp_remote_retrieve_body($response);
+            $data = json_decode($response_body, true);
+
+            if ($code !== 200) {
+                $message = isset($data['error']['message']) ? $data['error']['message'] : 'Erro desconhecido ao gerar embeddings';
+                return new WP_Error('arc_openai_embedding_error', $message);
+            }
+
+            if (empty($data['data']) || !is_array($data['data'])) {
+                return new WP_Error('arc_invalid_embedding_json', 'A resposta de embeddings da OpenAI não veio no formato esperado.');
+            }
+
+            $embeddings = array();
+            $raw_embeddings = array();
+            foreach ($data['data'] as $entry) {
+                if (!is_array($entry) || !isset($entry['index']) || !isset($entry['embedding']) || !is_array($entry['embedding'])) {
+                    continue;
+                }
+
+                $index = intval($entry['index']);
+                $embedding = array_map('floatval', $entry['embedding']);
+                $normalized_embedding = self::normalize_embedding_vector($embedding);
+                if (empty($normalized_embedding)) {
+                    continue;
+                }
+
+                $embeddings[$index] = $normalized_embedding;
+                $raw_embeddings[$index] = $embedding;
+            }
+
+            if (empty($embeddings)) {
+                return new WP_Error('arc_empty_embedding_vector', 'Não foi possível normalizar o embedding gerado.');
+            }
+
+            ksort($embeddings);
+            ksort($raw_embeddings);
+
+            return array(
+                'model' => $model,
+                'embeddings' => $embeddings,
+                'raw_embeddings' => $raw_embeddings,
+                'dimensions' => !empty($embeddings) ? count(reset($embeddings)) : 0,
             );
         }
 

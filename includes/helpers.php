@@ -1534,22 +1534,7 @@ class Alpha_RSS_AI_Generator_Helper
         $post_id = intval($post_id);
         $image_size = Alpha_RSS_AI_Generator::normalize_image_display_size($image_size);
         $existing_image_map = is_array($existing_image_map) ? $existing_image_map : array();
-        $existing_attachment_id = 0;
-
-        if (!empty($existing_image_map) && $section_title !== '') {
-            $normalized_section_title = self::normalize_outline_section_match_text($section_title);
-            foreach ($existing_image_map as $existing_key => $existing_value) {
-                $existing_key_normalized = self::normalize_outline_section_match_text((string) $existing_key);
-                if ($existing_key_normalized === '' || $existing_key_normalized !== $normalized_section_title) {
-                    continue;
-                }
-
-                $existing_attachment_id = intval($existing_value);
-                if ($existing_attachment_id > 0) {
-                    break;
-                }
-            }
-        }
+        $existing_attachment_id = self::find_existing_outline_section_image_attachment_id($section_title, $existing_image_map);
 
         if ($existing_attachment_id > 0) {
             $image_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($existing_attachment_id, $image_size, $section_title, 'alignnone');
@@ -1592,16 +1577,13 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $section_title = isset($section['h2']) ? self::clean_source_text($section['h2']) : '';
-        $normalized_section_title = self::normalize_outline_section_match_text($section_title);
-        if ($normalized_section_title === '') {
+        if ($section_title === '') {
             return false;
         }
 
-        foreach ($existing_image_map as $existing_key => $existing_attachment_id) {
-            $existing_title_normalized = self::normalize_outline_section_match_text((string) $existing_key);
-            if ($existing_title_normalized !== '' && $existing_title_normalized === $normalized_section_title && intval($existing_attachment_id) > 0) {
-                return true;
-            }
+        $existing_attachment_id = self::find_existing_outline_section_image_attachment_id($section_title, $existing_image_map);
+        if ($existing_attachment_id > 0) {
+            return true;
         }
 
         return false;
@@ -1791,6 +1773,194 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         return min(100, $score);
+    }
+
+    protected static function build_outline_section_semantic_text($section)
+    {
+        if (!is_array($section)) {
+            return '';
+        }
+
+        $parts = array();
+        if (!empty($section['h2'])) {
+            $parts[] = self::clean_source_text($section['h2']);
+        } elseif (!empty($section['title'])) {
+            $parts[] = self::clean_source_text($section['title']);
+        }
+        if (!empty($section['text'])) {
+            $parts[] = self::clean_source_text($section['text']);
+        }
+
+        $semantic_text = trim(implode(' ', array_filter($parts)));
+        if ($semantic_text === '') {
+            return '';
+        }
+
+        if (function_exists('mb_substr')) {
+            return mb_substr($semantic_text, 0, 700, 'UTF-8');
+        }
+
+        return substr($semantic_text, 0, 700);
+    }
+
+    protected static function find_best_outline_section_semantic_match($title, $outline_sections, $exclude_indexes = array())
+    {
+        if (!class_exists('Alpha_RSS_AI_Generator')) {
+            return null;
+        }
+
+        $title = self::normalize_prompt_context_text($title);
+        if ($title === '') {
+            return null;
+        }
+
+        $settings = Alpha_RSS_AI_Generator::get_settings();
+        if (empty($settings['semantic_dedup_enabled'])) {
+            return null;
+        }
+
+        $model = !empty($settings['semantic_dedup_model']) ? sanitize_text_field((string) $settings['semantic_dedup_model']) : 'text-embedding-3-small';
+        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.82;
+
+        $exclude_lookup = array();
+        foreach ((array) $exclude_indexes as $exclude_index) {
+            $exclude_lookup[intval($exclude_index)] = true;
+        }
+
+        $candidates = array();
+        foreach (array_values((array) $outline_sections) as $index => $section) {
+            if (isset($exclude_lookup[$index]) || !is_array($section)) {
+                continue;
+            }
+
+            $semantic_text = self::build_outline_section_semantic_text($section);
+            if ($semantic_text === '') {
+                continue;
+            }
+
+            $candidates[] = array(
+                'index' => $index,
+                'section' => $section,
+                'semantic_text' => $semantic_text,
+            );
+        }
+
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $batch_texts = array($title);
+        foreach ($candidates as $candidate) {
+            $batch_texts[] = $candidate['semantic_text'];
+        }
+
+        $embedding_payload = Alpha_RSS_AI_Generator::request_openai_embeddings_batch($batch_texts, $model);
+        if (is_wp_error($embedding_payload) || empty($embedding_payload['embeddings'][0])) {
+            return null;
+        }
+
+        $query_embedding = $embedding_payload['embeddings'][0];
+        $best_score = 0.0;
+        $best_candidate = null;
+
+        foreach ($candidates as $offset => $candidate) {
+            $candidate_embedding_index = $offset + 1;
+            if (empty($embedding_payload['embeddings'][$candidate_embedding_index])) {
+                continue;
+            }
+
+            $candidate_embedding = $embedding_payload['embeddings'][$candidate_embedding_index];
+            $semantic_score = Alpha_RSS_AI_Generator::cosine_similarity_between_vectors($query_embedding, $candidate_embedding);
+            if ($semantic_score > $best_score) {
+                $best_score = $semantic_score;
+                $best_candidate = $candidate;
+            }
+        }
+
+        if ($best_candidate === null || $best_score < $threshold) {
+            return null;
+        }
+
+        return array(
+            'index' => intval($best_candidate['index']),
+            'score' => $best_score,
+            'section' => $best_candidate['section'],
+            'mode' => 'embedding',
+        );
+    }
+
+    protected static function find_existing_outline_section_image_attachment_id($section_title, $existing_image_map = array())
+    {
+        if (!class_exists('Alpha_RSS_AI_Generator')) {
+            return 0;
+        }
+
+        $section_title = self::normalize_prompt_context_text($section_title);
+        if ($section_title === '' || !is_array($existing_image_map) || empty($existing_image_map)) {
+            return 0;
+        }
+
+        $normalized_section_title = self::normalize_outline_section_match_text($section_title);
+        foreach ($existing_image_map as $existing_key => $existing_value) {
+            $existing_key_normalized = self::normalize_outline_section_match_text((string) $existing_key);
+            if ($existing_key_normalized !== '' && $existing_key_normalized === $normalized_section_title && intval($existing_value) > 0) {
+                return intval($existing_value);
+            }
+        }
+
+        $settings = Alpha_RSS_AI_Generator::get_settings();
+        if (empty($settings['semantic_dedup_enabled'])) {
+            return 0;
+        }
+
+        $model = !empty($settings['semantic_dedup_model']) ? sanitize_text_field((string) $settings['semantic_dedup_model']) : 'text-embedding-3-small';
+        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.82;
+
+        $candidate_titles = array();
+        $candidate_attachment_ids = array();
+        foreach ($existing_image_map as $existing_key => $existing_value) {
+            $candidate_title = self::normalize_prompt_context_text((string) $existing_key);
+            $attachment_id = intval($existing_value);
+            if ($candidate_title === '' || $attachment_id <= 0) {
+                continue;
+            }
+
+            $candidate_titles[] = $candidate_title;
+            $candidate_attachment_ids[] = $attachment_id;
+        }
+
+        if (empty($candidate_titles)) {
+            return 0;
+        }
+
+        $batch_texts = array_merge(array($section_title), $candidate_titles);
+        $embedding_payload = Alpha_RSS_AI_Generator::request_openai_embeddings_batch($batch_texts, $model);
+        if (is_wp_error($embedding_payload) || empty($embedding_payload['embeddings'][0])) {
+            return 0;
+        }
+
+        $query_embedding = $embedding_payload['embeddings'][0];
+        $best_score = 0.0;
+        $best_attachment_id = 0;
+        foreach ($candidate_attachment_ids as $offset => $attachment_id) {
+            $candidate_embedding_index = $offset + 1;
+            if (empty($embedding_payload['embeddings'][$candidate_embedding_index])) {
+                continue;
+            }
+
+            $candidate_embedding = $embedding_payload['embeddings'][$candidate_embedding_index];
+            $semantic_score = Alpha_RSS_AI_Generator::cosine_similarity_between_vectors($query_embedding, $candidate_embedding);
+            if ($semantic_score > $best_score) {
+                $best_score = $semantic_score;
+                $best_attachment_id = $attachment_id;
+            }
+        }
+
+        if ($best_attachment_id > 0 && $best_score >= $threshold) {
+            return $best_attachment_id;
+        }
+
+        return 0;
     }
 
     protected static function build_outline_section_match_candidates($outline_sections, $exclude_indexes = array())
@@ -2135,6 +2305,16 @@ class Alpha_RSS_AI_Generator_Helper
                         if (!empty($match['mode'])) {
                             $match_mode = sanitize_key((string) $match['mode']);
                         }
+                    }
+                }
+
+                if ($matched_section === null) {
+                    $semantic_match = self::find_best_outline_section_semantic_match($heading_title, $outline_sections, $used_section_indexes);
+                    if (!empty($semantic_match) && !empty($semantic_match['section']) && isset($semantic_match['section']['h2'])) {
+                        $matched_section = $semantic_match['section'];
+                        $matched_index = intval($semantic_match['index']);
+                        $match_mode = !empty($semantic_match['mode']) ? sanitize_key((string) $semantic_match['mode']) : 'embedding';
+                        $match_score = !empty($semantic_match['score']) ? (int) round(floatval($semantic_match['score']) * 100) : 0;
                     }
                 }
 
