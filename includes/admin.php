@@ -6,6 +6,10 @@ if (!defined('ABSPATH')) {
 
 class Alpha_RSS_AI_Generator_Admin
 {
+    public function __construct()
+    {
+        add_action('admin_notices', array(__CLASS__, 'render_notice'));
+    }
 
     public function admin_menu()
     {
@@ -41,8 +45,8 @@ class Alpha_RSS_AI_Generator_Admin
     {
         add_submenu_page(
             'alpha-rss-ai-generator',
-            'Configurações globais',
-            'Configurações globais',
+            'Configurações',
+            'Configurações',
             'manage_options',
             'alpha-rss-ai-global-settings',
             array($this, 'render_global_settings_page'),
@@ -75,18 +79,6 @@ class Alpha_RSS_AI_Generator_Admin
 
 ?>
         <style>
-            #wpbody-content>.notice,
-            #wpbody-content>.updated,
-            #wpbody-content>.error,
-            #wpbody-content>.notice-success,
-            #wpbody-content>.notice-warning {
-                display: none !important;
-            }
-
-            .arc-wrap .arc-admin-notice {
-                display: block;
-                margin: 0 0 1rem;
-            }
         </style>
         <script>
             window.tailwind = window.tailwind || {};
@@ -102,12 +94,13 @@ class Alpha_RSS_AI_Generator_Admin
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
-            <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
+            <h1 class="screen-reader-text">Alpha RSS AI</h1>
+            <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between w-3xl">
+                <div class="w-3xl">
                     <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
-                    <h1 class="mt-2 block w-full text-3xl font-semibold tracking-tight text-slate-950">Geradores</h1>
+                    <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Configurações globais</h1>
                 </div>
-                <div class="flex flex-wrap items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3 w-3xl">
                     <button type="button" data-open-generator-import-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Importar gerador" title="Importar gerador">
                         <span class="dashicons dashicons-download text-[18px] leading-none"></span>
                         <span class="sr-only">Importar gerador</span>
@@ -123,8 +116,6 @@ class Alpha_RSS_AI_Generator_Admin
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
             </div>
-
-            <?php self::render_notice(); ?>
 
             <div class="space-y-6">
                 <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
@@ -777,10 +768,10 @@ class Alpha_RSS_AI_Generator_Admin
                                     <div class="mt-4 space-y-3">
                                         <?php foreach (Alpha_RSS_AI_Generator::get_default_prompt_models() as $prompt_model): ?>
                                             <?php
-                                                $prompt_model_key = isset($prompt_model['key']) ? (string) $prompt_model['key'] : '';
-                                                $prompt_model_name = isset($prompt_model['name']) ? (string) $prompt_model['name'] : '';
-                                                $prompt_model_description = isset($prompt_model['description']) ? (string) $prompt_model['description'] : '';
-                                                $prompt_model_outline_key = isset($prompt_model['outline_model_key']) ? (string) $prompt_model['outline_model_key'] : '';
+                                            $prompt_model_key = isset($prompt_model['key']) ? (string) $prompt_model['key'] : '';
+                                            $prompt_model_name = isset($prompt_model['name']) ? (string) $prompt_model['name'] : '';
+                                            $prompt_model_description = isset($prompt_model['description']) ? (string) $prompt_model['description'] : '';
+                                            $prompt_model_outline_key = isset($prompt_model['outline_model_key']) ? (string) $prompt_model['outline_model_key'] : '';
                                             ?>
                                             <details class="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                                 <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-slate-800">
@@ -814,13 +805,13 @@ class Alpha_RSS_AI_Generator_Admin
                                     <p class="mt-3 text-xs text-slate-500">O backend usa o modelo escolhido pela IA e mantém este bloco como fallback editavel.</p>
                                 </div>
 
-                            <div class="mt-6 grid w-full gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[1fr_auto] lg:items-center">
-                                <p class="w-full text-sm text-slate-500">O modal reaproveita o mesmo formulário para criar e editar geradores.</p>
-                                <div class="flex w-full items-center gap-3 lg:w-auto lg:justify-end">
-                                    <button type="button" data-close-generator-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
-                                    <button id="arc-generator-submit" type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Salvar gerador</button>
+                                <div class="mt-6 grid w-full gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[1fr_auto] lg:items-center">
+                                    <p class="w-full text-sm text-slate-500">O modal reaproveita o mesmo formulário para criar e editar geradores.</p>
+                                    <div class="flex w-full items-center gap-3 lg:w-auto lg:justify-end">
+                                        <button type="button" data-close-generator-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
+                                        <button id="arc-generator-submit" type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Salvar gerador</button>
+                                    </div>
                                 </div>
-                            </div>
                         </form>
                     </div>
                 </div>
@@ -1946,22 +1937,17 @@ class Alpha_RSS_AI_Generator_Admin
             };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
-        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
+        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900 flex flex-col items-stretch">
+            <h1 class="screen-reader-text">Alpha RSS AI</h1>
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
-                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Configurações globais</h1>
+                    <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Configurações globais</h1>
                     <p class="mt-2 max-w-3xl text-sm text-slate-600">Ajuste as credenciais e padrões usados por todos os geradores.</p>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Voltar para geradores</a>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-keyword-lists')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Planilhas e palavras-chave</a>
                 </div>
             </div>
 
-            <?php self::render_notice(); ?>
-
-            <section class="max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
+            <section class="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
                 <div class="border-b border-slate-200 px-6 py-4">
                     <h2 class="text-lg font-semibold text-slate-950">Credenciais e padrões</h2>
                     <p class="mt-1 text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
@@ -1970,11 +1956,27 @@ class Alpha_RSS_AI_Generator_Admin
                     <?php wp_nonce_field('arc_save_settings', 'arc_settings_nonce'); ?>
                     <input type="hidden" name="action" value="arc_save_settings" />
                     <div class="space-y-4">
-                        <div>
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API da OpenAI</label>
-                            <input type="password" name="openai_api_key" value="<?php echo esc_attr($settings['openai_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div>
+                                <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API da OpenAI</label>
+                                <input type="password" name="openai_api_key" value="<?php echo esc_attr($settings['openai_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                            </div>
+                            <div>
+                                <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
+                                <input type="text" name="default_model" value="<?php echo esc_attr($settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                            </div>
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Temperatura padrão</label>
+                                    <input type="number" step="0.1" min="0" max="2" name="default_temperature" value="<?php echo esc_attr($settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Máximo de tokens</label>
+                                    <input type="number" min="256" name="default_max_tokens" value="<?php echo esc_attr($settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                </div>
+                            </div>
                         </div>
-                        <div>
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
                             <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                         </div>
@@ -2011,22 +2013,8 @@ class Alpha_RSS_AI_Generator_Admin
                                 </label>
                             </div>
                         </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium text-slate-700">Modelo padrão</label>
-                            <input type="text" name="default_model" value="<?php echo esc_attr($settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                        </div>
-                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div>
-                                <label class="mb-1 block text-sm font-medium text-slate-700">Temperatura padrão</label>
-                                <input type="number" step="0.1" min="0" max="2" name="default_temperature" value="<?php echo esc_attr($settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-sm font-medium text-slate-700">Máximo de tokens</label>
-                                <input type="number" min="256" name="default_max_tokens" value="<?php echo esc_attr($settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                            </div>
-                        </div>
                     </div>
-                    <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p class="text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
                         <div class="flex items-center gap-3">
                             <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</a>
@@ -2100,10 +2088,11 @@ class Alpha_RSS_AI_Generator_Admin
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
         <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
+            <h1 class="screen-reader-text">Alpha RSS AI</h1>
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
-                    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Planilhas e palavras-chave</h1>
+                    <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Planilhas e palavras-chave</h1>
                     <p class="mt-2 max-w-3xl text-sm text-slate-600">Importe CSV, XLS ou XLSX, escolha a coluna da palavra-chave e a coluna da slug final, e depois use essas listas nos geradores.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
@@ -2111,8 +2100,6 @@ class Alpha_RSS_AI_Generator_Admin
                     <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Ir para geradores</a>
                 </div>
             </div>
-
-            <?php self::render_notice(); ?>
 
             <div class="space-y-6">
                 <div id="arc-keyword-import-modal" class="fixed inset-0 z-50 hidden">
@@ -3723,7 +3710,7 @@ class Alpha_RSS_AI_Generator_Admin
         $message = sanitize_text_field(wp_unslash($_GET['arc_notice']));
         $link = isset($_GET['arc_notice_link']) ? esc_url_raw(wp_unslash($_GET['arc_notice_link'])) : '';
 
-        echo '<div class="arc-admin-notice ' . esc_attr($class) . '"><p>' . esc_html($message);
+        echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($message);
         if ($link !== '' && $type !== 'error') {
             echo ' <a href="' . esc_url($link) . '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">Abrir conteúdo</a>';
         }
@@ -3742,4 +3729,3 @@ class Alpha_RSS_AI_Generator_Admin
         return isset($map[$status]) ? $map[$status] : ucfirst((string) $status);
     }
 }
-
