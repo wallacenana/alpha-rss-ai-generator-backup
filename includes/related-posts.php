@@ -127,6 +127,7 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
             </script>
             <script src="https://cdn.tailwindcss.com"></script>
             <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
+                <h1 class="screen-reader-text">Alpha RSS AI</h1>
                 <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                         <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>

@@ -16,7 +16,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         private const META_PLAN_CONTENT_MODEL_TYPE = '_arc_content_plan_content_model_type';
         private const META_PLAN_PROMPT_MODEL_KEY = '_arc_content_plan_prompt_model_key';
         private const META_PLAN_OUTLINE_MODEL_KEY = '_arc_content_plan_outline_model_key';
-        private const META_PLAN_PLANNING_NICHE = '_arc_content_plan_planning_niche';
+        private const META_PLAN_TAVILY_JSON = '_arc_content_plan_tavily_json';
         private const META_PLAN_PLANNING_CUSTOM_PROMPT = '_arc_content_plan_planning_custom_prompt';
         private const MAX_PLANNING_SOURCE_WORDS = 1000;
 
@@ -34,8 +34,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         {
             add_submenu_page(
                 'alpha-rss-ai-generator',
-                'Sugestões de posts',
-                'Sugestões de posts',
+                'Planejamento',
+                'Planejamento',
                 'manage_options',
                 self::PAGE_SLUG,
                 array($this, 'render_page')
@@ -348,6 +348,165 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             return trim((string) $text);
         }
 
+        private static function build_tavily_query($item, $planning_custom_prompt = '')
+        {
+            $item = is_array($item) ? $item : array();
+            $parts = array();
+
+            foreach (array('title', 'source_title', 'excerpt', 'source_page_excerpt') as $key) {
+                if (!empty($item[$key])) {
+                    $parts[] = self::limit_plain_text_words((string) $item[$key], 18);
+                }
+            }
+
+            if ($planning_custom_prompt !== '') {
+                $parts[] = self::limit_plain_text_words((string) $planning_custom_prompt, 18);
+            }
+
+            $parts = array_values(array_filter(array_map(array(__CLASS__, 'normalize_plain_text'), $parts), 'strlen'));
+            $query = trim(implode(' ', array_slice($parts, 0, 3)));
+            if ($query === '' && !empty($item['content'])) {
+                $query = self::limit_plain_text_words((string) $item['content'], 24);
+            }
+
+            return self::normalize_plain_text($query);
+        }
+
+        private static function fetch_tavily_research($query, $max_results = 3)
+        {
+            $query = self::normalize_plain_text($query);
+            if ($query === '') {
+                return array();
+            }
+
+            $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+            if (empty($settings['tavily_enabled'])) {
+                return array();
+            }
+
+            $api_key = !empty($settings['tavily_api_key']) ? trim((string) $settings['tavily_api_key']) : '';
+            if ($api_key === '') {
+                return array();
+            }
+
+            $search_depth = !empty($settings['tavily_search_depth']) ? sanitize_key((string) $settings['tavily_search_depth']) : 'basic';
+            if (!in_array($search_depth, array('basic', 'advanced'), true)) {
+                $search_depth = 'basic';
+            }
+
+            $payload = array(
+                'api_key' => $api_key,
+                'query' => $query,
+                'search_depth' => $search_depth,
+                'max_results' => max(1, min(10, intval($max_results))),
+                'include_answer' => !empty($settings['tavily_include_answer']),
+                'include_images' => false,
+                'include_raw_content' => false,
+            );
+
+            $response = wp_remote_post('https://api.tavily.com/search', array(
+                'timeout' => 40,
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ),
+                'body' => wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ));
+
+            if (is_wp_error($response)) {
+                return array();
+            }
+
+            $status_code = wp_remote_retrieve_response_code($response);
+            if ($status_code < 200 || $status_code >= 300) {
+                return array();
+            }
+
+            $raw = json_decode((string) wp_remote_retrieve_body($response), true);
+            if (!is_array($raw) || empty($raw)) {
+                return array();
+            }
+
+            $results = array();
+            if (!empty($raw['results']) && is_array($raw['results'])) {
+                foreach ($raw['results'] as $result) {
+                    if (!is_array($result)) {
+                        continue;
+                    }
+                    $results[] = array(
+                        'title' => !empty($result['title']) ? self::normalize_plain_text((string) $result['title']) : '',
+                        'url' => !empty($result['url']) ? esc_url_raw((string) $result['url']) : '',
+                        'content' => !empty($result['content']) ? self::normalize_plain_text((string) $result['content']) : '',
+                        'score' => isset($result['score']) ? floatval($result['score']) : 0.0,
+                    );
+                }
+            }
+
+            return array(
+                'query' => $query,
+                'answer' => !empty($raw['answer']) ? self::normalize_plain_text((string) $raw['answer']) : '',
+                'results' => $results,
+            );
+        }
+
+        private static function format_tavily_research_for_prompt($context)
+        {
+            if (!is_array($context) || empty($context)) {
+                return '';
+            }
+
+            $lines = array();
+            if (!empty($context['query'])) {
+                $lines[] = 'Consulta Tavily: ' . self::normalize_plain_text((string) $context['query']);
+            }
+            if (!empty($context['answer'])) {
+                $lines[] = 'Resposta Tavily: ' . self::normalize_plain_text((string) $context['answer']);
+            }
+            if (!empty($context['results']) && is_array($context['results'])) {
+                $count = 0;
+                foreach ($context['results'] as $result) {
+                    if (!is_array($result)) {
+                        continue;
+                    }
+                    $count++;
+                    if ($count > 5) {
+                        break;
+                    }
+                    $result_line = trim(
+                        ($count . '. ' . (!empty($result['title']) ? self::normalize_plain_text((string) $result['title']) : 'Resultado')) .
+                        (!empty($result['content']) ? ' — ' . self::normalize_plain_text((string) $result['content']) : '') .
+                        (!empty($result['url']) ? ' (' . esc_url_raw((string) $result['url']) . ')' : '')
+                    );
+                    if ($result_line !== '') {
+                        $lines[] = $result_line;
+                    }
+                }
+            }
+
+            return self::limit_plain_text_words(implode("\n", $lines), 220);
+        }
+
+        private static function attach_tavily_context_to_item($item, $context)
+        {
+            $item = is_array($item) ? $item : array();
+            $context = is_array($context) ? $context : array();
+            $tavily_text = self::format_tavily_research_for_prompt($context);
+
+            $item['tavily_query'] = !empty($context['query']) ? self::normalize_plain_text((string) $context['query']) : '';
+            $item['tavily_context'] = $context;
+            $item['tavily_text'] = $tavily_text;
+
+            if ($tavily_text !== '') {
+                foreach (array('content', 'source_page_content', 'excerpt', 'source_page_excerpt') as $key) {
+                    if (!empty($item[$key])) {
+                        $item[$key] = trim((string) $item[$key]) . "\n\n" . 'Pesquisa externa auxiliar do Tavily: ' . $tavily_text;
+                    }
+                }
+            }
+
+            return $item;
+        }
+
         private static function get_post_excerpt_text($post)
         {
             if (!$post instanceof WP_Post) {
@@ -500,7 +659,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             return $normalized;
         }
 
-        private static function build_plan_prompt($generator, $item, $satellite_count, $outline_context = array(), $planning_niche = '', $planning_custom_prompt = '')
+        private static function build_plan_prompt($generator, $item, $satellite_count, $outline_context = array(), $planning_custom_prompt = '')
         {
             $satellite_count = max(1, intval($satellite_count));
             $outline_context = is_array($outline_context) && !empty($outline_context)
@@ -527,8 +686,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $recommended_outline_model_key = !empty($outline_context['recommended_outline_model_key']) ? sanitize_key((string) $outline_context['recommended_outline_model_key']) : '';
             $recommended_prompt_model = !empty($recommended_prompt_model_key) ? Alpha_RSS_AI_Generator::get_prompt_model($recommended_prompt_model_key, $generator) : array();
             $recommended_prompt_model_name = !empty($recommended_prompt_model['name']) ? (string) $recommended_prompt_model['name'] : '';
-            $planning_niche = self::normalize_plain_text($planning_niche);
             $planning_custom_prompt = self::normalize_plain_text($planning_custom_prompt);
+            $tavily_text = '';
+            if (!empty($item['tavily_text'])) {
+                $tavily_text = self::normalize_plain_text((string) $item['tavily_text']);
+            } elseif (!empty($item['tavily_context']) && is_array($item['tavily_context'])) {
+                $tavily_text = self::format_tavily_research_for_prompt($item['tavily_context']);
+            }
 
             $lines = array(
                 'Voce é um estrategista editorial e arquiteto de links internos.',
@@ -541,7 +705,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'Cada suggestion deve ser uma pauta editorial pronta, com 2 a 4 frases curtas, com sugestão do que o post pode abordar.',
                 'Use content_angle para classificar o tipo da sugestao, priorizando: critica, resumo, opiniao, guia, comparacao, curiosidades, spoilers, ranking, debate, analise, contexto, checklist, releitura.',
                 'Use o mesmo idioma final do gerador: ' . $generation_language . '.',
-                $planning_niche !== '' ? 'Nicho / recorte editorial informado pelo usuario: ' . $planning_niche : '',
                 $planning_custom_prompt !== '' ? 'Prompt personalizado do usuario: ' . $planning_custom_prompt : '',
                 'URL do post pilar: ' . $pillar_url,
                 'Conteúdo de referência do post pilar: ' . $pillar_content,
@@ -610,10 +773,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $post_id = isset($_POST['pillar_post_id']) ? intval($_POST['pillar_post_id']) : 0;
             $satellite_count = isset($_POST['satellite_count']) ? intval($_POST['satellite_count']) : 5;
             $satellite_count = max(1, min(12, $satellite_count));
-            $planning_niche = isset($_POST['planning_niche']) ? sanitize_text_field(wp_unslash($_POST['planning_niche'])) : '';
             $planning_custom_prompt = isset($_POST['planning_custom_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['planning_custom_prompt'])) : '';
-
-            update_post_meta($post_id, self::META_PLAN_PLANNING_NICHE, $planning_niche);
             update_post_meta($post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT, $planning_custom_prompt);
 
             $context = self::resolve_pillar_context($post_id);
@@ -632,15 +792,19 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $item = $context['item'];
             $item = self::limit_item_for_planning($item, self::MAX_PLANNING_SOURCE_WORDS);
             $global_settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
-            $tavily_query = self::build_tavily_query($item, $planning_niche, $planning_custom_prompt);
-            $tavily_max_results = !empty($global_settings['tavily_max_results']) ? intval($global_settings['tavily_max_results']) : 3;
-            $tavily_context = self::fetch_tavily_research($tavily_query, $tavily_max_results);
+            $tavily_query = '';
+            $tavily_context = array();
+            if (!empty($global_settings['tavily_enabled'])) {
+                $tavily_query = self::build_tavily_query($item, $planning_custom_prompt);
+                $tavily_max_results = !empty($global_settings['tavily_max_results']) ? intval($global_settings['tavily_max_results']) : 3;
+                $tavily_context = self::fetch_tavily_research($tavily_query, $tavily_max_results);
+            }
             if (!empty($tavily_context)) {
                 $item = self::attach_tavily_context_to_item($item, $tavily_context);
             }
             $outline_base_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_base($generator);
             $outline_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_from_source($generator, $item, array(), $outline_base_context);
-            $prompt = self::build_plan_prompt($generator, $item, $satellite_count, $outline_context, $planning_niche, $planning_custom_prompt);
+            $prompt = self::build_plan_prompt($generator, $item, $satellite_count, $outline_context, $planning_custom_prompt);
             $plan = Alpha_RSS_AI_Generator::request_openai_json($generator, $prompt, array(
                 'stage' => 'content_plan',
                 'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
@@ -674,7 +838,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $normalized_plan['pillar_tags'] = !empty($item['tags']) && is_array($item['tags']) ? array_values($item['tags']) : array();
             $normalized_plan['content_model_type'] = !empty($item['content_model_type']) ? Alpha_RSS_AI_Generator::normalize_content_model_type($item['content_model_type']) : 'pillar';
             $normalized_plan['content_model_label'] = Alpha_RSS_AI_Generator::get_content_model_label($normalized_plan['content_model_type']);
-            $normalized_plan['planning_niche'] = $planning_niche;
             $normalized_plan['planning_custom_prompt'] = $planning_custom_prompt;
             $normalized_plan['tavily_query'] = $tavily_query;
             $normalized_plan['tavily_context'] = !empty($tavily_context) ? $tavily_context : array();
@@ -726,7 +889,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 delete_post_meta($post_id, self::META_PLAN_CONTENT_MODEL_TYPE);
                 delete_post_meta($post_id, self::META_PLAN_PROMPT_MODEL_KEY);
                 delete_post_meta($post_id, self::META_PLAN_OUTLINE_MODEL_KEY);
-                delete_post_meta($post_id, self::META_PLAN_PLANNING_NICHE);
                 delete_post_meta($post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT);
                 delete_post_meta($post_id, self::META_PLAN_TAVILY_JSON);
                 delete_post_meta($post_id, '_arc_content_plan_satellite_post_ids');
@@ -1162,7 +1324,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             if (!empty($generated_at)) {
                 $plan['generated_at'] = $generated_at;
             }
-            $stored_planning_niche = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_PLANNING_NICHE, true) : '';
             $stored_planning_custom_prompt = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT, true) : '';
             $plan_prompt_model_key = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_PROMPT_MODEL_KEY, true) : '';
             $plan_outline_model_key = $selected_post_id > 0 ? (string) get_post_meta($selected_post_id, self::META_PLAN_OUTLINE_MODEL_KEY, true) : '';
@@ -1171,9 +1332,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
             if ($plan_outline_model_key !== '') {
                 $plan['recommended_outline_model_key'] = $plan_outline_model_key;
-            }
-            if ($stored_planning_niche !== '' && empty($plan['planning_niche'])) {
-                $plan['planning_niche'] = $stored_planning_niche;
             }
             if ($stored_planning_custom_prompt !== '' && empty($plan['planning_custom_prompt'])) {
                 $plan['planning_custom_prompt'] = $stored_planning_custom_prompt;
@@ -1249,10 +1407,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                                         <div>
                                             <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Qtd. satélites</label>
                                             <input type="number" min="1" max="12" name="satellite_count" value="<?php echo esc_attr(isset($plan['satellite_count']) ? intval($plan['satellite_count']) : 5); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
-                                        </div>
-                                        <div>
-                                            <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Nicho editorial</label>
-                                            <input type="text" name="planning_niche" value="<?php echo esc_attr(isset($plan['planning_niche']) ? $plan['planning_niche'] : ''); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex: filmes, séries, tecnologia" />
                                         </div>
                                     </div>
 

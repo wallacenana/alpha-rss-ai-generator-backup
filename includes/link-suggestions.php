@@ -39,6 +39,8 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 self::PAGE_SLUG,
                 array($this, 'render_page')
             );
+
+            remove_submenu_page('alpha-rss-ai-generator', self::PAGE_SLUG);
         }
 
         public function register_row_action_filters()
@@ -1454,6 +1456,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             </script>
             <script src="https://cdn.tailwindcss.com"></script>
             <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
+                <h1 class="screen-reader-text">Alpha RSS AI</h1>
                 <div class="mb-6">
                     <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
                     <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Sugestões de links</h1>
