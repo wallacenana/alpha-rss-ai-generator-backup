@@ -179,6 +179,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             add_filter('cron_schedules', array($this, 'add_cron_schedule'));
             add_action('rest_api_init', array($this, 'register_rest_routes'));
             add_action('init', array($this, 'ensure_cron_scheduled'));
+            self::normalize_active_generator_next_runs();
         }
 
         public function add_cron_schedule($schedules)
@@ -6159,6 +6160,56 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return wp_date('Y-m-d H:i:s', $timestamp, wp_timezone());
         }
 
+        public static function parse_db_timestamp_to_timestamp($value)
+        {
+            $value = trim((string) $value);
+            if ($value === '') {
+                return 0;
+            }
+
+            $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
+            $datetime = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $value, $timezone);
+            if ($datetime instanceof DateTimeImmutable) {
+                return $datetime->getTimestamp();
+            }
+
+            $fallback = strtotime($value);
+            return $fallback !== false ? intval($fallback) : 0;
+        }
+
+        public static function normalize_timestamp_to_daily_window($generator, $timestamp)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $timestamp = intval($timestamp);
+            if ($timestamp <= 0) {
+                return $timestamp;
+            }
+
+            $start_seconds = self::parse_time_to_seconds(isset($generator['daily_start']) ? $generator['daily_start'] : '08:00');
+            $end_seconds = self::parse_time_to_seconds(isset($generator['daily_end']) ? $generator['daily_end'] : '22:00');
+            if ($end_seconds <= $start_seconds) {
+                $end_seconds = min(DAY_IN_SECONDS - 60, $start_seconds + (8 * HOUR_IN_SECONDS));
+            }
+
+            $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
+            $day_start_value = wp_date('Y-m-d 00:00:00', $timestamp, $timezone);
+            $day_start_dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $day_start_value, $timezone);
+            $day_start = $day_start_dt instanceof DateTimeImmutable ? $day_start_dt->getTimestamp() : strtotime($day_start_value);
+            $window_start = $day_start + $start_seconds;
+            $window_end = $day_start + $end_seconds;
+
+            if ($timestamp < $window_start) {
+                return $window_start;
+            }
+
+            if ($timestamp > $window_end) {
+                $next_day_start = $day_start + DAY_IN_SECONDS;
+                return $next_day_start + $start_seconds;
+            }
+
+            return $timestamp;
+        }
+
         public static function schedule_next_run_for_generator($generator, $base_timestamp = null)
         {
             $base_timestamp = $base_timestamp ? intval($base_timestamp) : current_time('timestamp');
@@ -6199,7 +6250,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($jitter > 0) {
                 $delay_minutes += function_exists('wp_rand') ? wp_rand(0, $jitter) : random_int(0, $jitter);
             }
-            return self::format_timestamp_for_db($base_timestamp + ($delay_minutes * MINUTE_IN_SECONDS));
+            $next_timestamp = $base_timestamp + ($delay_minutes * MINUTE_IN_SECONDS);
+            $next_timestamp = self::normalize_timestamp_to_daily_window($generator, $next_timestamp);
+            return self::format_timestamp_for_db($next_timestamp);
         }
 
         public static function update_generator_schedule($generator_id)
@@ -6237,6 +6290,38 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 if (empty($generator['next_run_at'])) {
                     self::update_generator_schedule($generator['id']);
                 }
+            }
+        }
+
+        public static function normalize_active_generator_next_runs()
+        {
+            global $wpdb;
+            $generators = self::get_generators(500);
+            $now = current_time('timestamp');
+
+            foreach ($generators as $generator) {
+                if (empty($generator['status']) || $generator['status'] !== 'active') {
+                    continue;
+                }
+
+                $current_next_run = !empty($generator['next_run_at']) ? self::parse_db_timestamp_to_timestamp((string) $generator['next_run_at']) : 0;
+                $current_normalized = $current_next_run > 0 ? self::normalize_timestamp_to_daily_window($generator, $current_next_run) : 0;
+                $needs_reschedule = $current_next_run <= 0 || $current_next_run <= $now || $current_normalized !== $current_next_run;
+                if (!$needs_reschedule) {
+                    continue;
+                }
+
+                $next_run_at = self::schedule_next_run_for_generator($generator, $now);
+                $wpdb->update(
+                    self::$table_generators,
+                    array(
+                        'next_run_at' => $next_run_at,
+                        'updated_at' => current_time('mysql'),
+                    ),
+                    array('id' => intval($generator['id'])),
+                    array('%s', '%s'),
+                    array('%d')
+                );
             }
         }
 
@@ -6288,14 +6373,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             $post_data['post_excerpt'] = $post_excerpt;
 
-            if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list' && !empty($item['date'])) {
+            if (!empty($item['date'])) {
                 $post_date = self::bulk_parse_timestamp_value($item['date']);
+                if ($post_date === '' && $post_status === 'future') {
+                    $post_date = self::format_timestamp_for_db(current_time('timestamp') + HOUR_IN_SECONDS);
+                }
                 if ($post_date !== '') {
                     $post_data['post_date'] = $post_date;
                     $post_data['post_date_gmt'] = get_gmt_from_date($post_date);
                     $post_data['post_modified'] = $post_date;
                     $post_data['post_modified_gmt'] = get_gmt_from_date($post_date);
                 }
+            } elseif ($post_status === 'future') {
+                $post_date = self::format_timestamp_for_db(current_time('timestamp') + HOUR_IN_SECONDS);
+                $post_data['post_date'] = $post_date;
+                $post_data['post_date_gmt'] = get_gmt_from_date($post_date);
+                $post_data['post_modified'] = $post_date;
+                $post_data['post_modified_gmt'] = get_gmt_from_date($post_date);
             }
 
             return $post_data;
@@ -7078,6 +7172,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     array(
                         'post_id' => intval($post_id),
                         'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        'outline_target_h2_count_hint' => !empty($item['title_outline_count_hint']) ? intval($item['title_outline_count_hint']) : 0,
                     )
                 );
                 if ($article['content_html'] !== '') {

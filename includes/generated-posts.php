@@ -897,9 +897,9 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     <?php if ($total_pages > 1): ?>
                         <div class="flex items-center justify-between gap-4 border-t border-slate-200 px-6 py-4">
                             <div class="text-sm text-slate-500">Página <?php echo esc_html($paged); ?> de <?php echo esc_html($total_pages); ?></div>
-                            <div class="pagination-links">
+                            <div class="flex flex-wrap items-center gap-2">
                                 <?php
-                                echo wp_kses_post(paginate_links(array(
+                                $pagination_links = paginate_links(array(
                                     'base' => add_query_arg(array(
                                         'page' => self::PAGE_SLUG,
                                         'paged' => '%#%',
@@ -909,9 +909,45 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                     'format' => '',
                                     'current' => $paged,
                                     'total' => $total_pages,
-                                    'prev_text' => '&laquo;',
-                                    'next_text' => '&raquo;',
-                                )));
+                                    'type' => 'array',
+                                    'prev_text' => '&lsaquo;',
+                                    'next_text' => '&rsaquo;',
+                                ));
+
+                                if (!empty($pagination_links) && is_array($pagination_links)) {
+                                    foreach ($pagination_links as $page_link) {
+                                        $page_link = (string) $page_link;
+                                        if (strpos($page_link, 'current') !== false) {
+                                            $page_link = str_replace(
+                                                'page-numbers current',
+                                                'page-numbers current inline-flex min-w-10 items-center justify-center rounded-xl border border-indigo-600 bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm',
+                                                $page_link
+                                            );
+                                        } elseif (strpos($page_link, 'dots') !== false) {
+                                            $page_link = str_replace(
+                                                'page-numbers dots',
+                                                'page-numbers dots inline-flex min-w-10 items-center justify-center px-2 py-2 text-sm text-slate-400',
+                                                $page_link
+                                            );
+                                        } elseif (strpos($page_link, 'prev') !== false || strpos($page_link, 'next') !== false) {
+                                            $page_link = str_replace(
+                                                array('page-numbers prev', 'page-numbers next'),
+                                                array(
+                                                    'page-numbers prev inline-flex min-w-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950',
+                                                    'page-numbers next inline-flex min-w-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950',
+                                                ),
+                                                $page_link
+                                            );
+                                        } else {
+                                            $page_link = str_replace(
+                                                'page-numbers',
+                                                'page-numbers inline-flex min-w-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950',
+                                                $page_link
+                                            );
+                                        }
+                                        echo wp_kses_post($page_link);
+                                    }
+                                }
                                 ?>
                             </div>
                         </div>

@@ -2252,6 +2252,10 @@ class Alpha_RSS_AI_Generator_Helper
             return $content;
         }
 
+        $outline_section_count = count($outline_sections);
+        $outline_count_hint = !empty($context['outline_target_h2_count_hint']) ? intval($context['outline_target_h2_count_hint']) : 0;
+        $allow_sequence_fallback = $outline_section_count > 0 && $outline_section_count <= 10 && ($outline_count_hint <= 0 || $outline_count_hint <= 10);
+
         $blocks = parse_blocks($content);
         if (empty($blocks) || !is_array($blocks)) {
             return $content;
@@ -2315,6 +2319,16 @@ class Alpha_RSS_AI_Generator_Helper
                         $matched_index = intval($semantic_match['index']);
                         $match_mode = !empty($semantic_match['mode']) ? sanitize_key((string) $semantic_match['mode']) : 'embedding';
                         $match_score = !empty($semantic_match['score']) ? (int) round(floatval($semantic_match['score']) * 100) : 0;
+                    }
+                }
+
+                if ($matched_section === null && $allow_sequence_fallback && isset($outline_sections[$section_index]) && is_array($outline_sections[$section_index])) {
+                    $sequence_section = $outline_sections[$section_index];
+                    if (!in_array($section_index, $used_section_indexes, true)) {
+                        $matched_section = $sequence_section;
+                        $matched_index = intval($section_index);
+                        $match_mode = 'sequence';
+                        $match_score = 100;
                     }
                 }
 
@@ -3554,7 +3568,13 @@ class Alpha_RSS_AI_Generator_Helper
                 continue;
             }
 
-            $text_nodes_query = './/text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::h1) and not(ancestor::h2) and not(ancestor::h3) and not(ancestor::h4) and not(ancestor::h5) and not(ancestor::h6) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]';
+            $text_nodes_query = './/p//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+                . ' | .//li//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+                . ' | .//blockquote//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+                . ' | .//td//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+                . ' | .//th//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+                . ' | .//figcaption//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+                . ' | .//summary//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]';
             $text_nodes = $xpath->query($text_nodes_query, $root);
             if (!$text_nodes || $text_nodes->length === 0) {
                 continue;

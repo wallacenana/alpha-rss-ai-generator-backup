@@ -638,6 +638,22 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             );
         }
 
+        private static function build_satellite_schedule_datetime($index)
+        {
+            $index = max(1, intval($index));
+            $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
+
+            try {
+                $base = new DateTimeImmutable('now', $timezone);
+                $base = $base->modify('+1 day')->setTime(8, 30, 0);
+                $minutes_offset = ($index - 1) * 45;
+                $scheduled = $base->modify('+' . $minutes_offset . ' minutes');
+                return $scheduled->format('Y-m-d H:i:s');
+            } catch (Exception $exception) {
+                return current_time('mysql');
+            }
+        }
+
         private static function normalize_plan_response($plan, $satellite_count)
         {
             $satellite_count = max(1, intval($satellite_count));
@@ -967,7 +983,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'excerpt' => $suggestion,
                 'content' => $source_content,
                 'feed_title' => !empty($generator['name']) ? (string) $generator['name'] : get_bloginfo('name'),
-                'date' => current_time('mysql'),
+                'date' => self::build_satellite_schedule_datetime(intval($satellite['index'])),
                 'categories' => !empty($context['item']['categories']) && is_array($context['item']['categories']) ? $context['item']['categories'] : array(),
                 'tags' => !empty($context['item']['tags']) && is_array($context['item']['tags']) ? $context['item']['tags'] : array(),
                 'source_page_title' => $pillar_title,
@@ -1092,7 +1108,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $satellite_generator['source_type'] = 'rss';
             $satellite_generator['content_model_type'] = 'satellite';
             $satellite_generator['use_final_slug'] = 1;
-            $satellite_generator['post_status'] = 'publish';
+            $satellite_generator['post_status'] = 'future';
 
             $generated_posts = array();
             $errors = array();
