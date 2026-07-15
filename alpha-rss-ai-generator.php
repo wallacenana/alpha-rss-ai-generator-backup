@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.8.21
+Version: 1.8.22
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.20');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.22');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.21';
+        const VERSION = '1.8.22';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -473,6 +473,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return array(
                 'openai_api_key' => '',
                 'pexels_api_key' => '',
+                'global_internal_links_json' => '[]',
                 'tavily_api_key' => '',
                 'tavily_enabled' => 0,
                 'tavily_max_results' => 3,
@@ -1668,6 +1669,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $current = self::get_settings();
             $current['openai_api_key'] = isset($raw['openai_api_key']) ? sanitize_text_field(wp_unslash($raw['openai_api_key'])) : '';
             $current['pexels_api_key'] = isset($raw['pexels_api_key']) ? sanitize_text_field(wp_unslash($raw['pexels_api_key'])) : '';
+            if (isset($raw['global_internal_links_json'])) {
+                $global_internal_links_raw = wp_unslash($raw['global_internal_links_json']);
+                $current['global_internal_links_json'] = wp_json_encode(Alpha_RSS_AI_Generator_Helper::parse_internal_link_rules($global_internal_links_raw), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            }
             $current['tavily_api_key'] = isset($raw['tavily_api_key']) ? sanitize_text_field(wp_unslash($raw['tavily_api_key'])) : $current['tavily_api_key'];
             $current['tavily_enabled'] = isset($raw['tavily_enabled']) ? (!empty($raw['tavily_enabled']) ? 1 : 0) : 0;
             $current['tavily_max_results'] = isset($raw['tavily_max_results']) ? max(1, min(10, intval($raw['tavily_max_results']))) : $current['tavily_max_results'];

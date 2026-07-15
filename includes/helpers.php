@@ -3498,61 +3498,20 @@ class Alpha_RSS_AI_Generator_Helper
         return $attrs;
     }
 
-    public static function apply_internal_links_to_content($content, $generator, $context = array())
+    protected static function apply_internal_link_rules_to_dom($dom, $xpath, $root, $rules, &$applied_count, $remaining_total_links = null)
     {
-        $content = (string) $content;
-        $generator = is_array($generator) ? $generator : array();
-        $post_id = !empty($context['post_id']) ? intval($context['post_id']) : 0;
-        $raw_rules = isset($generator['internal_links_json']) ? $generator['internal_links_json'] : '';
-        $rules = self::parse_internal_link_rules($raw_rules);
-        $max_total_links = isset($generator['internal_links_count']) ? max(0, intval($generator['internal_links_count'])) : 0;
-        $remaining_total_links = $max_total_links > 0 ? $max_total_links : null;
-
-        if ($content === '') {
-            return $content;
+        $rules = is_array($rules) ? $rules : array();
+        if (empty($rules) || !$xpath || !$root) {
+            return;
         }
 
-        if (empty($rules)) {
-            return $content;
-        }
-
-        if (!class_exists('DOMDocument') || !class_exists('DOMXPath')) {
-            return $content;
-        }
-
-        $previous_libxml_state = libxml_use_internal_errors(true);
-        $dom = new DOMDocument('1.0', 'UTF-8');
-        $loaded = $dom->loadHTML('<?xml encoding="utf-8" ?><div id="arc-internal-links-root">' . $content . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous_libxml_state);
-
-        if (!$loaded) {
-            return $content;
-        }
-
-        $xpath = new DOMXPath($dom);
-        $root = $dom->getElementById('arc-internal-links-root');
-        if (!$root) {
-            return $content;
-        }
-
-        $applied_count = 0;
-        $anchor_texts = array();
-        $anchor_hit_indexes = array();
-        $anchor_nodes = $xpath->query('.//a[normalize-space(.) != ""]', $root);
-        if ($anchor_nodes && $anchor_nodes->length > 0) {
-            for ($i = 0; $i < $anchor_nodes->length; $i++) {
-                $anchor_node = $anchor_nodes->item($i);
-                if (!is_object($anchor_node) || !property_exists($anchor_node, 'textContent')) {
-                    continue;
-                }
-
-                $normalized_anchor_text = self::normalize_internal_link_text($anchor_node->textContent);
-                if ($normalized_anchor_text !== '') {
-                    $anchor_texts[] = $normalized_anchor_text;
-                }
-            }
-        }
+        $text_nodes_query = './/p//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+            . ' | .//li//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+            . ' | .//blockquote//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+            . ' | .//td//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+            . ' | .//th//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+            . ' | .//figcaption//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
+            . ' | .//summary//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]';
 
         foreach ($rules as $rule) {
             if ($remaining_total_links !== null && $remaining_total_links <= 0) {
@@ -3561,20 +3520,12 @@ class Alpha_RSS_AI_Generator_Helper
 
             $remaining = isset($rule['quantity']) ? max(1, intval($rule['quantity'])) : 1;
             $phrase = isset($rule['phrase']) ? (string) $rule['phrase'] : '';
-            $normalized_phrase = self::normalize_internal_link_text($phrase);
             $pattern = self::build_internal_link_match_pattern($phrase);
 
             if ($pattern === '') {
                 continue;
             }
 
-            $text_nodes_query = './/p//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
-                . ' | .//li//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
-                . ' | .//blockquote//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
-                . ' | .//td//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
-                . ' | .//th//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
-                . ' | .//figcaption//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]'
-                . ' | .//summary//text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]';
             $text_nodes = $xpath->query($text_nodes_query, $root);
             if (!$text_nodes || $text_nodes->length === 0) {
                 continue;
@@ -3586,60 +3537,7 @@ class Alpha_RSS_AI_Generator_Helper
             }
             $nodes = array_reverse($nodes);
 
-            $phrase_exists_in_anchor = false;
-            $anchor_hit_indexes = array();
-            if ($normalized_phrase !== '' && !empty($anchor_texts)) {
-                foreach ($anchor_texts as $anchor_index => $anchor_text) {
-                    if ($anchor_text !== '' && mb_stripos($anchor_text, $normalized_phrase, 0, 'UTF-8') !== false) {
-                        $phrase_exists_in_anchor = true;
-                        $anchor_hit_indexes[] = $anchor_index;
-                    }
-                }
-            }
-
-            $candidate_matches = array();
-            foreach ($nodes as $node_index => $node) {
-                if (!is_object($node) || !property_exists($node, 'nodeValue')) {
-                    continue;
-                }
-
-                $node_text = (string) $node->nodeValue;
-                if ($node_text === '') {
-                    continue;
-                }
-
-                if (!preg_match_all($pattern, $node_text, $match_data, PREG_OFFSET_CAPTURE)) {
-                    continue;
-                }
-
-                $node_candidate_indexes = array();
-                if (!empty($match_data[1]) && is_array($match_data[1])) {
-                    foreach ($match_data[1] as $match_index => $match_item) {
-                        if (!is_array($match_item) || !isset($match_item[0])) {
-                            continue;
-                        }
-
-                        $candidate_matches[] = array(
-                            'global_index' => count($candidate_matches) + 1,
-                            'node_index' => $node_index,
-                            'match_index' => $match_index,
-                            'text' => (string) $match_item[0],
-                            'offset' => isset($match_item[1]) ? intval($match_item[1]) : 0,
-                        );
-                        $node_candidate_indexes[] = count($candidate_matches);
-                    }
-                }
-
-            }
-
-            $eligible_occurrences = count($candidate_matches);
-
-            if ($eligible_occurrences <= 0) {
-                continue;
-            }
-
-            $rule_applied_count = 0;
-            foreach ($nodes as $node_index => $node) {
+            foreach ($nodes as $node) {
                 if ($remaining <= 0 || !is_object($node) || !property_exists($node, 'nodeValue')) {
                     continue;
                 }
@@ -3681,11 +3579,6 @@ class Alpha_RSS_AI_Generator_Helper
 
                 $selected_matches = array_slice($matches, -$node_replacements);
                 $selected_matches = array_reverse($selected_matches);
-                $selected_indexes = array();
-                foreach ($selected_matches as $selected_match) {
-                    $selected_index = isset($selected_match['index']) ? intval($selected_match['index']) : 0;
-                    $selected_indexes[] = $selected_index;
-                }
 
                 $cursor = strlen($node_text);
                 $chunks = array();
@@ -3735,7 +3628,6 @@ class Alpha_RSS_AI_Generator_Helper
 
                 $node->parentNode->replaceChild($fragment, $node);
                 $applied_count += $node_replacements;
-                $rule_applied_count += $node_replacements;
                 $remaining -= $node_replacements;
                 if ($remaining_total_links !== null) {
                     $remaining_total_links -= $node_replacements;
@@ -3745,6 +3637,58 @@ class Alpha_RSS_AI_Generator_Helper
                 }
             }
         }
+    }
+
+    public static function apply_internal_links_to_content($content, $generator, $context = array())
+    {
+        $content = (string) $content;
+        $generator = is_array($generator) ? $generator : array();
+        $post_id = !empty($context['post_id']) ? intval($context['post_id']) : 0;
+        $raw_rules = isset($generator['internal_links_json']) ? $generator['internal_links_json'] : '';
+        $rules = self::parse_internal_link_rules($raw_rules);
+        $global_rules = array();
+        if (class_exists('Alpha_RSS_AI_Generator')) {
+            $settings = Alpha_RSS_AI_Generator::get_settings();
+            if (!empty($settings['global_internal_links_json'])) {
+                $global_rules = self::parse_internal_link_rules($settings['global_internal_links_json']);
+            }
+        }
+        $max_total_links = isset($generator['internal_links_count']) ? max(0, intval($generator['internal_links_count'])) : 0;
+
+        if ($content === '') {
+            return $content;
+        }
+
+        if (empty($rules) && empty($global_rules)) {
+            return $content;
+        }
+
+        if (!class_exists('DOMDocument') || !class_exists('DOMXPath')) {
+            return $content;
+        }
+
+        $previous_libxml_state = libxml_use_internal_errors(true);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = $dom->loadHTML('<?xml encoding="utf-8" ?><div id="arc-internal-links-root">' . $content . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous_libxml_state);
+
+        if (!$loaded) {
+            return $content;
+        }
+
+        $xpath = new DOMXPath($dom);
+        $root = $dom->getElementById('arc-internal-links-root');
+        if (!$root) {
+            return $content;
+        }
+
+        $applied_count = 0;
+
+        if ($max_total_links > 0 && !empty($rules)) {
+            self::apply_internal_link_rules_to_dom($dom, $xpath, $root, $rules, $applied_count, $max_total_links);
+        }
+        self::apply_internal_link_rules_to_dom($dom, $xpath, $root, $global_rules, $applied_count, null);
 
         $output = '';
         foreach ($root->childNodes as $child) {

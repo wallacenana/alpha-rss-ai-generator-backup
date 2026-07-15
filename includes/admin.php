@@ -113,6 +113,10 @@ class Alpha_RSS_AI_Generator_Admin
                             <span class="sr-only">Exportar geradores</span>
                         </button>
                     </form>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-global-settings#arc-global-links-section')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Links globais" title="Links globais">
+                        <span class="dashicons dashicons-admin-links text-[18px] leading-none"></span>
+                        <span class="sr-only">Links globais</span>
+                    </a>
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
             </div>
@@ -2013,6 +2017,17 @@ class Alpha_RSS_AI_Generator_Admin
                                 </label>
                             </div>
                         </div>
+                        <div id="arc-global-links-section" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-slate-900">Links globais</h3>
+                                    <p class="mt-1 text-xs text-slate-500">Cadastre frases e URLs que podem ser aplicadas automaticamente em qualquer geração.</p>
+                                </div>
+                                <button type="button" data-add-global-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
+                            </div>
+                            <div class="mt-4 space-y-3" data-global-internal-links-rows></div>
+                            <textarea name="global_internal_links_json" class="hidden" data-global-internal-links-json><?php echo esc_textarea(isset($settings['global_internal_links_json']) ? $settings['global_internal_links_json'] : '[]'); ?></textarea>
+                        </div>
                     </div>
                     <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p class="text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
@@ -2024,6 +2039,157 @@ class Alpha_RSS_AI_Generator_Admin
                 </form>
             </section>
         </div>
+        <script>
+            (function() {
+                var rowsRoot = document.querySelector('[data-global-internal-links-rows]');
+                var jsonField = document.querySelector('[data-global-internal-links-json]');
+                var addButton = document.querySelector('[data-add-global-internal-link]');
+
+                if (!rowsRoot || !jsonField) {
+                    return;
+                }
+
+                function escapeHtml(value) {
+                    return String(value === undefined || value === null ? '' : value)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                }
+
+                function toFlag(value) {
+                    if (value === true || value === 1 || value === '1' || value === 'true' || value === 'on') {
+                        return '1';
+                    }
+                    return '0';
+                }
+
+                function normalizeRule(rule) {
+                    rule = rule || {};
+                    return {
+                        quantity: Math.max(1, parseInt(rule.quantity, 10) || 1),
+                        phrase: String(rule.phrase || rule.word || rule.keyword || rule.anchor_text || '').trim(),
+                        url: String(rule.url || rule.link || rule.target_url || '').trim(),
+                        target_blank: toFlag(rule.target_blank),
+                        nofollow: toFlag(rule.nofollow),
+                        sponsored: toFlag(rule.sponsored),
+                        ugc: toFlag(rule.ugc)
+                    };
+                }
+
+                function buildRow(rule) {
+                    rule = normalizeRule(rule);
+                    return [
+                        '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-global-internal-link-row>',
+                        '  <div class="grid gap-3 md:grid-cols-12">',
+                        '    <div class="md:col-span-2">',
+                        '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantidade</label>',
+                        '      <input type="number" min="1" value="' + escapeHtml(rule.quantity) + '" data-global-internal-link-quantity class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />',
+                        '    </div>',
+                        '    <div class="md:col-span-4">',
+                        '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Palavra</label>',
+                        '      <input type="text" value="' + escapeHtml(rule.phrase) + '" data-global-internal-link-phrase class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Disney" />',
+                        '    </div>',
+                        '    <div class="md:col-span-4">',
+                        '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Link</label>',
+                        '      <input type="url" value="' + escapeHtml(rule.url) + '" data-global-internal-link-url class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="https://seusite.com/exemplo" />',
+                        '    </div>',
+                        '    <div class="md:col-span-2">',
+                        '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Atributos</label>',
+                        '      <div class="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">',
+                        '        <label class="flex items-center gap-2"><input type="checkbox" data-global-internal-link-target-blank ' + (rule.target_blank === '1' ? 'checked' : '') + ' /> target blank</label>',
+                        '        <label class="flex items-center gap-2"><input type="checkbox" data-global-internal-link-nofollow ' + (rule.nofollow === '1' ? 'checked' : '') + ' /> nofollow</label>',
+                        '        <label class="flex items-center gap-2"><input type="checkbox" data-global-internal-link-sponsored ' + (rule.sponsored === '1' ? 'checked' : '') + ' /> sponsored</label>',
+                        '        <label class="flex items-center gap-2"><input type="checkbox" data-global-internal-link-ugc ' + (rule.ugc === '1' ? 'checked' : '') + ' /> ugc</label>',
+                        '      </div>',
+                        '    </div>',
+                        '  </div>',
+                        '  <div class="mt-3 flex justify-end">',
+                        '    <button type="button" data-remove-global-internal-link class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100">Remover</button>',
+                        '  </div>',
+                        '</div>'
+                    ].join('');
+                }
+
+                function collectRules() {
+                    var rules = [];
+                    rowsRoot.querySelectorAll('[data-global-internal-link-row]').forEach(function(row) {
+                        var quantityEl = row.querySelector('[data-global-internal-link-quantity]');
+                        var phraseEl = row.querySelector('[data-global-internal-link-phrase]');
+                        var urlEl = row.querySelector('[data-global-internal-link-url]');
+                        var targetBlankEl = row.querySelector('[data-global-internal-link-target-blank]');
+                        var nofollowEl = row.querySelector('[data-global-internal-link-nofollow]');
+                        var sponsoredEl = row.querySelector('[data-global-internal-link-sponsored]');
+                        var ugcEl = row.querySelector('[data-global-internal-link-ugc]');
+
+                        var rule = normalizeRule({
+                            quantity: quantityEl ? quantityEl.value : 1,
+                            phrase: phraseEl ? phraseEl.value : '',
+                            url: urlEl ? urlEl.value : '',
+                            target_blank: targetBlankEl && targetBlankEl.checked ? 1 : 0,
+                            nofollow: nofollowEl && nofollowEl.checked ? 1 : 0,
+                            sponsored: sponsoredEl && sponsoredEl.checked ? 1 : 0,
+                            ugc: ugcEl && ugcEl.checked ? 1 : 0
+                        });
+
+                        if (!rule.phrase && !rule.url && rule.quantity === 1 && rule.target_blank === '0' && rule.nofollow === '0' && rule.sponsored === '0' && rule.ugc === '0') {
+                            return;
+                        }
+
+                        rules.push(rule);
+                    });
+                    return rules;
+                }
+
+                function syncField() {
+                    jsonField.value = JSON.stringify(collectRules());
+                }
+
+                function renderRows(rules) {
+                    var normalized = [];
+                    if (Array.isArray(rules)) {
+                        normalized = rules.map(function(rule) {
+                            return normalizeRule(rule);
+                        });
+                    }
+                    if (!normalized.length) {
+                        normalized = [normalizeRule({})];
+                    }
+
+                    rowsRoot.innerHTML = normalized.map(buildRow).join('');
+                    syncField();
+                }
+
+                rowsRoot.addEventListener('input', syncField);
+                rowsRoot.addEventListener('change', syncField);
+                rowsRoot.addEventListener('click', function(event) {
+                    var button = event.target && event.target.closest ? event.target.closest('[data-remove-global-internal-link]') : null;
+                    if (!button) {
+                        return;
+                    }
+                    var row = button.closest('[data-global-internal-link-row]');
+                    if (row) {
+                        row.remove();
+                        syncField();
+                    }
+                });
+
+                if (addButton) {
+                    addButton.addEventListener('click', function() {
+                        var currentRules = collectRules();
+                        currentRules.push(normalizeRule({}));
+                        renderRows(currentRules);
+                    });
+                }
+
+                try {
+                    renderRows(JSON.parse(jsonField.value || '[]'));
+                } catch (error) {
+                    renderRows([]);
+                }
+            })();
+        </script>
     <?php
 
         echo ob_get_clean();

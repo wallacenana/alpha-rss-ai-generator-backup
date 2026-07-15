@@ -1,7 +1,7 @@
 {
   "name": "Alpha RSS AI Generator",
   "slug": "alpha-rss-ai-generator",
-  "version": "1.8.21",
+  "version": "1.8.22",
   "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -9,10 +9,10 @@
   "requires_php": "7.4",
   "author": "Wallace Tavares e Codex",
   "author_url": "https://github.com/wallacenana",
-  "last_updated": "2026-07-14",
+  "last_updated": "2026-07-15",
   "sections": {
     "description": "Atualizacao via GitHub para o plugin Alpha RSS AI Generator.",
-    "changelog": "<ul><li>Fallback de conteudo para &lt;article&gt;, &lt;main&gt; e areas comuns quando o seletor de conteudo nao existir.</li><li>Melhoria no HTML bruto repassado para RSS e Google Alerts.</li><li>Atualizacao da release para 1.8.20.</li></ul>",
+    "changelog": "<ul><li>Adicionado painel de links globais para reutilizar frases e URLs em qualquer geracao.</li><li>Os links internos do gerador agora continuam respeitando o limite configurado, enquanto os globais sao aplicados junto do conteudo.</li><li>Atualizacao da release para 1.8.22.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote e distribuido a partir do branch main do repositorio.",
     "screenshots": ""
