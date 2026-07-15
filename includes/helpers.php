@@ -189,6 +189,32 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($text);
     }
 
+    public static function normalize_plain_text($text)
+    {
+        return self::clean_source_text($text);
+    }
+
+    public static function limit_plain_text_words($text, $max_words = 120)
+    {
+        $text = self::normalize_plain_text($text);
+        $max_words = max(1, intval($max_words));
+
+        if ($text === '') {
+            return '';
+        }
+
+        if (function_exists('wp_trim_words')) {
+            return trim((string) wp_trim_words($text, $max_words));
+        }
+
+        $parts = preg_split('/\s+/', $text);
+        if (!is_array($parts) || empty($parts)) {
+            return $text;
+        }
+
+        return trim(implode(' ', array_slice($parts, 0, $max_words)));
+    }
+
     public static function bulk_parse_spreadsheet_file($file_path)
     {
         if (!class_exists('\PhpOffice\PhpSpreadsheet\IOFactory')) {
@@ -1513,6 +1539,253 @@ class Alpha_RSS_AI_Generator_Helper
         return $page_context;
     }
 
+    public static function build_tavily_image_query_from_item($item, $article = array())
+    {
+        $item = is_array($item) ? $item : array();
+        $article = is_array($article) ? $article : array();
+
+        $parts = array();
+        foreach (array('source_title', 'title', 'keyword', 'feed_title', 'source_page_title') as $key) {
+            if (!empty($item[$key])) {
+                $parts[] = self::limit_plain_text_words((string) $item[$key], 10);
+            }
+        }
+        foreach (array('title', 'source_title', 'focus_keyword') as $key) {
+            if (!empty($article[$key])) {
+                $parts[] = self::limit_plain_text_words((string) $article[$key], 10);
+            }
+        }
+
+        if (empty($parts)) {
+            foreach (array('source_page_excerpt', 'excerpt', 'source_page_content', 'content') as $key) {
+                if (!empty($item[$key])) {
+                    $parts[] = self::limit_plain_text_words((string) $item[$key], 12);
+                }
+                if (count($parts) >= 2) {
+                    break;
+                }
+            }
+        }
+
+        $parts = array_values(array_filter(array_map(array(__CLASS__, 'normalize_plain_text'), $parts), 'strlen'));
+        $query = trim(implode(' ', array_slice($parts, 0, 4)));
+
+        return self::normalize_plain_text($query);
+    }
+
+    public static function normalize_tavily_image_candidates($context)
+    {
+        $context = is_array($context) ? $context : array();
+        $candidates = array();
+        $seen = array();
+
+        $append_candidate = function ($candidate, $source_label = '') use (&$candidates, &$seen) {
+            if (is_string($candidate)) {
+                $candidate = array('url' => $candidate);
+            }
+            if (!is_array($candidate)) {
+                return;
+            }
+
+            $url = '';
+            foreach (array('url', 'image_url', 'source_url', 'thumbnail_url', 'src', 'link') as $key) {
+                if (!empty($candidate[$key])) {
+                    $url = trim((string) $candidate[$key]);
+                    break;
+                }
+            }
+            $url = esc_url_raw($url);
+            if ($url === '' || !Alpha_RSS_AI_Generator::url_looks_like_image($url)) {
+                return;
+            }
+            if (isset($seen[$url])) {
+                return;
+            }
+
+            $seen[$url] = true;
+            $description = '';
+            foreach (array('description', 'alt', 'text', 'summary', 'content') as $key) {
+                if (!empty($candidate[$key])) {
+                    $description = self::normalize_plain_text((string) $candidate[$key]);
+                    if ($description !== '') {
+                        break;
+                    }
+                }
+            }
+
+            $candidates[] = array(
+                'url' => $url,
+                'title' => !empty($candidate['title']) ? self::normalize_plain_text((string) $candidate['title']) : '',
+                'description' => $description,
+                'score' => isset($candidate['score']) ? floatval($candidate['score']) : (isset($candidate['relevance_score']) ? floatval($candidate['relevance_score']) : 0),
+                'source' => $source_label !== '' ? sanitize_key((string) $source_label) : (!empty($candidate['source']) ? sanitize_key((string) $candidate['source']) : ''),
+            );
+        };
+
+        $append_candidates = function ($list, $source_label = '') use (&$append_candidate) {
+            if (!is_array($list)) {
+                return;
+            }
+            foreach ($list as $candidate) {
+                $append_candidate($candidate, $source_label);
+            }
+        };
+
+        if (!empty($context['images']) && is_array($context['images'])) {
+            $append_candidates($context['images'], 'tavily');
+        }
+
+        if (!empty($context['results']) && is_array($context['results'])) {
+            foreach ($context['results'] as $result) {
+                if (!is_array($result)) {
+                    continue;
+                }
+                if (!empty($result['images']) && is_array($result['images'])) {
+                    $append_candidates($result['images'], 'tavily_result');
+                }
+            }
+        }
+
+        $looks_like_candidate_list = !empty($context) && array_keys($context) === range(0, count($context) - 1);
+        if ($looks_like_candidate_list) {
+            $append_candidates($context, 'tavily');
+        }
+
+        return $candidates;
+    }
+
+    public static function extract_first_tavily_image_url($context)
+    {
+        $candidates = self::normalize_tavily_image_candidates($context);
+        if (empty($candidates)) {
+            return '';
+        }
+
+        foreach ($candidates as $candidate) {
+            if (!empty($candidate['url'])) {
+                return (string) $candidate['url'];
+            }
+        }
+
+        return '';
+    }
+
+    public static function fetch_tavily_search_context($query, $max_results = 3, $include_answer = true, $include_images = true)
+    {
+        $query = self::normalize_plain_text($query);
+        if ($query === '') {
+            return array();
+        }
+
+        $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+        if (empty($settings['tavily_enabled'])) {
+            return array();
+        }
+
+        $api_key = !empty($settings['tavily_api_key']) ? trim((string) $settings['tavily_api_key']) : '';
+        if ($api_key === '') {
+            return array();
+        }
+
+        $search_depth = !empty($settings['tavily_search_depth']) ? sanitize_key((string) $settings['tavily_search_depth']) : 'basic';
+        if (!in_array($search_depth, array('basic', 'advanced'), true)) {
+            $search_depth = 'basic';
+        }
+
+        $payload = array(
+            'api_key' => $api_key,
+            'query' => $query,
+            'search_depth' => $search_depth,
+            'max_results' => max(1, min(10, intval($max_results))),
+            'include_answer' => !empty($include_answer),
+            'include_images' => !empty($include_images),
+            'include_image_descriptions' => !empty($include_images),
+            'include_raw_content' => false,
+        );
+
+        $response = wp_remote_post('https://api.tavily.com/search', array(
+            'timeout' => 40,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ),
+            'body' => wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ));
+
+        if (is_wp_error($response)) {
+            return array();
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code < 200 || $status_code >= 300) {
+            return array();
+        }
+
+        $raw = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($raw) || empty($raw)) {
+            return array();
+        }
+
+        $results = array();
+        if (!empty($raw['results']) && is_array($raw['results'])) {
+            foreach ($raw['results'] as $result) {
+                if (!is_array($result)) {
+                    continue;
+                }
+
+                $normalized_result = array(
+                    'title' => !empty($result['title']) ? self::normalize_plain_text((string) $result['title']) : '',
+                    'url' => !empty($result['url']) ? esc_url_raw((string) $result['url']) : '',
+                    'content' => !empty($result['content']) ? self::normalize_plain_text((string) $result['content']) : '',
+                    'score' => isset($result['score']) ? floatval($result['score']) : 0.0,
+                );
+                if (!empty($result['images']) && is_array($result['images'])) {
+                    $normalized_result['images'] = self::normalize_tavily_image_candidates(array('images' => $result['images']));
+                }
+                $results[] = $normalized_result;
+            }
+        }
+
+        $context = array(
+            'query' => $query,
+            'answer' => !empty($raw['answer']) ? self::normalize_plain_text((string) $raw['answer']) : '',
+            'results' => $results,
+        );
+        if (!empty($include_images)) {
+            $context['images'] = self::normalize_tavily_image_candidates($raw);
+        }
+
+        return $context;
+    }
+
+    public static function get_tavily_image_candidates_for_item($generator, $item, $article = array(), $max_results = 3)
+    {
+        $generator = is_array($generator) ? $generator : array();
+        $item = is_array($item) ? $item : array();
+        $article = is_array($article) ? $article : array();
+
+        if (!empty($item['tavily_image_candidates']) && is_array($item['tavily_image_candidates'])) {
+            return self::normalize_tavily_image_candidates(array('images' => $item['tavily_image_candidates']));
+        }
+
+        $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+        if (empty($settings['tavily_enabled'])) {
+            return array();
+        }
+
+        $query = self::build_tavily_image_query_from_item($item, $article);
+        if ($query === '') {
+            return array();
+        }
+
+        $context = self::fetch_tavily_search_context($query, $max_results, false, true);
+        if (empty($context)) {
+            return array();
+        }
+
+        return self::normalize_tavily_image_candidates($context);
+    }
+
     protected static function pick_random_text_variant($items, $fallback = '')
     {
         $items = array_values(array_filter(array_map('trim', (array) $items)));
@@ -1524,7 +1797,7 @@ class Alpha_RSS_AI_Generator_Helper
         return trim((string) $fallback);
     }
 
-    public static function build_outline_section_image_html($section, $post_id = 0, $image_size = 'medium', $existing_image_map = array(), $section_index = -1)
+    public static function build_outline_section_image_html($section, $post_id = 0, $image_size = 'medium', $existing_image_map = array(), $section_index = -1, $fallback_image_candidates = array())
     {
         if (!is_array($section)) {
             return '';
@@ -1544,6 +1817,26 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $images = isset($section['images']) && is_array($section['images']) ? array_values($section['images']) : array();
+        if (empty($images) && !empty($fallback_image_candidates) && is_array($fallback_image_candidates)) {
+            $fallback_image_candidates = array_values(array_filter($fallback_image_candidates, function ($candidate) {
+                if (is_string($candidate)) {
+                    $candidate = array('url' => $candidate);
+                }
+                return is_array($candidate) && !empty($candidate['url']);
+            }));
+            if (!empty($fallback_image_candidates)) {
+                if ($section_index >= 0 && count($fallback_image_candidates) > 1) {
+                    $offset = $section_index % count($fallback_image_candidates);
+                    if ($offset > 0) {
+                        $fallback_image_candidates = array_merge(
+                            array_slice($fallback_image_candidates, $offset),
+                            array_slice($fallback_image_candidates, 0, $offset)
+                        );
+                    }
+                }
+                $images = $fallback_image_candidates;
+            }
+        }
         if (!empty($images)) {
             foreach ($images as $image_index => $image) {
                 if (!is_array($image) || empty($image['url'])) {
@@ -2212,7 +2505,7 @@ class Alpha_RSS_AI_Generator_Helper
         $html_parts = array();
         $section_title = is_array($section) && !empty($section['h2']) ? self::clean_source_text($section['h2']) : '';
         if (!empty($use_images)) {
-            $image_html = self::build_outline_section_image_html($section, $post_id, $image_size, $existing_image_map, $section_index);
+            $image_html = self::build_outline_section_image_html($section, $post_id, $image_size, $existing_image_map, $section_index, array());
             if ($image_html !== '') {
                 $html_parts[] = $image_html;
             }
@@ -2228,7 +2521,7 @@ class Alpha_RSS_AI_Generator_Helper
         return trim(implode("\n", $html_parts));
     }
 
-    public static function inject_outline_section_media_into_content($content, $outline_sections, $post_id = 0, $image_size = 'medium', $link_phrases = array(), $use_images = true, $use_links = true, $generator = array(), $context = array(), $existing_image_map = array())
+    public static function inject_outline_section_media_into_content($content, $outline_sections, $post_id = 0, $image_size = 'medium', $link_phrases = array(), $use_images = true, $use_links = true, $generator = array(), $context = array(), $existing_image_map = array(), $fallback_image_candidates = array())
     {
         $content = trim((string) $content);
         if ($content === '') {
@@ -2337,7 +2630,7 @@ class Alpha_RSS_AI_Generator_Helper
                         $used_section_indexes[] = $matched_index;
                     }
                     if ($use_images && $is_heading_level_2 && !self::outline_section_has_existing_image($matched_section, $existing_image_map, $matched_index)) {
-                        $section_image_html = self::build_outline_section_image_html($matched_section, $post_id, $image_size, $existing_image_map, $matched_index);
+                        $section_image_html = self::build_outline_section_image_html($matched_section, $post_id, $image_size, $existing_image_map, $matched_index, $fallback_image_candidates);
                         if ($section_image_html !== '') {
                             $result_blocks[] = array(
                                 'blockName' => 'core/html',

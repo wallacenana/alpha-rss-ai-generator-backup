@@ -375,78 +375,22 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         private static function fetch_tavily_research($query, $max_results = 3)
         {
             $query = self::normalize_plain_text($query);
-            if ($query === '') {
+            if ($query === '' || !class_exists('Alpha_RSS_AI_Generator_Helper')) {
                 return array();
             }
 
             $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
-            if (empty($settings['tavily_enabled'])) {
-                return array();
-            }
-
-            $api_key = !empty($settings['tavily_api_key']) ? trim((string) $settings['tavily_api_key']) : '';
-            if ($api_key === '') {
-                return array();
-            }
-
-            $search_depth = !empty($settings['tavily_search_depth']) ? sanitize_key((string) $settings['tavily_search_depth']) : 'basic';
-            if (!in_array($search_depth, array('basic', 'advanced'), true)) {
-                $search_depth = 'basic';
-            }
-
-            $payload = array(
-                'api_key' => $api_key,
-                'query' => $query,
-                'search_depth' => $search_depth,
-                'max_results' => max(1, min(10, intval($max_results))),
-                'include_answer' => !empty($settings['tavily_include_answer']),
-                'include_images' => false,
-                'include_raw_content' => false,
+            $context = Alpha_RSS_AI_Generator_Helper::fetch_tavily_search_context(
+                $query,
+                $max_results,
+                !empty($settings['tavily_include_answer']),
+                true
             );
-
-            $response = wp_remote_post('https://api.tavily.com/search', array(
-                'timeout' => 40,
-                'headers' => array(
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ),
-                'body' => wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ));
-
-            if (is_wp_error($response)) {
+            if (!is_array($context) || empty($context)) {
                 return array();
             }
 
-            $status_code = wp_remote_retrieve_response_code($response);
-            if ($status_code < 200 || $status_code >= 300) {
-                return array();
-            }
-
-            $raw = json_decode((string) wp_remote_retrieve_body($response), true);
-            if (!is_array($raw) || empty($raw)) {
-                return array();
-            }
-
-            $results = array();
-            if (!empty($raw['results']) && is_array($raw['results'])) {
-                foreach ($raw['results'] as $result) {
-                    if (!is_array($result)) {
-                        continue;
-                    }
-                    $results[] = array(
-                        'title' => !empty($result['title']) ? self::normalize_plain_text((string) $result['title']) : '',
-                        'url' => !empty($result['url']) ? esc_url_raw((string) $result['url']) : '',
-                        'content' => !empty($result['content']) ? self::normalize_plain_text((string) $result['content']) : '',
-                        'score' => isset($result['score']) ? floatval($result['score']) : 0.0,
-                    );
-                }
-            }
-
-            return array(
-                'query' => $query,
-                'answer' => !empty($raw['answer']) ? self::normalize_plain_text((string) $raw['answer']) : '',
-                'results' => $results,
-            );
+            return $context;
         }
 
         private static function format_tavily_research_for_prompt($context)
@@ -495,6 +439,9 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $item['tavily_query'] = !empty($context['query']) ? self::normalize_plain_text((string) $context['query']) : '';
             $item['tavily_context'] = $context;
             $item['tavily_text'] = $tavily_text;
+            $item['tavily_image_candidates'] = !empty($context) && class_exists('Alpha_RSS_AI_Generator_Helper')
+                ? Alpha_RSS_AI_Generator_Helper::normalize_tavily_image_candidates($context)
+                : array();
 
             if ($tavily_text !== '') {
                 foreach (array('content', 'source_page_content', 'excerpt', 'source_page_excerpt') as $key) {
@@ -638,16 +585,46 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             );
         }
 
-        private static function build_satellite_schedule_datetime($index)
+        private static function build_satellite_schedule_datetime($index, $total_count = 0)
         {
             $index = max(1, intval($index));
+            $total_count = max(0, intval($total_count));
             $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
 
             try {
                 $base = new DateTimeImmutable('now', $timezone);
-                $base = $base->modify('+1 day')->setTime(8, 30, 0);
-                $minutes_offset = ($index - 1) * 45;
-                $scheduled = $base->modify('+' . $minutes_offset . ' minutes');
+                $day_start = $base->setTime(0, 0, 0);
+                $window_start = $day_start->setTime(6, 0, 0);
+                $window_end = $day_start->setTime(22, 0, 0);
+
+                $start_timestamp = max(
+                    $base->getTimestamp() + (10 * MINUTE_IN_SECONDS),
+                    $window_start->getTimestamp()
+                );
+                if ($start_timestamp > $window_end->getTimestamp()) {
+                    $fallback_start = $window_end->getTimestamp() - max(0, ($total_count - 1)) * (10 * MINUTE_IN_SECONDS);
+                    $start_timestamp = max($window_start->getTimestamp(), $fallback_start);
+                }
+
+                $available_window = max(0, $window_end->getTimestamp() - $start_timestamp);
+                $desired_gap = 45 * MINUTE_IN_SECONDS;
+                $gap = $desired_gap;
+                if ($total_count > 1 && $available_window > 0) {
+                    $gap = max(10 * MINUTE_IN_SECONDS, intval(floor($available_window / max(1, $total_count - 1))));
+                    $gap = min($gap, $desired_gap);
+                }
+
+                $minutes_offset = ($index - 1) * max(10, intval($gap / MINUTE_IN_SECONDS));
+                $scheduled = (new DateTimeImmutable('@' . $start_timestamp))->setTimezone($timezone);
+                if ($minutes_offset > 0) {
+                    $scheduled = $scheduled->modify('+' . $minutes_offset . ' minutes');
+                }
+                if ($scheduled->getTimestamp() < $start_timestamp) {
+                    $scheduled = (new DateTimeImmutable('@' . $start_timestamp))->setTimezone($timezone);
+                }
+                if ($scheduled->getTimestamp() > $window_end->getTimestamp()) {
+                    $scheduled = (new DateTimeImmutable('@' . $window_end->getTimestamp()))->setTimezone($timezone);
+                }
                 return $scheduled->format('Y-m-d H:i:s');
             } catch (Exception $exception) {
                 return current_time('mysql');
@@ -983,7 +960,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'excerpt' => $suggestion,
                 'content' => $source_content,
                 'feed_title' => !empty($generator['name']) ? (string) $generator['name'] : get_bloginfo('name'),
-                'date' => self::build_satellite_schedule_datetime(intval($satellite['index'])),
+                'date' => self::build_satellite_schedule_datetime(intval($satellite['index']), !empty($plan['satellites']) && is_array($plan['satellites']) ? count($plan['satellites']) : 0),
                 'categories' => !empty($context['item']['categories']) && is_array($context['item']['categories']) ? $context['item']['categories'] : array(),
                 'tags' => !empty($context['item']['tags']) && is_array($context['item']['tags']) ? $context['item']['tags'] : array(),
                 'source_page_title' => $pillar_title,

@@ -201,7 +201,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             $anchor_words = array_values(array_filter(preg_split('/\s+/u', $anchor), 'strlen'));
             $word_count = count($anchor_words);
-            if ($word_count < 2) {
+            if ($word_count < 1) {
                 return '';
             }
 
@@ -238,8 +238,19 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 return '';
             }
 
+            if ($word_count === 1) {
+                $single_word = self::normalize_link_suggestion_key($anchor_words[0]);
+                if ($single_word === '' || mb_strlen($single_word, 'UTF-8') < 4 || in_array($single_word, $generic_terms, true)) {
+                    return '';
+                }
+                if (mb_stripos($source_lookup, $single_word, 0, 'UTF-8') !== false) {
+                    return self::normalize_plain_text($anchor_words[0]);
+                }
+                return '';
+            }
+
             $best_fragment = '';
-            for ($size = min(4, $word_count); $size >= 2; $size--) {
+            for ($size = min(10, $word_count); $size >= 2; $size--) {
                 for ($offset = 0; $offset <= $word_count - $size; $offset++) {
                     $fragment = implode(' ', array_slice($anchor_words, $offset, $size));
                     $fragment_lookup = self::normalize_link_suggestion_key($fragment);
@@ -257,7 +268,17 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 return $best_fragment;
             }
 
-            if ($word_count <= 4) {
+            for ($offset = 0; $offset < $word_count; $offset++) {
+                $single_word = self::normalize_link_suggestion_key($anchor_words[$offset]);
+                if ($single_word === '' || mb_strlen($single_word, 'UTF-8') < 4 || in_array($single_word, $generic_terms, true)) {
+                    continue;
+                }
+                if (mb_stripos($source_lookup, $single_word, 0, 'UTF-8') !== false) {
+                    return self::normalize_plain_text($anchor_words[$offset]);
+                }
+            }
+
+            if ($word_count <= 10) {
                 $anchor_lookup = self::normalize_link_suggestion_key($anchor);
                 if ($anchor_lookup !== '' && mb_stripos($source_lookup, $anchor_lookup, 0, 'UTF-8') !== false) {
                     return $anchor;
@@ -553,11 +574,6 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 }
             }
 
-            $apply_anchor = self::normalize_link_suggestion_anchor($anchor, $source_linkable_text);
-            if ($apply_anchor === '') {
-                $apply_anchor = $anchor;
-            }
-
             $post_id = 0;
             foreach (array('post_id', 'id', 'target_post_id', 'target_id', 'postid') as $key) {
                 if (!empty($item[$key])) {
@@ -594,6 +610,20 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             if ($title === '' && $post_id > 0 && isset($candidate_lookup['id'][$post_id])) {
                 $title = (string) $candidate_lookup['id'][$post_id]['title'];
+            }
+
+            $apply_anchor = '';
+            if ($anchor !== '') {
+                $apply_anchor = self::normalize_link_suggestion_anchor($anchor, $source_linkable_text);
+            }
+            if ($apply_anchor === '' && $title !== '') {
+                $apply_anchor = self::normalize_link_suggestion_anchor($title, $source_linkable_text);
+            }
+            if ($apply_anchor === '' && $title !== '') {
+                $apply_anchor = $title;
+            }
+            if ($apply_anchor === '' && $anchor !== '') {
+                $apply_anchor = $anchor;
             }
 
             $reason = '';
@@ -736,8 +766,12 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 'Nunca sugira o post de origem.',
                 'Não repita o mesmo post alvo.',
                 'Seria interessante que fossem escolhidos termos por todo o conteúdo permitido, ou seja, do início ao fim e que evitasse que fossem muito próximos ou até mesmo no mesmo parágrafo.',
+                'Priorize nomes de obras e a frase complementar mais natural ao redor deles.',
+                'O anchor ideal é a menor frase natural que contenha o nome da obra, título, sigla ou termo forte, somado à frase complementar que dá contexto e autoridade.',
+                'Evite anchors genéricas isoladas quando existir uma frase maior e específica no conteúdo.',
                 'Cada sugestao deve ter somente: anchor e post_id.',
-                'Não use frase completa, não use o primeiro parágrafo, não use headings, legendas e botoes.',
+                'Não use parágrafo inteiro. Prefira um trecho natural de 4 a 12 palavras que contenha o nome da obra + a frase complementar mais forte.',
+                'Não use o primeiro parágrafo, não use headings, legendas e botoes.',
                 'Retorne até ' . $requested_count . ' sugestões.',
                 'Não complete a lista repetindo o mesmo post_id.',
                 $custom_prompt !== '' ? 'Observação do usuário: ' . $custom_prompt : '',

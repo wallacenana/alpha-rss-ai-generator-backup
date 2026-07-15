@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.8.22
+Version: 1.8.23
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.22');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.23');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.22';
+        const VERSION = '1.8.23';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -4901,6 +4901,22 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     $item['source_image_url'] = $outline_image_url;
                 }
             }
+            if (empty($item['source_image_url']) && class_exists('Alpha_RSS_AI_Generator_Helper')) {
+                $tavily_image_candidates = array();
+                if (!empty($item['tavily_image_candidates']) && is_array($item['tavily_image_candidates'])) {
+                    $tavily_image_candidates = $item['tavily_image_candidates'];
+                } elseif (!empty($item['tavily_context']) && is_array($item['tavily_context'])) {
+                    $tavily_image_candidates = Alpha_RSS_AI_Generator_Helper::normalize_tavily_image_candidates($item['tavily_context']);
+                } else {
+                    $tavily_image_candidates = Alpha_RSS_AI_Generator_Helper::get_tavily_image_candidates_for_item($generator, $item, array(), 3);
+                }
+                $tavily_image_url = Alpha_RSS_AI_Generator_Helper::extract_first_tavily_image_url(array('images' => $tavily_image_candidates));
+                if ($tavily_image_url !== '') {
+                    $item['tavily_image_candidates'] = $tavily_image_candidates;
+                    $item['source_image_url'] = $tavily_image_url;
+                    $item['source_image_source'] = 'tavily';
+                }
+            }
             if (!empty($media['link_url'])) {
                 $item['source_link_url'] = $media['link_url'];
             }
@@ -6567,6 +6583,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])) {
                 update_post_meta($post_id, '_arc_source_page_outline_sections', wp_json_encode($item['source_page_outline_sections'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             }
+            if (!empty($item['tavily_image_candidates']) && is_array($item['tavily_image_candidates'])) {
+                update_post_meta($post_id, '_arc_tavily_image_candidates_json', wp_json_encode($item['tavily_image_candidates'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
             if (!empty($item['outline_text'])) {
                 update_post_meta($post_id, '_arc_outline_text', sanitize_textarea_field($item['outline_text']));
             }
@@ -7165,6 +7184,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $content_image_size = !empty($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
                 $use_source_content_images = self::generator_uses_source_content_images($generator);
                 $use_source_content_links = self::generator_uses_source_content_links($generator);
+                $existing_image_map = array();
+                if (!empty($article['content_html'])) {
+                    $existing_image_map = Alpha_RSS_AI_Generator_Helper::extract_outline_section_image_map_from_content($article['content_html']);
+                }
                 $article['content_html'] = Alpha_RSS_AI_Generator_Helper::inject_outline_section_media_into_content(
                     $article['content_html'],
                     $item['source_page_outline_sections'],
@@ -7178,7 +7201,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         'post_id' => intval($post_id),
                         'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
                         'outline_target_h2_count_hint' => !empty($item['title_outline_count_hint']) ? intval($item['title_outline_count_hint']) : 0,
-                    )
+                    ),
+                    $existing_image_map,
+                    !empty($item['tavily_image_candidates']) ? $item['tavily_image_candidates'] : array()
                 );
                 if ($article['content_html'] !== '') {
                     $update_content = wp_update_post(array(
