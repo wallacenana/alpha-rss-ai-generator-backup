@@ -439,9 +439,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $item['tavily_query'] = !empty($context['query']) ? self::normalize_plain_text((string) $context['query']) : '';
             $item['tavily_context'] = $context;
             $item['tavily_text'] = $tavily_text;
-            $item['tavily_image_candidates'] = !empty($context) && class_exists('Alpha_RSS_AI_Generator_Helper')
-                ? Alpha_RSS_AI_Generator_Helper::normalize_tavily_image_candidates($context)
-                : array();
 
             if ($tavily_text !== '') {
                 foreach (array('content', 'source_page_content', 'excerpt', 'source_page_excerpt') as $key) {

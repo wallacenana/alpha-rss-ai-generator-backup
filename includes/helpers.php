@@ -1539,40 +1539,6 @@ class Alpha_RSS_AI_Generator_Helper
         return $page_context;
     }
 
-    public static function build_tavily_image_query_from_item($item, $article = array())
-    {
-        $item = is_array($item) ? $item : array();
-        $article = is_array($article) ? $article : array();
-
-        $parts = array();
-        foreach (array('source_title', 'title', 'keyword', 'feed_title', 'source_page_title') as $key) {
-            if (!empty($item[$key])) {
-                $parts[] = self::limit_plain_text_words((string) $item[$key], 10);
-            }
-        }
-        foreach (array('title', 'source_title', 'focus_keyword') as $key) {
-            if (!empty($article[$key])) {
-                $parts[] = self::limit_plain_text_words((string) $article[$key], 10);
-            }
-        }
-
-        if (empty($parts)) {
-            foreach (array('source_page_excerpt', 'excerpt', 'source_page_content', 'content') as $key) {
-                if (!empty($item[$key])) {
-                    $parts[] = self::limit_plain_text_words((string) $item[$key], 12);
-                }
-                if (count($parts) >= 2) {
-                    break;
-                }
-            }
-        }
-
-        $parts = array_values(array_filter(array_map(array(__CLASS__, 'normalize_plain_text'), $parts), 'strlen'));
-        $query = trim(implode(' ', array_slice($parts, 0, 4)));
-
-        return self::normalize_plain_text($query);
-    }
-
     public static function normalize_tavily_image_candidates($context)
     {
         $context = is_array($context) ? $context : array();
@@ -1652,22 +1618,6 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         return $candidates;
-    }
-
-    public static function extract_first_tavily_image_url($context)
-    {
-        $candidates = self::normalize_tavily_image_candidates($context);
-        if (empty($candidates)) {
-            return '';
-        }
-
-        foreach ($candidates as $candidate) {
-            if (!empty($candidate['url'])) {
-                return (string) $candidate['url'];
-            }
-        }
-
-        return '';
     }
 
     public static function fetch_tavily_search_context($query, $max_results = 3, $include_answer = true, $include_images = true)
@@ -1756,34 +1706,6 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         return $context;
-    }
-
-    public static function get_tavily_image_candidates_for_item($generator, $item, $article = array(), $max_results = 3)
-    {
-        $generator = is_array($generator) ? $generator : array();
-        $item = is_array($item) ? $item : array();
-        $article = is_array($article) ? $article : array();
-
-        if (!empty($item['tavily_image_candidates']) && is_array($item['tavily_image_candidates'])) {
-            return self::normalize_tavily_image_candidates(array('images' => $item['tavily_image_candidates']));
-        }
-
-        $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
-        if (empty($settings['tavily_enabled'])) {
-            return array();
-        }
-
-        $query = self::build_tavily_image_query_from_item($item, $article);
-        if ($query === '') {
-            return array();
-        }
-
-        $context = self::fetch_tavily_search_context($query, $max_results, false, true);
-        if (empty($context)) {
-            return array();
-        }
-
-        return self::normalize_tavily_image_candidates($context);
     }
 
     protected static function pick_random_text_variant($items, $fallback = '')

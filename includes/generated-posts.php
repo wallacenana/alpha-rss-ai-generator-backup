@@ -140,7 +140,6 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 'source_page_content' => (string) get_post_meta($post_id, '_arc_source_page_content', true),
                 'source_page_outline' => (string) get_post_meta($post_id, '_arc_source_page_outline', true),
                 'source_page_outline_sections' => array(),
-                'tavily_image_candidates' => array(),
                 'source_video_url' => (string) get_post_meta($post_id, '_arc_source_video_url', true),
                 'source_video_embed_html' => (string) get_post_meta($post_id, '_arc_source_video_embed_html', true),
                 'source_video_source' => (string) get_post_meta($post_id, '_arc_source_video_source', true),
@@ -163,14 +162,6 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $outline_sections = json_decode($outline_sections_raw, true);
                 if (is_array($outline_sections)) {
                     $item['source_page_outline_sections'] = $outline_sections;
-                }
-            }
-
-            $tavily_image_candidates_raw = (string) get_post_meta($post_id, '_arc_tavily_image_candidates_json', true);
-            if ($tavily_image_candidates_raw !== '') {
-                $tavily_image_candidates = json_decode($tavily_image_candidates_raw, true);
-                if (is_array($tavily_image_candidates)) {
-                    $item['tavily_image_candidates'] = $tavily_image_candidates;
                 }
             }
 
@@ -554,8 +545,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                         'post_id' => intval($post_id),
                         'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
                     ),
-                    $existing_image_map,
-                    !empty($item['tavily_image_candidates']) ? $item['tavily_image_candidates'] : array()
+                    $existing_image_map
                 );
             }
 
