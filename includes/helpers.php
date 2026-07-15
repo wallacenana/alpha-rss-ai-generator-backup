@@ -3050,6 +3050,19 @@ class Alpha_RSS_AI_Generator_Helper
             $list_marker_hits++;
         }
 
+        $title_list_keywords = '(?:top|best|melhor(?:es)?|maior(?:es)?|pior(?:es)?|filme(?:s)?|movie(?:s)?|serie(?:s)?|s?erie(?:s)?|show(?:s)?|drama(?:s)?|thriller(?:s)?|romance(?:s)?|comedia(?:s)?|aventura(?:s)?|episodio(?:s)?|livro(?:s)?|book(?:s)?|coisa(?:s)?|motivo(?:s)?|dica(?:s)?|opcao(?:oes)?|item(?:s)?|personagem(?:ns)?|produto(?:s)?|lugar(?:es)?|maneira(?:s)?|forma(?:s)?|documentario(?:s)?|anime(?:s)?|terror|horror|ranking|lista|things|ways|reasons|facts|tips|tricks|ideas|examples|trailer(?:s)?)';
+        $title_list_signal = false;
+        if ($title !== '' && preg_match('/\b(\d{1,3})\b/u', $title, $title_count_matches)) {
+            $title_count = intval($title_count_matches[1]);
+            if ($title_count > 0 && preg_match('/' . $title_list_keywords . '/u', $title)) {
+                $title_list_signal = true;
+            }
+        }
+
+        if ($title_list_signal && !$has_guide_markers) {
+            return 'list_article';
+        }
+
         if (($has_news_markers || $content_length < 9000) && !$has_guide_markers) {
             if ($list_marker_hits < 2 || $has_news_markers) {
                 return 'news_short';
@@ -3461,7 +3474,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Conteúdo da fonte: {{source_content}}',
             'Slug final: {{generated_slug}}',
             'Palavras-chave selecionadas: {{selected_tags}}',
-            'Numero sugerido no titulo (apenas indicio): {{generated_title_outline_count}}',
+            'Quantidade esperada de itens no titulo: {{generated_title_outline_count}}',
             'Modelo de outline: {{outline_model_name}}',
             'Modelo de prompt: {{prompt_model_name}}',
             'Chave do modelo de prompt: {{prompt_model_key}}',
