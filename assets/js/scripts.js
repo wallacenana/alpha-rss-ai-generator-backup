@@ -5,6 +5,8 @@
         generator_id: '',
         name: '',
         feed_url: '',
+        generation_mode: 'pillar',
+        source_post_id: '0',
         source_type: 'keyword_list',
         list_id: '0',
         keyword_list_mode: 'keywords',
@@ -20,8 +22,8 @@
         schedule_type: 'interval',
         interval_minutes: '180',
         jitter_minutes: '30',
-        daily_start: '08:00',
-        daily_end: '22:00',
+        daily_start: '',
+        daily_end: '',
         image_source_mode: '',
         pexels_query: '',
         source_video_enabled: '0',
@@ -39,6 +41,7 @@
         seo_enabled: '1',
         generation_language: 'Português do Brasil',
         category_ids: [],
+        default_category_id: '0',
         tags_default: [],
         custom_taxonomies: '',
         custom_meta: '',
@@ -194,49 +197,103 @@
         }
     }
 
+    function setCheckboxGroup(name, values) {
+        var lookup = {};
+        (values || []).forEach(function (value) {
+            lookup[String(value)] = true;
+        });
+        form.querySelectorAll('input[name="' + name + '"]').forEach(function (input) {
+            input.checked = !!lookup[String(input.value)];
+        });
+    }
+
+    function getCheckedValues(name) {
+        var values = [];
+        form.querySelectorAll('input[name="' + name + '"]').forEach(function (input) {
+            if (input.checked) {
+                values.push(String(input.value));
+            }
+        });
+        return values;
+    }
+
+    function listToText(value) {
+        if (Array.isArray(value)) {
+            return value.filter(function (item) {
+                return String(item || '').trim() !== '';
+            }).join(', ');
+        }
+        return String(value || '');
+    }
+
+    function syncDefaultCategoryField() {
+        var defaultCategoryField = form.querySelector('[data-default-category-field]');
+        var defaultCategoryEl = byName('default_category_id');
+        var selectedCategoryInputs = form.querySelectorAll('input[name="category_ids[]"]:checked');
+        var selectedCategoryValues = [];
+        selectedCategoryInputs.forEach(function (input) {
+            selectedCategoryValues.push(String(input.value));
+        });
+        var showField = selectedCategoryValues.length > 1;
+
+        if (defaultCategoryField) {
+            defaultCategoryField.classList.toggle('hidden', !showField);
+        }
+
+        if (!defaultCategoryEl) {
+            return;
+        }
+
+        defaultCategoryEl.innerHTML = '';
+        if (!showField) {
+            defaultCategoryEl.value = '0';
+            return;
+        }
+
+        selectedCategoryInputs.forEach(function (input) {
+            var option = document.createElement('option');
+            option.value = String(input.value);
+            option.textContent = input.closest('label') ? input.closest('label').textContent.replace(/\s+/g, ' ').trim() : String(input.value);
+            defaultCategoryEl.appendChild(option);
+        });
+
+        var currentValue = String(defaultCategoryEl.value || '0');
+        if (currentValue === '0' || selectedCategoryValues.indexOf(currentValue) === -1) {
+            defaultCategoryEl.value = selectedCategoryValues.length ? selectedCategoryValues[0] : '0';
+        }
+    }
+
     function initSelect2Fields() {
         var $ = window.jQuery;
         if (!$ || !$.fn || !$.fn.select2) {
             return;
         }
-        var $modal = $('#arc-generator-modal');
-        var selectors = [
-            '#arc-generator-modal select[name="category_ids[]"]',
-            '#arc-generator-modal select[name="tags_default[]"]'
-        ];
-        selectors.forEach(function (selector) {
-            var $fields = $(selector);
-            $fields.each(function () {
-                var $field = $(this);
-                if ($field.data('select2')) {
-                    return;
-                }
-                $field.select2({
-                    width: '100%',
-                    dropdownParent: $modal,
-                    closeOnSelect: false
-                });
-            });
-        });
     }
 
     function syncSourceFields() {
+        var generationModeEl = byName('generation_mode');
+        var generationMode = generationModeEl ? generationModeEl.value : 'pillar';
         var sourceTypeEl = byName('source_type');
         var sourceType = sourceTypeEl ? sourceTypeEl.value : 'keyword_list';
         var keywordListModeEl = byName('keyword_list_mode');
         var keywordListMode = keywordListModeEl ? keywordListModeEl.value : 'keywords';
         var imageSourceModeEl = byName('image_source_mode');
+        var isSatelliteMode = generationMode === 'satellite';
+
+        if (sourceTypeEl && sourceTypeEl.parentElement) {
+            sourceTypeEl.parentElement.classList.toggle('hidden', isSatelliteMode);
+        }
 
         if (feedUrlField) {
-            feedUrlField.classList.toggle('hidden', sourceType === 'keyword_list');
+            feedUrlField.classList.toggle('hidden', isSatelliteMode || sourceType === 'keyword_list');
         }
         if (listIdField) {
-            listIdField.classList.toggle('hidden', sourceType !== 'keyword_list');
+            listIdField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
         }
         if (keywordListModeField) {
-            keywordListModeField.classList.toggle('hidden', sourceType !== 'keyword_list');
+            keywordListModeField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
         }
-        var showSourceMediaControls = sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference');
+        var showSourceMediaControls = !isSatelliteMode && (sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference'));
         var sourceContentImagesEnabledEl = byName('source_content_images_enabled');
         var sourceContentLinksEnabledEl = byName('source_content_links_enabled');
         var useSourceContentImages = !sourceContentImagesEnabledEl || String(sourceContentImagesEnabledEl.value || '1') === '1';
@@ -271,7 +328,7 @@
         }
 
         var promptEl = byName('prompt_template');
-        if (promptEl) {
+        if (promptEl && !isSatelliteMode) {
             promptEl.value = normalizePromptForSourceType(sourceType, keywordListMode, promptEl.value);
         }
     }
@@ -620,8 +677,8 @@
         setValue('schedule_type', defaults.schedule_type);
         setValue('interval_minutes', defaults.interval_minutes);
         setValue('jitter_minutes', defaults.jitter_minutes);
-        setValue('daily_start', defaults.daily_start);
-        setValue('daily_end', defaults.daily_end);
+        setValue('daily_start', defaults.daily_start || '');
+        setValue('daily_end', defaults.daily_end || '');
         setValue('image_source_mode', normalizeImageSourceModeForType(defaults.source_type, defaults.image_source_mode || getDefaultImageSourceModeForType(defaults.source_type)));
         setValue('pexels_query', defaults.pexels_query);
         setValue('source_video_enabled', defaults.source_video_enabled);
@@ -638,13 +695,15 @@
         setValue('source_context_keep_unrated', defaults.source_context_keep_unrated);
         setValue('seo_enabled', defaults.seo_enabled);
         setValue('generation_language', defaults.generation_language);
-        setMultiSelect('category_ids[]', []);
-        setMultiSelect('tags_default[]', []);
+        setValue('default_category_id', defaults.default_category_id);
+        setCheckboxGroup('category_ids[]', []);
+        setValue('tags_default', listToText(defaults.tags_default));
         setValue('custom_taxonomies', defaults.custom_taxonomies);
         setValue('custom_meta', defaults.custom_meta);
         setValue('prompt_template', defaults.prompt_template);
         setValue('content_prompt_template', defaults.content_prompt_template);
         setValue('outline_model_key', defaults.outline_model_key);
+        syncDefaultCategoryField();
         syncSourceFields();
         if (titleEl) {
             titleEl.textContent = 'Adicionar gerador';
@@ -677,8 +736,8 @@
         setValue('schedule_type', generator.schedule_type);
         setValue('interval_minutes', generator.interval_minutes);
         setValue('jitter_minutes', generator.jitter_minutes);
-        setValue('daily_start', generator.daily_start);
-        setValue('daily_end', generator.daily_end);
+        setValue('daily_start', generator.daily_start || '');
+        setValue('daily_end', generator.daily_end || '');
         setValue('image_source_mode', normalizeImageSourceModeForType(generator.source_type || defaults.source_type, generator.image_source_mode || (typeof generator.pexels_enabled !== 'undefined' ? (String(generator.pexels_enabled) === '1' ? 'rss_or_pexels' : 'rss') : defaults.image_source_mode)));
         setValue('pexels_query', generator.pexels_query || defaults.pexels_query);
         setValue('source_video_enabled', String(typeof generator.source_video_enabled !== 'undefined' ? generator.source_video_enabled : defaults.source_video_enabled));
@@ -695,13 +754,15 @@
         setValue('source_context_keep_unrated', String(typeof generator.source_context_keep_unrated !== 'undefined' ? generator.source_context_keep_unrated : defaults.source_context_keep_unrated));
         setValue('seo_enabled', String(typeof generator.seo_enabled !== 'undefined' ? generator.seo_enabled : defaults.seo_enabled));
         setValue('generation_language', generator.generation_language || defaults.generation_language);
-        setMultiSelect('category_ids[]', parseListValue(generator.category_ids));
-        setMultiSelect('tags_default[]', parseListValue(generator.tags_default));
+        setCheckboxGroup('category_ids[]', parseListValue(generator.category_ids));
+        setValue('default_category_id', typeof generator.default_category_id !== 'undefined' ? String(generator.default_category_id) : defaults.default_category_id);
+        setValue('tags_default', listToText(parseListValue(generator.tags_default)));
         setValue('custom_taxonomies', objectToLines(parseObjectValue(generator.custom_taxonomies)));
         setValue('custom_meta', objectToLines(parseObjectValue(generator.custom_meta)));
         setValue('prompt_template', normalizePromptForSourceType(generator.source_type || defaults.source_type, generator.keyword_list_mode || defaults.keyword_list_mode, generator.prompt_template || (generator.source_type === 'keyword_list' ? defaults.keyword_prompt_template : defaults.prompt_template)));
         setValue('content_prompt_template', generator.content_prompt_template || defaults.content_prompt_template);
         setValue('outline_model_key', generator.outline_model_key || defaults.outline_model_key);
+        syncDefaultCategoryField();
         syncSourceFields();
 
         if (titleEl) {
@@ -719,6 +780,13 @@
     var keywordListModeEl = byName('keyword_list_mode');
     if (keywordListModeEl) {
         keywordListModeEl.addEventListener('change', syncSourceFields);
+    }
+    form.querySelectorAll('input[name="category_ids[]"]').forEach(function (input) {
+        input.addEventListener('change', syncDefaultCategoryField);
+    });
+    var defaultCategoryEl = byName('default_category_id');
+    if (defaultCategoryEl) {
+        defaultCategoryEl.addEventListener('change', syncDefaultCategoryField);
     }
     var sourceContentImagesEnabledEl = byName('source_content_images_enabled');
     if (sourceContentImagesEnabledEl) {

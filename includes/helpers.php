@@ -2482,7 +2482,7 @@ class Alpha_RSS_AI_Generator_Helper
         $inserted_any = false;
         $used_section_indexes = array();
 
-        foreach ($blocks as $block) {
+        foreach ($blocks as $block_index => $block) {
             $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
             $is_heading_level_2 = false;
             $is_heading_level_3 = false;
@@ -2551,7 +2551,8 @@ class Alpha_RSS_AI_Generator_Helper
                     if (!in_array($matched_index, $used_section_indexes, true)) {
                         $used_section_indexes[] = $matched_index;
                     }
-                    if ($use_images && $is_heading_level_2 && !self::outline_section_has_existing_image($matched_section, $existing_image_map, $matched_index)) {
+                    $section_has_markup_image = self::outline_section_contains_image_markup($blocks, $block_index);
+                    if ($use_images && $is_heading_level_2 && !$section_has_markup_image && !self::outline_section_has_existing_image($matched_section, $existing_image_map, $matched_index)) {
                         $section_image_html = self::build_outline_section_image_html($matched_section, $post_id, $image_size, $existing_image_map, $matched_index, $fallback_image_candidates);
                         if ($section_image_html !== '') {
                             $result_blocks[] = array(
@@ -2582,6 +2583,65 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         return $inserted_any ? serialize_blocks($result_blocks) : $content;
+    }
+
+    public static function outline_section_contains_image_markup($blocks, $start_index)
+    {
+        $blocks = is_array($blocks) ? array_values($blocks) : array();
+        $start_index = max(0, intval($start_index));
+
+        if (empty($blocks) || !isset($blocks[$start_index])) {
+            return false;
+        }
+
+        for ($index = $start_index + 1; $index < count($blocks); $index++) {
+            $block = $blocks[$index];
+            if (!is_array($block)) {
+                continue;
+            }
+
+            $block_name = !empty($block['blockName']) ? (string) $block['blockName'] : '';
+            if ($block_name === 'core/heading') {
+                $level = 2;
+                if (isset($block['attrs']['level'])) {
+                    $level = intval($block['attrs']['level']);
+                }
+                if ($level === 2 || $level === 3) {
+                    break;
+                }
+            }
+
+            if (self::block_contains_image_markup($block)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function block_contains_image_markup($block)
+    {
+        if (!is_array($block)) {
+            return false;
+        }
+
+        $block_name = !empty($block['blockName']) ? (string) $block['blockName'] : '';
+        if (in_array($block_name, array('core/image', 'core/gallery', 'core/media-text', 'core/cover'), true)) {
+            return true;
+        }
+
+        $html = '';
+        if (!empty($block['innerHTML'])) {
+            $html = (string) $block['innerHTML'];
+        } elseif (!empty($block['innerContent']) && is_array($block['innerContent'])) {
+            $html = implode('', array_map('strval', $block['innerContent']));
+        }
+
+        if ($html === '') {
+            return false;
+        }
+
+        return (bool) preg_match('~<img\b|wp-block-image|wp-image-\d+|<figure\b[^>]*class=["\'][^"\']*\bwp-block-image\b~i', $html);
     }
 
     public static function extract_outline_section_image_map_from_content($content)
@@ -3519,6 +3579,7 @@ class Alpha_RSS_AI_Generator_Helper
         );
 
         $prompt = strtr($template, $replacements);
+        $prompt = Alpha_RSS_AI_Generator::append_content_prompt_output_suffix($prompt);
         $prompt_preview = preg_replace('/\s+/', ' ', wp_strip_all_tags($prompt));
         $prompt_preview = function_exists('mb_substr') ? mb_substr($prompt_preview, 0, 1400) : substr($prompt_preview, 0, 1400);
 
