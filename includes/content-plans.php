@@ -582,28 +582,46 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             );
         }
 
-        private static function build_satellite_schedule_datetime($index, $total_count = 0)
+        private static function build_satellite_schedule_datetime($generator, $index, $total_count = 0)
         {
+            $generator = is_array($generator) ? $generator : array();
             $index = max(1, intval($index));
             $total_count = max(0, intval($total_count));
             $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
 
             try {
                 $base = new DateTimeImmutable('now', $timezone);
-                $day_start = $base->setTime(0, 0, 0);
-                $window_start = $day_start->setTime(6, 0, 0);
-                $window_end = $day_start->setTime(22, 0, 0);
-
-                $start_timestamp = max(
-                    $base->getTimestamp() + (10 * MINUTE_IN_SECONDS),
-                    $window_start->getTimestamp()
-                );
-                if ($start_timestamp > $window_end->getTimestamp()) {
-                    $fallback_start = $window_end->getTimestamp() - max(0, ($total_count - 1)) * (10 * MINUTE_IN_SECONDS);
-                    $start_timestamp = max($window_start->getTimestamp(), $fallback_start);
+                $window_start = 0;
+                $window_end = 0;
+                if (class_exists('Alpha_RSS_AI_Generator') && method_exists('Alpha_RSS_AI_Generator', 'get_generator_daily_window')) {
+                    $window = Alpha_RSS_AI_Generator::get_generator_daily_window($generator, $base->getTimestamp());
+                    $window_start = !empty($window[0]) ? intval($window[0]) : 0;
+                    $window_end = !empty($window[1]) ? intval($window[1]) : 0;
+                }
+                if ($window_start <= 0 || $window_end <= 0) {
+                    $day_start = $base->setTime(0, 0, 0);
+                    $window_start = $day_start->setTime(6, 0, 0)->getTimestamp();
+                    $window_end = $day_start->setTime(22, 0, 0)->getTimestamp();
                 }
 
-                $available_window = max(0, $window_end->getTimestamp() - $start_timestamp);
+                $start_timestamp = max($base->getTimestamp(), $window_start);
+                if ($base->getTimestamp() > $window_end) {
+                    if (class_exists('Alpha_RSS_AI_Generator') && method_exists('Alpha_RSS_AI_Generator', 'get_generator_daily_window')) {
+                        $next_window = Alpha_RSS_AI_Generator::get_generator_daily_window($generator, $base->getTimestamp() + DAY_IN_SECONDS);
+                        $window_start = !empty($next_window[0]) ? intval($next_window[0]) : $window_start;
+                        $window_end = !empty($next_window[1]) ? intval($next_window[1]) : $window_end;
+                    } else {
+                        $day_start = $base->setTime(0, 0, 0)->modify('+1 day');
+                        $window_start = $day_start->setTime(6, 0, 0)->getTimestamp();
+                        $window_end = $day_start->setTime(22, 0, 0)->getTimestamp();
+                    }
+                    $start_timestamp = $window_start;
+                } elseif ($start_timestamp > $window_end) {
+                    $fallback_start = $window_end - max(0, ($total_count - 1)) * (10 * MINUTE_IN_SECONDS);
+                    $start_timestamp = max($window_start, $fallback_start);
+                }
+
+                $available_window = max(0, $window_end - $start_timestamp);
                 $desired_gap = 45 * MINUTE_IN_SECONDS;
                 $gap = $desired_gap;
                 if ($total_count > 1 && $available_window > 0) {
@@ -619,8 +637,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 if ($scheduled->getTimestamp() < $start_timestamp) {
                     $scheduled = (new DateTimeImmutable('@' . $start_timestamp))->setTimezone($timezone);
                 }
-                if ($scheduled->getTimestamp() > $window_end->getTimestamp()) {
-                    $scheduled = (new DateTimeImmutable('@' . $window_end->getTimestamp()))->setTimezone($timezone);
+                if ($scheduled->getTimestamp() > $window_end) {
+                    $scheduled = (new DateTimeImmutable('@' . $window_end))->setTimezone($timezone);
                 }
                 return $scheduled->format('Y-m-d H:i:s');
             } catch (Exception $exception) {
@@ -957,7 +975,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'excerpt' => $suggestion,
                 'content' => $source_content,
                 'feed_title' => !empty($generator['name']) ? (string) $generator['name'] : get_bloginfo('name'),
-                'date' => self::build_satellite_schedule_datetime(intval($satellite['index']), !empty($plan['satellites']) && is_array($plan['satellites']) ? count($plan['satellites']) : 0),
+                'date' => self::build_satellite_schedule_datetime($generator, intval($satellite['index']), !empty($plan['satellites']) && is_array($plan['satellites']) ? count($plan['satellites']) : 0),
                 'categories' => !empty($context['item']['categories']) && is_array($context['item']['categories']) ? $context['item']['categories'] : array(),
                 'tags' => !empty($context['item']['tags']) && is_array($context['item']['tags']) ? $context['item']['tags'] : array(),
                 'source_page_title' => $pillar_title,

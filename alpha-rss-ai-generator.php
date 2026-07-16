@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.8.27
+Version: 1.8.28
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -26,7 +26,7 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
     define('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.27');
+    define('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/alpha-rss-ai-generator-backup/main/update.json?v=1.8.28');
 }
 
 $alpha_rss_ai_autoload_file = ALPHA_RSS_AI_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -48,7 +48,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.27';
+        const VERSION = '1.8.28';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -179,6 +179,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             add_filter('cron_schedules', array($this, 'add_cron_schedule'));
             add_action('rest_api_init', array($this, 'register_rest_routes'));
             add_action('init', array($this, 'ensure_cron_scheduled'));
+            add_action('init', array($this, 'maybe_process_pending_jobs'), 20);
             self::normalize_active_generator_next_runs();
         }
 
@@ -290,6 +291,51 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!wp_next_scheduled(self::CRON_HOOK)) {
                 wp_schedule_event(time() + 300, 'alpha_five_minutes', self::CRON_HOOK);
             }
+        }
+
+        public function maybe_process_pending_jobs()
+        {
+            self::process_pending_jobs();
+        }
+
+        public static function process_pending_jobs()
+        {
+            if (get_transient('alpha_rss_ai_pending_jobs_lock')) {
+                return;
+            }
+
+            set_transient('alpha_rss_ai_pending_jobs_lock', 1, 3 * MINUTE_IN_SECONDS);
+            self::normalize_active_generator_next_runs();
+            self::process_due_generators();
+            self::process_due_generated_future_posts();
+            delete_transient('alpha_rss_ai_pending_jobs_lock');
+        }
+
+        public static function get_generator_daily_window($generator, $base_timestamp = null)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $raw_start = isset($generator['daily_start']) ? trim((string) $generator['daily_start']) : '';
+            $raw_end = isset($generator['daily_end']) ? trim((string) $generator['daily_end']) : '';
+            if ($raw_start === '' || $raw_end === '') {
+                return array(0, 0);
+            }
+
+            $start_seconds = self::parse_time_to_seconds($raw_start);
+            $end_seconds = self::parse_time_to_seconds($raw_end);
+            if ($end_seconds <= $start_seconds) {
+                return array(0, 0);
+            }
+
+            $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
+            $reference_timestamp = $base_timestamp ? intval($base_timestamp) : current_time('timestamp');
+            $day_start_value = wp_date('Y-m-d 00:00:00', $reference_timestamp, $timezone);
+            $day_start_dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $day_start_value, $timezone);
+            $day_start = $day_start_dt instanceof DateTimeImmutable ? $day_start_dt->getTimestamp() : strtotime($day_start_value);
+
+            return array(
+                max(0, intval($day_start) + $start_seconds),
+                max(0, intval($day_start) + $end_seconds),
+            );
         }
 
         public static function create_tables()
@@ -1624,25 +1670,22 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             try {
                 $base = new DateTimeImmutable('now', $timezone);
-                $raw_start = isset($generator['daily_start']) ? trim((string) $generator['daily_start']) : '';
-                $raw_end = isset($generator['daily_end']) ? trim((string) $generator['daily_end']) : '';
-                $start_seconds = $raw_start !== '' ? self::parse_time_to_seconds($raw_start) : null;
-                $end_seconds = $raw_end !== '' ? self::parse_time_to_seconds($raw_end) : null;
+                $window = self::get_generator_daily_window($generator, $base->getTimestamp());
+                $window_start = !empty($window[0]) ? intval($window[0]) : 0;
+                $window_end = !empty($window[1]) ? intval($window[1]) : 0;
 
-                if ($start_seconds !== null && $end_seconds !== null && $end_seconds > $start_seconds) {
-                    $day_start = $base->setTime(0, 0, 0);
-                    $window_start = $day_start->setTime(0, 0, 0)->modify('+' . $start_seconds . ' seconds');
-                    $window_end = $day_start->setTime(0, 0, 0)->modify('+' . $end_seconds . ' seconds');
-
-                    $start_timestamp = max(
-                        $base->getTimestamp() + (10 * MINUTE_IN_SECONDS),
-                        $window_start->getTimestamp()
-                    );
-                    if ($start_timestamp > $window_end->getTimestamp()) {
-                        $start_timestamp = $window_start->getTimestamp();
+                if ($window_start > 0 && $window_end > 0) {
+                    $start_timestamp = max($base->getTimestamp(), $window_start);
+                    if ($base->getTimestamp() > $window_end) {
+                        $next_window = self::get_generator_daily_window($generator, $base->getTimestamp() + DAY_IN_SECONDS);
+                        $window_start = !empty($next_window[0]) ? intval($next_window[0]) : $window_start;
+                        $window_end = !empty($next_window[1]) ? intval($next_window[1]) : $window_end;
+                        $start_timestamp = $window_start;
+                    } elseif ($start_timestamp > $window_end) {
+                        $start_timestamp = $window_start;
                     }
 
-                    $available_window = max(0, $window_end->getTimestamp() - $start_timestamp);
+                    $available_window = max(0, $window_end - $start_timestamp);
                     $desired_gap = 45 * MINUTE_IN_SECONDS;
                     $gap = $desired_gap;
                     if ($total_count > 1 && $available_window > 0) {
@@ -1655,8 +1698,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     if ($minutes_offset > 0) {
                         $scheduled = $scheduled->modify('+' . $minutes_offset . ' minutes');
                     }
-                    if ($scheduled->getTimestamp() > $window_end->getTimestamp()) {
-                        $scheduled = (new DateTimeImmutable('@' . $window_end->getTimestamp()))->setTimezone($timezone);
+                    if ($scheduled->getTimestamp() > $window_end) {
+                        $scheduled = (new DateTimeImmutable('@' . $window_end))->setTimezone($timezone);
                     }
                     return $scheduled->format('Y-m-d H:i:s');
                 }
@@ -6351,74 +6394,68 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return $timestamp;
             }
 
-            $raw_start = isset($generator['daily_start']) ? trim((string) $generator['daily_start']) : '';
-            $raw_end = isset($generator['daily_end']) ? trim((string) $generator['daily_end']) : '';
-            if ($raw_start === '' || $raw_end === '') {
+            $window = self::get_generator_daily_window($generator, $timestamp);
+            $window_start = !empty($window[0]) ? intval($window[0]) : 0;
+            $window_end = !empty($window[1]) ? intval($window[1]) : 0;
+            if ($window_start <= 0 || $window_end <= 0) {
                 return $timestamp;
             }
-
-            $start_seconds = self::parse_time_to_seconds($raw_start);
-            $end_seconds = self::parse_time_to_seconds($raw_end);
-            if ($end_seconds <= $start_seconds) {
-                return $timestamp;
-            }
-
-            $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
-            $day_start_value = wp_date('Y-m-d 00:00:00', $timestamp, $timezone);
-            $day_start_dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $day_start_value, $timezone);
-            $day_start = $day_start_dt instanceof DateTimeImmutable ? $day_start_dt->getTimestamp() : strtotime($day_start_value);
-            $window_start = $day_start + $start_seconds;
-            $window_end = $day_start + $end_seconds;
 
             if ($timestamp < $window_start) {
                 return $window_start;
             }
 
             if ($timestamp > $window_end) {
-                $next_day_start = $day_start + DAY_IN_SECONDS;
-                return $next_day_start + $start_seconds;
+                $next_window = self::get_generator_daily_window($generator, $timestamp + DAY_IN_SECONDS);
+                if (!empty($next_window[0])) {
+                    return intval($next_window[0]);
+                }
+                return $window_start;
             }
 
             return $timestamp;
         }
 
-        public static function schedule_next_run_for_generator($generator, $base_timestamp = null)
+        public static function schedule_next_run_for_generator($generator, $base_timestamp = null, $initial_run = false)
         {
             $base_timestamp = $base_timestamp ? intval($base_timestamp) : current_time('timestamp');
             $schedule_type = isset($generator['schedule_type']) ? $generator['schedule_type'] : 'interval';
+            $window = self::get_generator_daily_window($generator, $base_timestamp);
+            $window_start = !empty($window[0]) ? intval($window[0]) : 0;
+            $window_end = !empty($window[1]) ? intval($window[1]) : 0;
 
             if ($schedule_type === 'daily_random') {
-                $raw_start = isset($generator['daily_start']) ? trim((string) $generator['daily_start']) : '';
-                $raw_end = isset($generator['daily_end']) ? trim((string) $generator['daily_end']) : '';
-                if ($raw_start === '' || $raw_end === '') {
+                if ($window_start <= 0 || $window_end <= 0) {
                     $delay_minutes = max(1, intval(isset($generator['interval_minutes']) ? $generator['interval_minutes'] : 180));
                     $next_timestamp = $base_timestamp + ($delay_minutes * MINUTE_IN_SECONDS);
                     return self::format_timestamp_for_db($next_timestamp);
                 }
 
-                $start_seconds = self::parse_time_to_seconds($raw_start);
-                $end_seconds = self::parse_time_to_seconds($raw_end);
-                if ($end_seconds <= $start_seconds) {
-                    $delay_minutes = max(1, intval(isset($generator['interval_minutes']) ? $generator['interval_minutes'] : 180));
-                    $next_timestamp = $base_timestamp + ($delay_minutes * MINUTE_IN_SECONDS);
+                if ($initial_run || $base_timestamp <= $window_start) {
+                    $lead_window_minutes = max(5, min(30, intval(isset($generator['jitter_minutes']) ? $generator['jitter_minutes'] : 30)));
+                    $start_reference = $window_start;
+                    $lower = $start_reference;
+                    $upper = min($window_end, $start_reference + ($lead_window_minutes * MINUTE_IN_SECONDS));
+                    if ($upper < $lower) {
+                        $upper = $lower;
+                    }
+                    $next_timestamp = function_exists('wp_rand') ? wp_rand($lower, $upper) : random_int($lower, $upper);
                     return self::format_timestamp_for_db($next_timestamp);
                 }
-
-                $day_start = strtotime(wp_date('Y-m-d 00:00:00', $base_timestamp, wp_timezone()));
-                $window_start = $day_start + $start_seconds;
-                $window_end = $day_start + $end_seconds;
 
                 if ($base_timestamp >= $window_end) {
-                    $day_start += DAY_IN_SECONDS;
-                    $window_start = $day_start + $start_seconds;
-                    $window_end = $day_start + $end_seconds;
+                    $next_window = self::get_generator_daily_window($generator, $base_timestamp + DAY_IN_SECONDS);
+                    $window_start = !empty($next_window[0]) ? intval($next_window[0]) : $window_start;
+                    $window_end = !empty($next_window[1]) ? intval($next_window[1]) : $window_end;
+                    $lower = $window_start;
+                } else {
+                    $lower = max($window_start, $base_timestamp + (5 * MINUTE_IN_SECONDS));
                 }
 
-                $lower = max($window_start, $base_timestamp + (5 * MINUTE_IN_SECONDS));
                 if ($lower >= $window_end) {
-                    $day_start += DAY_IN_SECONDS;
-                    $window_start = $day_start + $start_seconds;
-                    $window_end = $day_start + $end_seconds;
+                    $next_window = self::get_generator_daily_window($generator, $base_timestamp + DAY_IN_SECONDS);
+                    $window_start = !empty($next_window[0]) ? intval($next_window[0]) : $window_start;
+                    $window_end = !empty($next_window[1]) ? intval($next_window[1]) : $window_end;
                     $lower = $window_start;
                 }
 
@@ -6428,6 +6465,19 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $interval = max(1, intval($generator['interval_minutes']));
             $jitter = max(0, intval($generator['jitter_minutes']));
+            if ($initial_run && $window_start > 0 && $window_end > 0) {
+                $lead_window_minutes = max(5, min(30, $jitter > 0 ? $jitter : 30));
+                $lower = max($window_start, $base_timestamp);
+                if ($base_timestamp <= $window_start) {
+                    $lower = $window_start;
+                }
+                $upper = min($window_end, $lower + ($lead_window_minutes * MINUTE_IN_SECONDS));
+                if ($upper < $lower) {
+                    $upper = $lower;
+                }
+                $next_timestamp = function_exists('wp_rand') ? wp_rand($lower, $upper) : random_int($lower, $upper);
+                return self::format_timestamp_for_db($next_timestamp);
+            }
             $delay_minutes = $interval;
             if ($jitter > 0) {
                 $delay_minutes += function_exists('wp_rand') ? wp_rand(0, $jitter) : random_int(0, $jitter);
@@ -6447,7 +6497,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             global $wpdb;
             $next_run_at = null;
             if ($generator['status'] === 'active') {
-                $next_run_at = self::schedule_next_run_for_generator($generator);
+                $initial_run = empty($generator['last_run_at']);
+                $next_run_at = self::schedule_next_run_for_generator($generator, null, $initial_run);
             }
 
             $wpdb->update(
@@ -6493,7 +6544,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
-                $next_run_at = self::schedule_next_run_for_generator($generator, $now);
+                $next_run_at = self::schedule_next_run_for_generator($generator, $now, empty($generator['last_run_at']));
                 $wpdb->update(
                     self::$table_generators,
                     array(
@@ -7595,7 +7646,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             set_transient('alpha_rss_ai_cron_lock', 1, 4 * MINUTE_IN_SECONDS);
 
-            self::process_due_generators();
+            self::process_pending_jobs();
 
             delete_transient('alpha_rss_ai_cron_lock');
         }
@@ -7620,6 +7671,46 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             foreach ($generators as $generator) {
                 self::run_generator($generator, false);
+            }
+        }
+
+        public static function process_due_generated_future_posts($limit = 25)
+        {
+            global $wpdb;
+
+            $limit = max(1, intval($limit));
+            $now_gmt = gmdate('Y-m-d H:i:s');
+            $sql = $wpdb->prepare(
+                "SELECT DISTINCT p.ID
+                 FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = %s
+                 WHERE p.post_status = 'future'
+                   AND p.post_date_gmt <> '0000-00-00 00:00:00'
+                   AND p.post_date_gmt <= %s
+                 ORDER BY p.post_date_gmt ASC
+                 LIMIT %d",
+                '_arc_generator_id',
+                $now_gmt,
+                $limit
+            );
+
+            $post_ids = $wpdb->get_col($sql);
+            if (empty($post_ids)) {
+                return;
+            }
+
+            foreach ($post_ids as $post_id) {
+                $post_id = intval($post_id);
+                if ($post_id <= 0) {
+                    continue;
+                }
+
+                $post = get_post($post_id);
+                if (!$post || $post->post_status !== 'future') {
+                    continue;
+                }
+
+                wp_publish_post($post_id);
             }
         }
 
