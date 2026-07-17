@@ -1,8 +1,8 @@
-<?php
+﻿<?php
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.8.29
+Version: 1.9.0
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -42,13 +42,14 @@ require_once __DIR__ . '/includes/generated-posts.php';
 require_once __DIR__ . '/includes/content-plans.php';
 require_once __DIR__ . '/includes/link-suggestions.php';
 require_once __DIR__ . '/includes/related-posts.php';
+require_once __DIR__ . '/includes/prompt-settings.php';
 require_once __DIR__ . '/includes/updater.php';
 
 if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.8.28';
+        const VERSION = '1.9.0';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -130,6 +131,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
             }
 
+            if (class_exists('Alpha_RSS_AI_Prompt_Settings')) {
+                Alpha_RSS_AI_Prompt_Settings::maybe_migrate_prompt_settings();
+            }
+
             self::instance()->seed_next_run_for_active_generators();
         }
 
@@ -153,6 +158,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             if (class_exists('Alpha_RSS_AI_Outline_Models')) {
                 new Alpha_RSS_AI_Outline_Models();
+            }
+            if (class_exists('Alpha_RSS_AI_Prompt_Settings')) {
+                Alpha_RSS_AI_Prompt_Settings::maybe_migrate_prompt_settings();
+                new Alpha_RSS_AI_Prompt_Settings();
             }
             if (class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 new Alpha_RSS_AI_Generated_Posts();
@@ -907,11 +916,16 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $name = !empty($model['name']) ? sanitize_text_field((string) $model['name']) : (!empty($defaults['name']) ? $defaults['name'] : ucfirst($key));
             $description = !empty($model['description']) ? sanitize_textarea_field((string) $model['description']) : (!empty($defaults['description']) ? $defaults['description'] : '');
             $outline_model_key = !empty($model['outline_model_key']) ? sanitize_key((string) $model['outline_model_key']) : (!empty($defaults['outline_model_key']) ? sanitize_key((string) $defaults['outline_model_key']) : self::get_default_outline_model_key());
+            $outline_prompt_template = isset($model['outline_prompt_template']) ? trim((string) wp_kses_post($model['outline_prompt_template'])) : '';
             $seo_prompt_template = isset($model['seo_prompt_template']) ? trim((string) wp_kses_post($model['seo_prompt_template'])) : '';
             $content_prompt_template = isset($model['content_prompt_template']) ? trim((string) wp_kses_post($model['content_prompt_template'])) : '';
             $seo_prompt_template = self::strip_backend_source_context_from_prompt($seo_prompt_template);
             $content_prompt_template = self::strip_backend_source_context_from_prompt($content_prompt_template);
 
+            if ($outline_prompt_template === '') {
+                $outline_model = self::get_outline_model($outline_model_key);
+                $outline_prompt_template = self::format_outline_model_for_prompt($outline_model, array());
+            }
             if ($seo_prompt_template === '') {
                 $seo_prompt_template = !empty($defaults['seo_prompt_template']) ? $defaults['seo_prompt_template'] : self::get_default_prompt_template();
             }
@@ -924,6 +938,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'name' => $name,
                 'description' => $description,
                 'outline_model_key' => $outline_model_key,
+                'outline_prompt_template' => $outline_prompt_template,
                 'seo_prompt_template' => $seo_prompt_template,
                 'content_prompt_template' => $content_prompt_template,
             );
@@ -1039,13 +1054,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $generator = is_array($generator) ? $generator : array();
             $models = array();
 
-            if (!empty($generator['prompt_models']) && is_array($generator['prompt_models'])) {
-                $models = $generator['prompt_models'];
-            } elseif (!empty($generator['prompt_models_json'])) {
+            $settings = self::get_settings();
+            if (!empty($settings['prompt_models_json'])) {
+                $decoded = json_decode((string) $settings['prompt_models_json'], true);
+                if (is_array($decoded)) {
+                    $models = $decoded;
+                }
+            }
+
+            if (empty($models) && !empty($generator['prompt_models_json'])) {
                 $decoded = json_decode((string) $generator['prompt_models_json'], true);
                 if (is_array($decoded)) {
                     $models = $decoded;
                 }
+            }
+
+            if (empty($models) && !empty($generator['prompt_models']) && is_array($generator['prompt_models'])) {
+                $models = $generator['prompt_models'];
             }
 
             return self::normalize_prompt_models($models);
@@ -1750,16 +1775,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($content_prompt_template === '') {
                 $content_prompt_template = self::get_default_content_prompt_template_visible();
             }
-            $prompt_models = array();
-            if (!empty($generator['prompt_models_json'])) {
-                $decoded_prompt_models = json_decode((string) $generator['prompt_models_json'], true);
-                if (is_array($decoded_prompt_models)) {
-                    $prompt_models = $decoded_prompt_models;
-                }
-            } elseif (!empty($generator['prompt_models']) && is_array($generator['prompt_models'])) {
-                $prompt_models = $generator['prompt_models'];
-            }
-            $prompt_models = self::normalize_prompt_models($prompt_models);
+            $prompt_models = self::get_prompt_models();
             if (empty($prompt_models)) {
                 $prompt_models = self::get_default_prompt_models();
             }
@@ -1783,7 +1799,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $generator['content_length_class'] = self::get_default_content_length_class();
             $generator['prompt_model_key'] = $prompt_model_key;
             $generator['prompt_models'] = $prompt_models;
-            $generator['prompt_models_json'] = wp_json_encode($prompt_models);
+            $generator['prompt_models_json'] = wp_json_encode($prompt_models, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $generator['outline_model_key'] = isset($generator['outline_model_key']) ? sanitize_key((string) $generator['outline_model_key']) : self::get_default_outline_model_key();
             $available_outline_models = self::get_outline_models();
             $available_outline_model_keys = array();
@@ -2687,7 +2703,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'seo_enabled' => !empty($settings['seo_enabled']) ? 1 : 0,
                 'generation_language' => !empty($settings['generation_language']) ? Alpha_RSS_AI_Generator::normalize_generation_language_value($settings['generation_language']) : Alpha_RSS_AI_Generator::get_default_generation_language(),
                 'prompt_model_key' => '',
-                'prompt_models_json' => wp_json_encode(self::get_default_prompt_models()),
+                'prompt_models_json' => wp_json_encode(self::get_default_prompt_models(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'prompt_models_initialized' => 0,
+                'prompt_models_migrated_from_generator_id' => 0,
                 'content_prompt_template' => '',
                 'related_posts_enabled' => !empty($settings['related_posts_enabled']) ? 1 : 0,
                 'related_posts_position' => !empty($settings['related_posts_position']) ? sanitize_key($settings['related_posts_position']) : 'end',
@@ -2907,20 +2925,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $payload['content_prompt_template'] = self::get_default_content_prompt_template_visible();
             }
             $payload['prompt_model_key'] = isset($raw['prompt_model_key']) ? sanitize_key(wp_unslash($raw['prompt_model_key'])) : '';
-            $raw_prompt_models = array();
-            if (isset($raw['prompt_models_json']) && is_string($raw['prompt_models_json']) && trim((string) $raw['prompt_models_json']) !== '') {
-                $decoded_prompt_models = json_decode(wp_unslash((string) $raw['prompt_models_json']), true);
-                if (is_array($decoded_prompt_models)) {
-                    $raw_prompt_models = $decoded_prompt_models;
-                }
-            } elseif (isset($raw['prompt_models']) && is_array($raw['prompt_models'])) {
-                $raw_prompt_models = wp_unslash($raw['prompt_models']);
-            }
-            $normalized_prompt_models = self::normalize_prompt_models($raw_prompt_models);
-            $payload['prompt_models_json'] = wp_json_encode($normalized_prompt_models);
-            if ($payload['prompt_models_json'] === false || $payload['prompt_models_json'] === '') {
-                $payload['prompt_models_json'] = wp_json_encode(self::get_default_prompt_models());
-            }
+            $payload['prompt_models_json'] = '';
             $payload['outline_model_key'] = isset($raw['outline_model_key']) ? sanitize_key(wp_unslash($raw['outline_model_key'])) : self::get_default_outline_model_key();
             $available_outline_models = self::get_outline_models();
             $available_outline_model_keys = array();
@@ -8254,7 +8259,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'source_link_phrases' => $payload['source_link_phrases'],
                 'source_context_filters_json' => $payload['source_context_filters_json'],
                 'prompt_model_key' => $payload['prompt_model_key'],
-                'prompt_models_json' => $payload['prompt_models_json'],
+                'prompt_models_json' => '',
                 'outline_model_key' => $payload['outline_model_key'],
                 'seo_enabled' => $payload['seo_enabled'],
                 'generation_language' => $payload['generation_language'],
@@ -8367,7 +8372,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'prompt_model_key' => isset($generator['prompt_model_key']) ? $generator['prompt_model_key'] : '',
                 'prompt_template' => $generator['prompt_template'],
                 'content_prompt_template' => isset($generator['content_prompt_template']) ? $generator['content_prompt_template'] : '',
-                'prompt_models_json' => isset($generator['prompt_models_json']) ? $generator['prompt_models_json'] : wp_json_encode(self::get_default_prompt_models()),
+                'prompt_models_json' => '',
                 'outline_model_key' => isset($generator['outline_model_key']) ? $generator['outline_model_key'] : self::get_default_outline_model_key(),
                 'related_posts_enabled' => isset($generator['related_posts_enabled']) ? $generator['related_posts_enabled'] : 0,
                 'related_posts_position' => isset($generator['related_posts_position']) ? $generator['related_posts_position'] : 'end',

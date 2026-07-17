@@ -1,7 +1,7 @@
 {
   "name": "Alpha RSS AI Generator",
   "slug": "alpha-rss-ai-generator",
-  "version": "1.8.29",
+  "version": "1.9.0",
   "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -9,7 +9,7 @@
   "requires_php": "7.4",
   "author": "Wallace Tavares e Codex",
   "author_url": "https://github.com/wallacenana",
-  "last_updated": "2026-07-15",
+  "last_updated": "2026-07-17",
   "sections": {
     "description": "Atualizacao via GitHub para o plugin Alpha RSS AI Generator.",
   "changelog": "<ul><li>Agendamento do plugin passou a respeitar a janela diaria configurada desde o primeiro disparo.</li><li>Posts futuros gerados pelo plugin agora podem ser publicados pelo proprio plugin mesmo sem WP Cron ativo.</li><li>Atualizacao da release para 1.8.28.</li></ul>",

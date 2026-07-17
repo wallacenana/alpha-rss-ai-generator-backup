@@ -421,6 +421,28 @@
         });
     }
 
+    function parseJsonPayload(text) {
+        var value = text === undefined || text === null ? '' : String(text);
+        value = value.replace(/^\uFEFF/, '').trim();
+        if (!value) {
+            return null;
+        }
+        try {
+            return JSON.parse(value);
+        } catch (error) {
+            var jsonStart = value.search(/[\{\[]/);
+            if (jsonStart > 0) {
+                try {
+                    return JSON.parse(value.slice(jsonStart));
+                } catch (fallbackError) {}
+            }
+            return {
+                success: false,
+                message: value || 'Resposta invalida'
+            };
+        }
+    }
+
     function setManualRunStatus(message, type) {
         if (!manualRunStatus) {
             return;
@@ -532,7 +554,8 @@
             }),
             signal: manualRunGenerationRequest ? manualRunGenerationRequest.signal : undefined
         }).then(function (response) {
-            return response.json().then(function (payload) {
+            return response.text().then(function (text) {
+                var payload = parseJsonPayload(text);
                 return {
                     ok: response.ok,
                     status: response.status,
@@ -613,7 +636,8 @@
             },
             signal: manualRunLoadingRequest ? manualRunLoadingRequest.signal : undefined
         }).then(function (response) {
-            return response.json().then(function (payload) {
+            return response.text().then(function (text) {
+                var payload = parseJsonPayload(text);
                 return {
                     ok: response.ok,
                     status: response.status,

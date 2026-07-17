@@ -26,10 +26,8 @@
     align-items: flex-start !important;
 }
 
-#arc-generator-modal #arc-generator-form .arc-generator-fields>div {
+#arc-generator-modal #arc-generator-form .arc-generator-fields>div:not(.essanao) {
     min-width: 0 !important;
-    width: calc(50% - 0.5rem) !important;
-    max-width: calc(50% - 0.5rem) !important;
     flex: 0 0 calc(50% - 0.5rem) !important;
 }
 
@@ -63,6 +61,7 @@
     background-repeat: no-repeat !important;
     background-size: 1rem 1rem !important;
     padding-right: 2.5rem !important;
+    max-width: 100% !important;
 }
 
 #arc-generator-modal #arc-generator-form textarea {
@@ -157,6 +156,20 @@
 
 #arc-generator-modal .select2-container--open {
     z-index: 99999;
+}
+
+.arc-generator-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.arc-generator-actions .arc-generator-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    height: 46px;
 }
 
 .arc-related-posts {

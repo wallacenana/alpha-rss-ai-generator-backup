@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 if (!defined('ABSPATH')) {
     exit;
@@ -104,7 +104,7 @@ class Alpha_RSS_AI_Generator_Admin
                         <span class="dashicons dashicons-download text-[18px] leading-none"></span>
                         <span class="sr-only">Importar gerador</span>
                     </button>
-                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mb-0">
                         <?php wp_nonce_field('arc_export_generators', 'arc_export_generators_nonce'); ?>
                         <input type="hidden" name="action" value="arc_export_generators" />
                         <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Exportar geradores" title="Exportar geradores">
@@ -112,10 +112,6 @@ class Alpha_RSS_AI_Generator_Admin
                             <span class="sr-only">Exportar geradores</span>
                         </button>
                     </form>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-global-settings#arc-global-links-section')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Links globais" title="Links globais">
-                        <span class="dashicons dashicons-admin-links text-[18px] leading-none"></span>
-                        <span class="sr-only">Links globais</span>
-                    </a>
                     <button type="button" data-open-generator-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar gerador</button>
                 </div>
             </div>
@@ -191,11 +187,11 @@ class Alpha_RSS_AI_Generator_Admin
                                             </td>
                                             <td class="px-6 py-4 text-sm text-slate-600"><?php echo esc_html($generator['next_run_at'] ?: '-'); ?></td>
                                             <td class="px-6 py-4">
-                                                <div class="flex flex-wrap gap-2">
+                                                <div class="arc-generator-actions flex flex-wrap gap-2">
                                                     <button
                                                         type="button"
                                                         data-edit-generator-id="<?php echo esc_attr($generator['id']); ?>"
-                                                        class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                                        class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                                         Editar
                                                     </button>
                                                     <button
@@ -203,26 +199,26 @@ class Alpha_RSS_AI_Generator_Admin
                                                         data-open-manual-run-modal
                                                         data-generator-id="<?php echo esc_attr($generator['id']); ?>"
                                                         data-generator-name="<?php echo esc_attr($generator['name']); ?>"
-                                                        class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">
+                                                        class="arc-generator-action-btn arc-generator-action-btn--primary inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">
                                                         Escolher item
                                                     </button>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                                         <?php wp_nonce_field('arc_export_generator', 'arc_export_generator_nonce'); ?>
                                                         <input type="hidden" name="action" value="arc_export_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
-                                                        <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Exportar</button>
+                                                        <button type="submit" class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Exportar</button>
                                                     </form>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                                         <?php wp_nonce_field('arc_duplicate_generator', 'arc_duplicate_nonce'); ?>
                                                         <input type="hidden" name="action" value="arc_duplicate_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
-                                                        <button type="submit" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Duplicar</button>
+                                                        <button type="submit" class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Duplicar</button>
                                                     </form>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-swal-confirm="Excluir este gerador?">
                                                         <?php wp_nonce_field('arc_delete_generator', 'arc_delete_nonce'); ?>
                                                         <input type="hidden" name="action" value="arc_delete_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
-                                                        <button type="submit" class="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir</button>
+                                                        <button type="submit" class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir</button>
                                                     </form>
                                                 </div>
                                             </td>
@@ -382,7 +378,7 @@ class Alpha_RSS_AI_Generator_Admin
                             </div>
                             <button type="button" data-close-generator-import-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
-                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6" >
                             <?php wp_nonce_field('arc_import_generator', 'arc_import_generator_nonce'); ?>
                             <input type="hidden" name="action" value="arc_import_generators" />
                             <div class="space-y-4">
@@ -414,7 +410,7 @@ class Alpha_RSS_AI_Generator_Admin
                             </div>
                             <button type="button" data-close-generator-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
-                        <form id="arc-generator-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
+                        <form id="arc-generator-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="max-h-[calc(80vh-82px)] overflow-y-auto p-6">
                             <?php wp_nonce_field('arc_save_generator', 'arc_generator_nonce'); ?>
                             <input type="hidden" name="action" value="arc_save_generator" />
                             <input type="hidden" name="generator_id" value="<?php echo esc_attr(isset($editing_generator['id']) ? $editing_generator['id'] : ''); ?>" />
@@ -679,7 +675,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                     </div>
                                 </div>
-                                <div class="md:col-span-2 grid gap-5 md:grid-cols-2 arc-generator-tax-grid">
+                                <div class="md:col-span-2 grid gap-5 md:grid-cols-2 arc-generator-tax-grid essanao">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-slate-700">Categorias do WordPress</label>
                                         <div class="max-h-64 overflow-auto rounded-xl border border-slate-300 bg-white p-3" data-category-checkbox-list>
@@ -708,64 +704,18 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="0">Selecione uma categoria marcada</option>
                                     </select>
                                 </div>
-                                <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-internal-links-field>
+                                <div class="md:col-span-2 w-full rounded-2xl essanao border border-slate-200 bg-slate-50 p-4" data-internal-links-field>
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
                                             <label class="block text-sm font-semibold text-slate-800">Links internos manuais</label>
                                         </div>
                                         <button type="button" data-add-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
                                     </div>
-                                    <div class="mt-4 max-w-sm">
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Qtd. total de links internos</label>
-                                    <input type="number" min="0" name="internal_links_count" value="<?php echo esc_attr(isset($editing_generator['internal_links_count']) ? intval($editing_generator['internal_links_count']) : 0); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="0" />
-                                </div>
-                                    <div class="mt-4 space-y-3" data-internal-links-rows></div>
+                                    <div class="mt-4 w-full space-y-3" data-internal-links-rows></div>
+                                    <input type="hidden" name="internal_links_count" value="<?php echo esc_attr(isset($editing_generator['internal_links_count']) ? intval($editing_generator['internal_links_count']) : 0); ?>" data-internal-links-count />
                                     <textarea name="internal_links_json" class="hidden" data-internal-links-json></textarea>
                                 </div>
-                                <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-white p-4" data-prompt-models-field>
-                                    <div class="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                            <label class="block text-sm font-semibold text-slate-800">Modelos de prompt</label>
-                                        </div>
-                                    </div>
-                                    <div class="mt-4 space-y-3">
-                                        <?php foreach (Alpha_RSS_AI_Generator::get_default_prompt_models() as $prompt_model): ?>
-                                            <?php
-                                            $prompt_model_key = isset($prompt_model['key']) ? (string) $prompt_model['key'] : '';
-                                            $prompt_model_name = isset($prompt_model['name']) ? (string) $prompt_model['name'] : '';
-                                            $prompt_model_outline_key = isset($prompt_model['outline_model_key']) ? (string) $prompt_model['outline_model_key'] : '';
-                                            ?>
-                                            <details class="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-slate-800">
-                                                    <span><?php echo esc_html($prompt_model_name); ?></span>
-                                                    <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
-                                                </summary>
-                                                <?php if ($prompt_model_outline_key !== ''): ?>
-                                                    <div class="mt-2">
-                                                        <span class="inline-flex rounded-full bg-white px-2 py-1 text-xs font-medium text-slate-600">Outline: <?php echo esc_html($prompt_model_outline_key); ?></span>
-                                                    </div>
-                                                <?php endif; ?>
-                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][key]" value="<?php echo esc_attr($prompt_model_key); ?>" />
-                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][name]" value="<?php echo esc_attr($prompt_model_name); ?>" />
-                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][description]" value="<?php echo esc_attr(isset($prompt_model['description']) ? (string) $prompt_model['description'] : ''); ?>" />
-                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][outline_model_key]" value="<?php echo esc_attr($prompt_model_outline_key); ?>" />
-                                                <div class="mt-4 grid gap-4 lg:grid-cols-2">
-                                                    <div>
-                                                        <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
-                                                        <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][seo_prompt_template]" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['seo_prompt_template']) ? $prompt_model['seo_prompt_template'] : ''); ?></textarea>
-                                                    </div>
-                                                    <div>
-                                                        <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteúdo</label>
-                                                        <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][content_prompt_template]" rows="10" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['content_prompt_template']) ? $prompt_model['content_prompt_template'] : ''); ?></textarea>
-                                                    </div>
-                                                </div>
-                                            </details>
-                                        <?php endforeach; ?>
-                                    </div>
-                                    <textarea name="prompt_models_json" class="hidden" data-prompt-models-json></textarea>
-                                </div>
-
-                                <div class="mt-6 grid w-full gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[1fr_auto] lg:items-center">
+                                <div class="essanao mt-6 grid w-full gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[1fr_auto] lg:items-center">
                                     <div class="flex w-full items-center gap-3 lg:w-auto lg:justify-end">
                                         <button type="button" data-close-generator-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
                                         <button id="arc-generator-submit" type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Salvar gerador</button>
@@ -818,8 +768,6 @@ class Alpha_RSS_AI_Generator_Admin
                                         'source_context_keep_unrated' => '0',
                                         'seo_enabled' => '1',
                                         'generation_language' => Alpha_RSS_AI_Generator::get_default_generation_language(),
-                                        'prompt_models' => Alpha_RSS_AI_Generator::get_default_prompt_models(),
-                                        'prompt_models_json' => wp_json_encode(Alpha_RSS_AI_Generator::get_default_prompt_models()),
                                         'category_ids' => array(),
                                         'default_category_id' => '0',
                                         'tags_default' => array(),
@@ -862,7 +810,7 @@ class Alpha_RSS_AI_Generator_Admin
                     var internalLinksField = form.querySelector('[data-internal-links-field]');
                     var internalLinksRows = form.querySelector('[data-internal-links-rows]');
                     var internalLinksJson = form.querySelector('[data-internal-links-json]');
-                    var promptModelsJsonField = form.querySelector('[data-prompt-models-json]');
+                    var internalLinksCount = form.querySelector('[data-internal-links-count]');
                     var internalLinksAddButton = form.querySelector('[data-add-internal-link]');
                     var feedUrlField = form.querySelector('[data-feed-url-field]');
                     var listIdField = form.querySelector('[data-list-id-field]');
@@ -1142,35 +1090,6 @@ class Alpha_RSS_AI_Generator_Admin
                         return {};
                     }
 
-                    function parsePromptModels(value) {
-                        if (Array.isArray(value)) {
-                            return value;
-                        }
-                        if (value && typeof value === 'object') {
-                            return Object.keys(value).map(function(key) {
-                                var model = value[key] || {};
-                                model.key = model.key || key;
-                                return model;
-                            });
-                        }
-                        if (typeof value === 'string' && value !== '') {
-                            try {
-                                var parsed = JSON.parse(value);
-                                if (Array.isArray(parsed)) {
-                                    return parsed;
-                                }
-                                if (parsed && typeof parsed === 'object') {
-                                    return Object.keys(parsed).map(function(key) {
-                                        var model = parsed[key] || {};
-                                        model.key = model.key || key;
-                                        return model;
-                                    });
-                                }
-                            } catch (e) {}
-                        }
-                        return [];
-                    }
-
                     function parseInternalLinkRules(value) {
                         if (Array.isArray(value)) {
                             return value;
@@ -1204,59 +1123,6 @@ class Alpha_RSS_AI_Generator_Admin
                             sponsored: toFlag(rule.sponsored),
                             ugc: toFlag(rule.ugc)
                         };
-                    }
-
-                    function syncPromptModelFields(models) {
-                        (models || []).forEach(function(model) {
-                            var key = String(model && model.key ? model.key : '').trim();
-                            if (!key) {
-                                return;
-                            }
-                            setValue('prompt_models[' + key + '][key]', model.key || key);
-                            setValue('prompt_models[' + key + '][name]', model.name || '');
-                            setValue('prompt_models[' + key + '][description]', model.description || '');
-                            setValue('prompt_models[' + key + '][outline_model_key]', model.outline_model_key || '');
-                            setValue('prompt_models[' + key + '][seo_prompt_template]', model.seo_prompt_template || '');
-                            setValue('prompt_models[' + key + '][content_prompt_template]', model.content_prompt_template || '');
-                        });
-                    }
-
-                    function collectPromptModelRules() {
-                        var sourceModels = Array.isArray(defaults.prompt_models) ? defaults.prompt_models : [];
-                        var rules = [];
-
-                        sourceModels.forEach(function(model) {
-                            var key = String(model && model.key ? model.key : '').trim();
-                            if (!key) {
-                                return;
-                            }
-
-                            var keyPrefix = 'prompt_models[' + key + ']';
-                            var keyValueEl = byName(keyPrefix + '[key]');
-                            var nameEl = byName(keyPrefix + '[name]');
-                            var descriptionEl = byName(keyPrefix + '[description]');
-                            var outlineEl = byName(keyPrefix + '[outline_model_key]');
-                            var seoEl = byName(keyPrefix + '[seo_prompt_template]');
-                            var contentEl = byName(keyPrefix + '[content_prompt_template]');
-
-                            rules.push({
-                                key: keyValueEl ? String(keyValueEl.value || key).trim() : key,
-                                name: nameEl ? String(nameEl.value || '').trim() : '',
-                                description: descriptionEl ? String(descriptionEl.value || '').trim() : '',
-                                outline_model_key: outlineEl ? String(outlineEl.value || '').trim() : '',
-                                seo_prompt_template: seoEl ? String(seoEl.value || '') : '',
-                                content_prompt_template: contentEl ? String(contentEl.value || '') : ''
-                            });
-                        });
-
-                        return rules;
-                    }
-
-                    function syncPromptModelsField() {
-                        if (!promptModelsJsonField) {
-                            return;
-                        }
-                        promptModelsJsonField.value = JSON.stringify(collectPromptModelRules());
                     }
 
                     function collectInternalLinkRules() {
@@ -1294,11 +1160,24 @@ class Alpha_RSS_AI_Generator_Admin
                         return rules;
                     }
 
+                    function calculateInternalLinksCount(rules) {
+                        var total = 0;
+                        (rules || []).forEach(function(rule) {
+                            var normalized = normalizeInternalLinkRule(rule);
+                            total += Math.max(1, parseInt(normalized.quantity, 10) || 1);
+                        });
+                        return total;
+                    }
+
                     function syncInternalLinksField() {
                         if (!internalLinksJson) {
                             return;
                         }
-                        internalLinksJson.value = JSON.stringify(collectInternalLinkRules());
+                        var rules = collectInternalLinkRules();
+                        internalLinksJson.value = JSON.stringify(rules);
+                        if (internalLinksCount) {
+                            internalLinksCount.value = String(calculateInternalLinksCount(rules));
+                        }
                     }
 
                     function buildInternalLinkRowMarkup(rule) {
@@ -1307,14 +1186,14 @@ class Alpha_RSS_AI_Generator_Admin
                             '<div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-internal-link-row>',
                             '  <div class="grid gap-3 md:grid-cols-12">',
                             '    <div class="md:col-span-2">',
-                            '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantidade</label>',
-                            '      <input type="number" min="1" value="' + escapeHtml(rule.quantity) + '" data-internal-link-quantity class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />',
+                                '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantidade</label>',
+                                '      <input type="number" min="1" value="' + escapeHtml(rule.quantity) + '" data-internal-link-quantity class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />',
                             '    </div>',
-                            '    <div class="md:col-span-4">',
+                            '    <div class="md:col-span-5">',
                             '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Palavra</label>',
                             '      <input type="text" value="' + escapeHtml(rule.phrase) + '" data-internal-link-phrase class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Netflix" />',
                             '    </div>',
-                            '    <div class="md:col-span-4">',
+                            '    <div class="md:col-span-5">',
                             '      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Link</label>',
                             '      <input type="url" value="' + escapeHtml(rule.url) + '" data-internal-link-url class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="https://seusite.com/exemplo" />',
                             '    </div>',
@@ -1375,6 +1254,45 @@ class Alpha_RSS_AI_Generator_Admin
                             .replace(/>/g, '&gt;')
                             .replace(/"/g, '&quot;')
                             .replace(/'/g, '&#039;');
+                    }
+
+                    function parseJsonPayload(text) {
+                        var value = text === undefined || text === null ? '' : String(text);
+                        value = value.replace(/^\uFEFF/, '').trim();
+                        if (!value) {
+                            return null;
+                        }
+                        try {
+                            return JSON.parse(value);
+                        } catch (error) {
+                            var jsonStart = value.search(/[\{\[]/);
+                            if (jsonStart > 0) {
+                                try {
+                                    return JSON.parse(value.slice(jsonStart));
+                                } catch (fallbackError) {}
+                            }
+                            return {
+                                success: false,
+                                message: value || 'Resposta invalida'
+                            };
+                        }
+                    }
+
+                    function api(path, options) {
+                        var fetchOptions = options || {};
+                        fetchOptions.credentials = 'same-origin';
+                        fetchOptions.headers = fetchOptions.headers || {};
+                        fetchOptions.headers['X-WP-Nonce'] = restNonce;
+                        return fetch(apiBase + path, fetchOptions).then(function(response) {
+                            return response.text().then(function(text) {
+                                var payload = parseJsonPayload(text);
+                                return {
+                                    ok: response.ok,
+                                    status: response.status,
+                                    payload: payload
+                                };
+                            });
+                        });
                     }
 
                     function setManualRunStatus(message, type) {
@@ -1493,22 +1411,9 @@ class Alpha_RSS_AI_Generator_Admin
                         }
                         manualRunLoadingRequest = typeof AbortController !== 'undefined' ? new AbortController() : null;
 
-                        var url = apiBase.replace(/\/$/, '') + '/generators/' + encodeURIComponent(generatorId) + '/items?limit=30';
-                        fetch(url, {
+                        api('/generators/' + encodeURIComponent(generatorId) + '/items?limit=30', {
                             method: 'GET',
-                            credentials: 'same-origin',
-                            headers: {
-                                'X-WP-Nonce': restNonce
-                            },
                             signal: manualRunLoadingRequest ? manualRunLoadingRequest.signal : undefined
-                        }).then(function(response) {
-                            return response.json().then(function(payload) {
-                                return {
-                                    ok: response.ok,
-                                    status: response.status,
-                                    payload: payload
-                                };
-                            });
                         }).then(function(result) {
                             if (!result.ok || !result.payload || !result.payload.success) {
                                 throw new Error((result.payload && result.payload.message) ? result.payload.message : 'Não foi possível carregar os itens do feed.');
@@ -1583,13 +1488,10 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('related_posts_allow_fallback', defaults.related_posts_allow_fallback);
                         setValue('related_posts_style', defaults.related_posts_style);
                         setValue('related_posts_phrases', defaults.related_posts_phrases);
-                        setValue('internal_links_count', defaults.internal_links_count);
                         setValue('internal_links_json', defaults.internal_links_json);
                         setValue('default_category_id', defaults.default_category_id);
                         setCheckboxGroup('category_ids[]', []);
                         setValue('tags_default', listToText(defaults.tags_default));
-                        syncPromptModelFields(parsePromptModels(defaults.prompt_models));
-                        syncPromptModelsField();
                         syncDefaultCategoryField();
                         renderInternalLinkRows(parseInternalLinkRules(defaults.internal_links_json));
                         syncSourceFields();
@@ -1642,13 +1544,10 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('related_posts_allow_fallback', String(typeof generator.related_posts_allow_fallback !== 'undefined' ? generator.related_posts_allow_fallback : defaults.related_posts_allow_fallback));
                         setValue('related_posts_style', generator.related_posts_style || defaults.related_posts_style);
                         setValue('related_posts_phrases', generator.related_posts_phrases || defaults.related_posts_phrases);
-                        setValue('internal_links_count', typeof generator.internal_links_count !== 'undefined' ? String(generator.internal_links_count) : defaults.internal_links_count);
                         setValue('internal_links_json', generator.internal_links_json || defaults.internal_links_json);
                         setCheckboxGroup('category_ids[]', parseListValue(generator.category_ids));
                         setValue('default_category_id', typeof generator.default_category_id !== 'undefined' ? String(generator.default_category_id) : defaults.default_category_id);
                         setValue('tags_default', listToText(parseListValue(generator.tags_default)));
-                        syncPromptModelFields(parsePromptModels(generator.prompt_models_json || generator.prompt_models || defaults.prompt_models));
-                        syncPromptModelsField();
                         syncDefaultCategoryField();
                         renderInternalLinkRows(parseInternalLinkRules(generator.internal_links_json || defaults.internal_links_json));
                         syncSourceFields();
@@ -1714,7 +1613,6 @@ class Alpha_RSS_AI_Generator_Admin
                     if (form) {
                         form.addEventListener('submit', function() {
                             syncInternalLinksField();
-                            syncPromptModelsField();
                         });
                     }
 
@@ -2053,10 +1951,12 @@ class Alpha_RSS_AI_Generator_Admin
                                     <h3 class="text-sm font-semibold text-slate-900">Links globais</h3>
                                     <p class="mt-1 text-xs text-slate-500">Cadastre frases e URLs que podem ser aplicadas automaticamente em qualquer geração.</p>
                                 </div>
-                                <button type="button" data-add-global-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
                             </div>
                             <div class="mt-4 space-y-3" data-global-internal-links-rows></div>
                             <textarea name="global_internal_links_json" class="hidden" data-global-internal-links-json><?php echo esc_textarea(isset($settings['global_internal_links_json']) ? $settings['global_internal_links_json'] : '[]'); ?></textarea>
+                            <div class="mt-4 flex justify-end">
+                                <button type="button" data-add-global-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
+                            </div>
                         </div>
                     </div>
                     <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2191,6 +2091,11 @@ class Alpha_RSS_AI_Generator_Admin
                     syncField();
                 }
 
+                function appendGlobalInternalLinkRow() {
+                    rowsRoot.insertAdjacentHTML('beforeend', buildRow(normalizeRule({})));
+                    syncField();
+                }
+
                 rowsRoot.addEventListener('input', syncField);
                 rowsRoot.addEventListener('change', syncField);
                 rowsRoot.addEventListener('click', function(event) {
@@ -2207,9 +2112,7 @@ class Alpha_RSS_AI_Generator_Admin
 
                 if (addButton) {
                     addButton.addEventListener('click', function() {
-                        var currentRules = collectRules();
-                        currentRules.push(normalizeRule({}));
-                        renderRows(currentRules);
+                        appendGlobalInternalLinkRow();
                     });
                 }
 
@@ -2855,6 +2758,28 @@ class Alpha_RSS_AI_Generator_Admin
                         target.textContent = message;
                     }
 
+                    function parseJsonPayload(text) {
+                        var value = text === undefined || text === null ? '' : String(text);
+                        value = value.replace(/^\uFEFF/, '').trim();
+                        if (!value) {
+                            return null;
+                        }
+                        try {
+                            return JSON.parse(value);
+                        } catch (error) {
+                            var jsonStart = value.search(/[\{\[]/);
+                            if (jsonStart > 0) {
+                                try {
+                                    return JSON.parse(value.slice(jsonStart));
+                                } catch (fallbackError) {}
+                            }
+                            return {
+                                success: false,
+                                message: value || 'Resposta invalida'
+                            };
+                        }
+                    }
+
                     function api(path, options) {
                         var fetchOptions = options || {};
                         fetchOptions.credentials = 'same-origin';
@@ -2862,15 +2787,7 @@ class Alpha_RSS_AI_Generator_Admin
                         fetchOptions.headers['X-WP-Nonce'] = restNonce;
                         return fetch(apiBase + path, fetchOptions).then(function(response) {
                             return response.text().then(function(text) {
-                                var payload = null;
-                                try {
-                                    payload = text ? JSON.parse(text) : null;
-                                } catch (error) {
-                                    payload = {
-                                        success: false,
-                                        message: text || 'Resposta invalida'
-                                    };
-                                }
+                                var payload = parseJsonPayload(text);
                                 return {
                                     ok: response.ok,
                                     status: response.status,
@@ -3932,3 +3849,4 @@ class Alpha_RSS_AI_Generator_Admin
         return isset($map[$status]) ? $map[$status] : ucfirst((string) $status);
     }
 }
+
