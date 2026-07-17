@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.8.28
+Version: 1.8.29
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -3413,7 +3413,43 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return $text;
         }
 
-        protected static function calculate_semantic_title_fallback_score($needle, $haystack)
+        protected static function normalize_semantic_title_token_set($text)
+        {
+            $text = self::normalize_semantic_title_text($text);
+            if ($text === '') {
+                return array();
+            }
+
+            $stopwords = array(
+                'a', 'o', 'as', 'os', 'um', 'uma', 'uns', 'umas',
+                'de', 'da', 'do', 'das', 'dos',
+                'e', 'em', 'no', 'na', 'nos', 'nas',
+                'por', 'para', 'com', 'sem', 'sobre', 'entre',
+                'que', 'se', 'ao', 'aos', 'à', 'às',
+                'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'from', 'by',
+            );
+
+            $tokens = array_values(array_filter(preg_split('/\s+/u', $text)));
+            if (empty($tokens)) {
+                return array();
+            }
+
+            $filtered = array();
+            foreach ($tokens as $token) {
+                $token = trim((string) $token);
+                if ($token === '' || mb_strlen($token, 'UTF-8') <= 2) {
+                    continue;
+                }
+                if (in_array($token, $stopwords, true)) {
+                    continue;
+                }
+                $filtered[] = $token;
+            }
+
+            return array_values(array_unique($filtered));
+        }
+
+        public static function calculate_semantic_title_fallback_score($needle, $haystack)
         {
             $needle = self::normalize_semantic_title_text($needle);
             $haystack = self::normalize_semantic_title_text($haystack);
@@ -3434,11 +3470,19 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             similar_text($needle, $haystack, $similarity);
             $score += min(0.4, max(0.0, floatval($similarity) / 100.0));
 
-            $needle_tokens = array_values(array_filter(preg_split('/\s+/', $needle)));
-            $haystack_tokens = array_values(array_filter(preg_split('/\s+/', $haystack)));
+            $needle_tokens = self::normalize_semantic_title_token_set($needle);
+            $haystack_tokens = self::normalize_semantic_title_token_set($haystack);
             if (!empty($needle_tokens) && !empty($haystack_tokens)) {
                 $common_tokens = array_intersect($needle_tokens, $haystack_tokens);
-                $score += min(0.15, count($common_tokens) * 0.03);
+                $token_union = count(array_unique(array_merge($needle_tokens, $haystack_tokens)));
+                $token_jaccard = $token_union > 0 ? count($common_tokens) / $token_union : 0.0;
+                $score += min(0.2, $token_jaccard * 0.2);
+
+                $needle_first = reset($needle_tokens);
+                $haystack_first = reset($haystack_tokens);
+                if ($needle_first !== false && $haystack_first !== false && $needle_first === $haystack_first) {
+                    $score += 0.05;
+                }
             }
 
             return min(1.0, $score);
@@ -3653,7 +3697,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $limit = max(25, intval($limit));
 
             $rows = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, post_id, item_title, item_guid, item_permalink, title_embedding_model, title_embedding_json, semantic_duplicate_post_id, semantic_duplicate_score FROM " . self::$table_items . " WHERE post_id > 0 AND item_title <> '' ORDER BY created_at DESC LIMIT %d",
+                "SELECT id, post_id, item_title FROM " . self::$table_items . " WHERE post_id > 0 AND item_title <> '' ORDER BY created_at DESC LIMIT %d",
                 $limit
             ), ARRAY_A);
 
@@ -3689,15 +3733,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $enabled = !empty($settings['semantic_dedup_enabled']);
             $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(1.0, floatval($settings['semantic_dedup_threshold']))) : 0.88;
             $lookback = isset($settings['semantic_dedup_lookback']) ? max(25, intval($settings['semantic_dedup_lookback'])) : 300;
-            $model = !empty($settings['semantic_dedup_model']) ? sanitize_text_field((string) $settings['semantic_dedup_model']) : 'text-embedding-3-small';
-
             $result = array(
                 'post_id' => 0,
                 'score' => 0.0,
-                'method' => 'fallback',
+                'method' => 'text',
                 'matched_title' => '',
                 'matched_item_id' => 0,
-                'embedding_model' => $model,
+                'embedding_model' => '',
                 'embedding_json' => '',
                 'embedding_raw' => array(),
                 'normalized_title' => self::normalize_semantic_title_text($title),
@@ -3738,16 +3780,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return $result;
             }
 
-            $embedding_payload = self::request_openai_embedding($title, $model);
-            $embedding_available = !is_wp_error($embedding_payload);
-            if ($embedding_available) {
-                $result['embedding_model'] = !empty($embedding_payload['model']) ? (string) $embedding_payload['model'] : $model;
-                $result['embedding_json'] = wp_json_encode(array_values(array_map('floatval', (array) $embedding_payload['embedding'])));
-                $result['embedding_raw'] = !empty($embedding_payload['raw_embedding']) && is_array($embedding_payload['raw_embedding']) ? $embedding_payload['raw_embedding'] : array();
-            } else {
-                $result['method'] = 'fallback';
-            }
-
             $best_score = 0.0;
             $best_candidate = null;
             foreach ($candidates as $candidate) {
@@ -3756,26 +3788,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
-                $candidate_score = 0.0;
-                $candidate_method = 'fallback';
-                $candidate_embedding = array();
-                $candidate_embedding_model = '';
-                if (!empty($candidate['title_embedding_json'])) {
-                    $candidate_embedding = json_decode((string) $candidate['title_embedding_json'], true);
-                    if (!is_array($candidate_embedding)) {
-                        $candidate_embedding = array();
-                    }
-                    $candidate_embedding = self::normalize_embedding_vector($candidate_embedding);
-                    $candidate_embedding_model = !empty($candidate['title_embedding_model']) ? sanitize_text_field((string) $candidate['title_embedding_model']) : '';
-                }
-
-                if ($embedding_available && !empty($candidate_embedding) && $candidate_embedding_model === $result['embedding_model']) {
-                    $candidate_score = self::cosine_similarity_between_vectors($embedding_payload['embedding'], $candidate_embedding);
-                    $candidate_method = 'embedding';
-                } else {
-                    $fallback_score = self::calculate_semantic_title_fallback_score($title, $candidate_title);
-                    $candidate_score = $fallback_score;
-                }
+                $candidate_score = self::calculate_semantic_title_fallback_score($title, $candidate_title);
+                $candidate_method = 'text';
 
                 if ($candidate_score > $best_score) {
                     $best_score = $candidate_score;
@@ -3790,14 +3804,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $effective_threshold = $threshold;
-            if (is_array($best_candidate) && !empty($best_candidate['method']) && $best_candidate['method'] === 'fallback') {
-                $effective_threshold = max($effective_threshold, 0.94);
+            if (is_array($best_candidate) && !empty($best_candidate['method']) && $best_candidate['method'] === 'text') {
+                $effective_threshold = min(max($effective_threshold, 0.78), 0.84);
             }
 
             if (is_array($best_candidate) && !empty($best_candidate['post_id']) && $best_score >= $effective_threshold && get_post(intval($best_candidate['post_id']))) {
                 $result['post_id'] = intval($best_candidate['post_id']);
                 $result['score'] = floatval($best_score);
-                $result['method'] = !empty($best_candidate['method']) ? (string) $best_candidate['method'] : 'embedding';
+                $result['method'] = !empty($best_candidate['method']) ? (string) $best_candidate['method'] : 'text';
                 $result['matched_title'] = !empty($best_candidate['title']) ? (string) $best_candidate['title'] : '';
                 $result['matched_item_id'] = !empty($best_candidate['row_id']) ? intval($best_candidate['row_id']) : 0;
             }
@@ -7317,12 +7331,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
                 'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : '',
             ));
-            $item['title_embedding_model'] = !empty($semantic_duplicate['embedding_model']) ? $semantic_duplicate['embedding_model'] : '';
-            $item['title_embedding_json'] = !empty($semantic_duplicate['embedding_json']) ? $semantic_duplicate['embedding_json'] : '';
             if (is_array($semantic_duplicate) && !empty($semantic_duplicate['post_id'])) {
                 $duplicate_post_id = intval($semantic_duplicate['post_id']);
                 $duplicate_score = isset($semantic_duplicate['score']) ? floatval($semantic_duplicate['score']) : 0.0;
-                $duplicate_method = !empty($semantic_duplicate['method']) ? (string) $semantic_duplicate['method'] : 'embedding';
+                $duplicate_method = !empty($semantic_duplicate['method']) ? (string) $semantic_duplicate['method'] : 'text';
                 $item['semantic_duplicate_post_id'] = $duplicate_post_id;
                 $item['semantic_duplicate_score'] = $duplicate_score;
                 $item['semantic_duplicate_method'] = $duplicate_method;
@@ -7447,28 +7459,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                             ),
                         ), $post_id, $item['guid'], $item['permalink']);
                     }
-                }
-            }
-
-            $internal_link_rules = array();
-            if (!empty($generator['internal_links_json'])) {
-                $internal_link_rules = Alpha_RSS_AI_Generator_Helper::parse_internal_link_rules($generator['internal_links_json']);
-            }
-            $auto_internal_links_count = isset($generator['internal_links_count']) ? intval($generator['internal_links_count']) : 0;
-            $source_type_for_links = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
-            if ($auto_internal_links_count <= 0 && empty($internal_link_rules) && in_array($source_type_for_links, array('rss', 'keyword_list'), true)) {
-                $auto_internal_links_count = 5;
-            }
-            if ($auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
-                $auto_link_result = Alpha_RSS_AI_Link_Suggestions::generate_and_apply_link_suggestions_to_post(
-                    $post_id,
-                    $generator,
-                    $auto_internal_links_count,
-                    '',
-                    (string) get_post_field('post_content', $post_id)
-                );
-                if (is_array($auto_link_result) && !empty($auto_link_result['content_html'])) {
-                    $article['content_html'] = (string) $auto_link_result['content_html'];
                 }
             }
 
@@ -7959,15 +7949,57 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $generator = is_array($generator) ? $generator : array();
             $limit = max(1, intval($limit));
             $post_type = !empty($generator['post_type']) && post_type_exists($generator['post_type']) ? $generator['post_type'] : 'post';
-            $posts = get_posts(array(
-                'post_type' => $post_type,
-                'post_status' => array('publish'),
-                'posts_per_page' => max(20, $limit * 5),
-                'orderby' => 'date',
-                'order' => 'DESC',
-            ));
+            $recent_cutoff = wp_date('Y-m-d H:i:s', current_time('timestamp') - (7 * DAY_IN_SECONDS), function_exists('wp_timezone') ? wp_timezone() : null);
+            $candidate_queries = array(
+                array(
+                    'post_type' => $post_type,
+                    'post_status' => array('publish'),
+                    'posts_per_page' => max(50, $limit * 10),
+                    'orderby' => 'rand',
+                    'no_found_rows' => true,
+                    'date_query' => array(
+                        array(
+                            'after' => $recent_cutoff,
+                            'inclusive' => true,
+                        ),
+                    ),
+                ),
+                array(
+                    'post_type' => $post_type,
+                    'post_status' => array('publish'),
+                    'posts_per_page' => max(50, $limit * 10),
+                    'orderby' => 'rand',
+                    'no_found_rows' => true,
+                ),
+            );
 
-            if (empty($posts) || !is_array($posts)) {
+            $posts = array();
+            $seen_ids = array();
+            foreach ($candidate_queries as $query_args) {
+                $queried_posts = get_posts($query_args);
+                if (empty($queried_posts) || !is_array($queried_posts)) {
+                    continue;
+                }
+
+                foreach ($queried_posts as $post) {
+                    if (!$post instanceof WP_Post) {
+                        continue;
+                    }
+
+                    $post_id = intval($post->ID);
+                    if ($post_id <= 0 || isset($seen_ids[$post_id])) {
+                        continue;
+                    }
+
+                    $seen_ids[$post_id] = true;
+                    $posts[] = $post;
+                    if (count($posts) >= max(20, $limit * 10)) {
+                        break 2;
+                    }
+                }
+            }
+
+            if (empty($posts)) {
                 return array();
             }
 

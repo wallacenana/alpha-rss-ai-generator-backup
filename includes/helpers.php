@@ -2034,8 +2034,7 @@ class Alpha_RSS_AI_Generator_Helper
             return null;
         }
 
-        $model = !empty($settings['semantic_dedup_model']) ? sanitize_text_field((string) $settings['semantic_dedup_model']) : 'text-embedding-3-small';
-        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.82;
+        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.72;
 
         $exclude_lookup = array();
         foreach ((array) $exclude_indexes as $exclude_index) {
@@ -2064,28 +2063,11 @@ class Alpha_RSS_AI_Generator_Helper
             return null;
         }
 
-        $batch_texts = array($title);
-        foreach ($candidates as $candidate) {
-            $batch_texts[] = $candidate['semantic_text'];
-        }
-
-        $embedding_payload = Alpha_RSS_AI_Generator::request_openai_embeddings_batch($batch_texts, $model);
-        if (is_wp_error($embedding_payload) || empty($embedding_payload['embeddings'][0])) {
-            return null;
-        }
-
-        $query_embedding = $embedding_payload['embeddings'][0];
         $best_score = 0.0;
         $best_candidate = null;
 
-        foreach ($candidates as $offset => $candidate) {
-            $candidate_embedding_index = $offset + 1;
-            if (empty($embedding_payload['embeddings'][$candidate_embedding_index])) {
-                continue;
-            }
-
-            $candidate_embedding = $embedding_payload['embeddings'][$candidate_embedding_index];
-            $semantic_score = Alpha_RSS_AI_Generator::cosine_similarity_between_vectors($query_embedding, $candidate_embedding);
+        foreach ($candidates as $candidate) {
+            $semantic_score = Alpha_RSS_AI_Generator::calculate_semantic_title_fallback_score($title, $candidate['semantic_text']);
             if ($semantic_score > $best_score) {
                 $best_score = $semantic_score;
                 $best_candidate = $candidate;
@@ -2100,7 +2082,7 @@ class Alpha_RSS_AI_Generator_Helper
             'index' => intval($best_candidate['index']),
             'score' => $best_score,
             'section' => $best_candidate['section'],
-            'mode' => 'embedding',
+            'mode' => 'text',
         );
     }
 
@@ -2128,8 +2110,7 @@ class Alpha_RSS_AI_Generator_Helper
             return 0;
         }
 
-        $model = !empty($settings['semantic_dedup_model']) ? sanitize_text_field((string) $settings['semantic_dedup_model']) : 'text-embedding-3-small';
-        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.82;
+        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.72;
 
         $candidate_titles = array();
         $candidate_attachment_ids = array();
@@ -2148,23 +2129,11 @@ class Alpha_RSS_AI_Generator_Helper
             return 0;
         }
 
-        $batch_texts = array_merge(array($section_title), $candidate_titles);
-        $embedding_payload = Alpha_RSS_AI_Generator::request_openai_embeddings_batch($batch_texts, $model);
-        if (is_wp_error($embedding_payload) || empty($embedding_payload['embeddings'][0])) {
-            return 0;
-        }
-
-        $query_embedding = $embedding_payload['embeddings'][0];
         $best_score = 0.0;
         $best_attachment_id = 0;
         foreach ($candidate_attachment_ids as $offset => $attachment_id) {
-            $candidate_embedding_index = $offset + 1;
-            if (empty($embedding_payload['embeddings'][$candidate_embedding_index])) {
-                continue;
-            }
-
-            $candidate_embedding = $embedding_payload['embeddings'][$candidate_embedding_index];
-            $semantic_score = Alpha_RSS_AI_Generator::cosine_similarity_between_vectors($query_embedding, $candidate_embedding);
+            $candidate_title = isset($candidate_titles[$offset]) ? (string) $candidate_titles[$offset] : '';
+            $semantic_score = Alpha_RSS_AI_Generator::calculate_semantic_title_fallback_score($section_title, $candidate_title);
             if ($semantic_score > $best_score) {
                 $best_score = $semantic_score;
                 $best_attachment_id = $attachment_id;

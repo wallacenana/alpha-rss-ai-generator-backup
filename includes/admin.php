@@ -70,13 +70,6 @@ class Alpha_RSS_AI_Generator_Admin
         $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
         $editing_generator = $edit_id > 0 ? Alpha_RSS_AI_Generator::get_generator($edit_id) : array();
 
-        $source_posts = get_posts(array(
-            'post_type' => 'post',
-            'post_status' => 'publish',
-            'posts_per_page' => 40,
-            'orderby' => 'date',
-            'order' => 'DESC',
-        ));
         $users = Alpha_RSS_AI_Generator::get_content_author_users();
         $categories = get_categories(array('hide_empty' => false));
         $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
@@ -472,15 +465,6 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="inactive" <?php selected(isset($editing_generator['status']) ? $editing_generator['status'] : '', 'inactive'); ?>>Inativo</option>
                                     </select>
                                 </div>
-                                <div <?php echo (!empty($editing_generator['generation_mode']) && Alpha_RSS_AI_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) === 'satellite') ? 'class="hidden" data-source-post-field' : 'data-source-post-field'; ?>>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Post de origem</label>
-                                    <select name="source_post_id" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="0" <?php selected(isset($editing_generator['source_post_id']) ? intval($editing_generator['source_post_id']) : 0, 0); ?>>Selecione um post</option>
-                                        <?php foreach ($source_posts as $source_post): ?>
-                                            <option value="<?php echo esc_attr($source_post->ID); ?>" <?php selected(isset($editing_generator['source_post_id']) ? intval($editing_generator['source_post_id']) : 0, intval($source_post->ID)); ?>><?php echo esc_html(get_the_title($source_post->ID)); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Status do post</label>
                                     <select name="post_status" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
@@ -805,7 +789,6 @@ class Alpha_RSS_AI_Generator_Admin
                                         'feed_url' => '',
                                         'source_type' => 'keyword_list',
                                         'generation_mode' => 'pillar',
-                                        'source_post_id' => '0',
                                         'list_id' => '0',
                                         'keyword_list_mode' => 'keywords',
                                         'status' => 'active',
@@ -882,7 +865,6 @@ class Alpha_RSS_AI_Generator_Admin
                     var promptModelsJsonField = form.querySelector('[data-prompt-models-json]');
                     var internalLinksAddButton = form.querySelector('[data-add-internal-link]');
                     var feedUrlField = form.querySelector('[data-feed-url-field]');
-                    var sourcePostField = form.querySelector('[data-source-post-field]');
                     var listIdField = form.querySelector('[data-list-id-field]');
                     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
                     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
@@ -1106,9 +1088,6 @@ class Alpha_RSS_AI_Generator_Admin
 
                         if (feedUrlField) {
                             feedUrlField.classList.toggle('hidden', isSatelliteMode || sourceType === 'keyword_list');
-                        }
-                        if (sourcePostField) {
-                            sourcePostField.classList.toggle('hidden', isSatelliteMode);
                         }
                         if (listIdField) {
                             listIdField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
@@ -1573,7 +1552,6 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('name', defaults.name);
                         setValue('feed_url', defaults.feed_url);
                         setValue('generation_mode', defaults.generation_mode);
-                        setValue('source_post_id', defaults.source_post_id);
                         setValue('source_type', defaults.source_type);
                         setValue('list_id', defaults.list_id);
                         setValue('keyword_list_mode', defaults.keyword_list_mode);
@@ -1633,7 +1611,6 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('name', generator.name);
                         setValue('feed_url', generator.feed_url);
                         setValue('generation_mode', generator.generation_mode || defaults.generation_mode);
-                        setValue('source_post_id', typeof generator.source_post_id !== 'undefined' ? String(generator.source_post_id) : defaults.source_post_id);
                         setValue('source_type', generator.source_type || defaults.source_type);
                         setValue('list_id', typeof generator.list_id !== 'undefined' ? String(generator.list_id) : defaults.list_id);
                         setValue('keyword_list_mode', generator.keyword_list_mode || defaults.keyword_list_mode);

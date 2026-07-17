@@ -549,28 +549,6 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 );
             }
 
-            $internal_link_rules = array();
-            if (!empty($generator['internal_links_json'])) {
-                $internal_link_rules = Alpha_RSS_AI_Generator_Helper::parse_internal_link_rules($generator['internal_links_json']);
-            }
-            $auto_internal_links_count = isset($generator['internal_links_count']) ? intval($generator['internal_links_count']) : 0;
-            if ($auto_internal_links_count <= 0 && empty($internal_link_rules) && in_array($source_type, array('rss', 'keyword_list'), true)) {
-                $auto_internal_links_count = 5;
-            }
-            if ($auto_internal_links_count > 0 && class_exists('Alpha_RSS_AI_Link_Suggestions')) {
-                $auto_link_result = Alpha_RSS_AI_Link_Suggestions::generate_and_apply_link_suggestions_to_post(
-                    $post_id,
-                    $generator,
-                    $auto_internal_links_count,
-                    '',
-                    $content_html
-                );
-                if (is_array($auto_link_result) && !empty($auto_link_result['content_html'])) {
-                    $content_html = (string) $auto_link_result['content_html'];
-                    $article['content_html'] = $content_html;
-                }
-            }
-
             $update_result = wp_update_post(array(
                 'ID' => intval($post_id),
                 'post_title' => $title,
