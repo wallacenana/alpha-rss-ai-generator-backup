@@ -1,8 +1,8 @@
-<?php
+﻿<?php
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.0
+Version: 1.9.1
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -13,7 +13,14 @@ if (!defined('ABSPATH')) {
 
 if (!ob_get_level()) {
     // Keep redirects safe even if an include emits stray output.
-    ob_start();
+    // Also strip invisible UTF-8 BOM bytes that can leak into the frontend HTML.
+    ob_start(static function ($buffer) {
+        if ($buffer === '') {
+            return $buffer;
+        }
+
+        return str_replace("\xEF\xBB\xBF", '', $buffer);
+    });
 }
 
 if (!defined('ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE')) {
@@ -49,7 +56,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.0';
+        const VERSION = '1.9.1';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
