@@ -132,7 +132,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <th class="px-6 py-3">Nome</th>
                                     <th class="px-6 py-3">Status</th>
-                                    <th class="px-6 py-3">Linguagem</th>
+                                    <th class="px-6 py-3">Categoria</th>
                                     <th class="px-6 py-3">Agendamento</th>
                                     <th class="px-6 py-3">Próxima execução</th>
                                     <th class="px-6 py-3">Ações</th>
@@ -149,7 +149,24 @@ class Alpha_RSS_AI_Generator_Admin
                                         $generator_status_label = Alpha_RSS_AI_Generator::get_generator_status_label($generator['status']);
                                         $schedule_label = Alpha_RSS_AI_Generator::get_schedule_type_label($generator['schedule_type']);
                                         $generation_mode_label = Alpha_RSS_AI_Generator::get_generation_mode_label(isset($generator['generation_mode']) ? $generator['generation_mode'] : Alpha_RSS_AI_Generator::get_default_generation_mode());
-                                        $language_label = Alpha_RSS_AI_Generator::normalize_generation_language_value(isset($generator['generation_language']) ? $generator['generation_language'] : Alpha_RSS_AI_Generator::get_default_generation_language());
+                                        $category_label = '-';
+                                        $generator_category_ids = array();
+                                        if (isset($generator['category_ids'])) {
+                                            $decoded_category_ids = json_decode((string) $generator['category_ids'], true);
+                                            $generator_category_ids = is_array($decoded_category_ids) ? array_values(array_filter(array_map('intval', $decoded_category_ids))) : array();
+                                        }
+                                        if (!empty($generator_category_ids)) {
+                                            $category_names = array();
+                                            foreach ($generator_category_ids as $category_id) {
+                                                $category = get_term($category_id, 'category');
+                                                if ($category && !is_wp_error($category)) {
+                                                    $category_names[] = $category->name;
+                                                }
+                                            }
+                                            if (!empty($category_names)) {
+                                                $category_label = implode(', ', $category_names);
+                                            }
+                                        }
 
                                         ?>
                                         <tr class="align-top">
@@ -178,7 +195,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                     <?php echo esc_html($generator_status_label); ?>
                                                 </span>
                                             </td>
-                                            <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html($language_label); ?></td>
+                                            <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html($category_label); ?></td>
                                             <td class="px-6 py-4">
                                                 <div class="text-sm font-medium text-slate-700"><?php echo esc_html($schedule_label); ?></div>
                                                 <div class="mt-1 text-xs text-slate-500">

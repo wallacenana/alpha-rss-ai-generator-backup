@@ -946,7 +946,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                         </a>
                                                     <?php endif; ?>
                                                     <?php if ($edit_link !== ''): ?>
-                                                        <a href="<?php echo esc_url($edit_link); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Editar" title="Editar">
+                                                        <a href="<?php echo esc_url($edit_link); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Editar" title="Editar">
                                                             <span class="dashicons dashicons-edit text-[16px] leading-none"></span>
                                                             <span class="sr-only">Editar</span>
                                                         </a>
@@ -973,10 +973,6 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                                             <span class="sr-only">Planejar</span>
                                                         </a>
                                                     <?php endif; ?>
-                                                    <a href="<?php echo esc_url(add_query_arg(array('page' => 'alpha-rss-ai-link-suggestions', 'post_id' => $post_id), admin_url('admin.php'))); ?>" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950" aria-label="Lincagem automática" title="Lincagem automática">
-                                                        <span class="dashicons dashicons-admin-links text-[16px] leading-none"></span>
-                                                        <span class="sr-only">Lincagem automática</span>
-                                                    </a>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="m-0 inline-flex shrink-0" data-swal-confirm="Excluir este post gerado?">
                                                         <?php wp_nonce_field('arc_delete_generated_post', 'arc_delete_generated_post_nonce'); ?>
                                                         <input type="hidden" name="action" value="arc_delete_generated_post" />

@@ -691,24 +691,100 @@ class Alpha_RSS_AI_Generator_Helper
             return $media;
         }
 
-        foreach (array('og:image', 'og:image:url', 'twitter:image', 'twitter:image:src', 'thumbnailUrl', 'image') as $key) {
-            if ($media['image_url'] !== '') {
-                break;
+        $image_selector_class = trim((string) $image_selector_class);
+        if ($image_selector_class !== '') {
+            $selector_candidate = self::extract_selector_media_candidate_from_html($html, $base_url, $image_selector_class, 'image');
+            if (!empty($selector_candidate['image_url'])) {
+                $media['image_url'] = !empty($selector_candidate['image_url']) ? $selector_candidate['image_url'] : '';
+                $media['image_source'] = !empty($selector_candidate['image_source']) ? $selector_candidate['image_source'] : 'selector:' . $image_selector_class;
+                $media['image_class'] = !empty($selector_candidate['image_class']) ? $selector_candidate['image_class'] : $image_selector_class;
+                $media['image_attr'] = !empty($selector_candidate['image_attr']) ? $selector_candidate['image_attr'] : '';
+                $media['image_tag'] = !empty($selector_candidate['image_tag']) ? $selector_candidate['image_tag'] : 'selector';
             }
-            if (!preg_match_all('/<meta[^>]+(?:property|name|itemprop)=["\']' . preg_quote($key, '/') . '["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $matches)) {
-                continue;
-            }
+        }
 
-            foreach ((array) $matches[1] as $candidate_url) {
-                $candidate = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
-                if ($candidate === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate, $base_url)) {
+        if ($media['image_url'] === '' && $image_selector_class === '') {
+            foreach (array('og:image', 'og:image:url', 'twitter:image', 'twitter:image:src', 'thumbnailUrl', 'image') as $key) {
+                if ($media['image_url'] !== '') {
+                    break;
+                }
+                if (!preg_match_all('/<meta[^>]+(?:property|name|itemprop)=["\']' . preg_quote($key, '/') . '["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $matches)) {
                     continue;
                 }
-                $media['image_url'] = $candidate;
-                $media['image_source'] = $key;
-                $media['image_tag'] = 'meta';
-                $media['image_attr'] = 'content';
-                break 2;
+
+                foreach ((array) $matches[1] as $candidate_url) {
+                    $candidate = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
+                    if ($candidate === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate, $base_url)) {
+                        continue;
+                    }
+                    $media['image_url'] = $candidate;
+                    $media['image_source'] = $key;
+                    $media['image_tag'] = 'meta';
+                    $media['image_attr'] = 'content';
+                    break 2;
+                }
+            }
+
+            if ($media['image_url'] === '') {
+                $image_attributes = array('data-img-url', 'data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-full', 'data-large');
+                foreach ($image_attributes as $attribute) {
+                    if (!preg_match_all('/<' . '[^>]+\\b' . preg_quote($attribute, '/') . '=["\']([^"\']+)["\']/i', $html, $matches)) {
+                        continue;
+                    }
+
+                    foreach ((array) $matches[1] as $candidate_url) {
+                        $candidate_url = trim((string) $candidate_url);
+                        if ($candidate_url === '') {
+                            continue;
+                        }
+                        $candidate_url = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
+                        if ($candidate_url === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate_url, $base_url)) {
+                            continue;
+                        }
+                        $media['image_url'] = $candidate_url;
+                        $media['image_source'] = $attribute;
+                        $media['image_tag'] = 'attr';
+                        $media['image_attr'] = $attribute;
+                        break 2;
+                    }
+                }
+            }
+
+            if ($media['image_url'] === '') {
+                foreach (array('srcset', 'data-srcset') as $attribute) {
+                    if (!preg_match_all('/<' . '[^>]+\\b' . preg_quote($attribute, '/') . '=["\']([^"\']+)["\']/i', $html, $matches)) {
+                        continue;
+                    }
+
+                    foreach ((array) $matches[1] as $candidate_set) {
+                        $candidate_url = self::pick_best_srcset_url((string) $candidate_set);
+                        $candidate_url = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
+                        if ($candidate_url === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate_url, $base_url)) {
+                            continue;
+                        }
+                        $media['image_url'] = $candidate_url;
+                        $media['image_source'] = $attribute;
+                        $media['image_tag'] = 'source';
+                        $media['image_attr'] = $attribute;
+                        break 2;
+                    }
+                }
+            }
+
+            if ($media['image_url'] === '') {
+                if (preg_match_all('/<img\b[^>]+src=["\']([^"\']+)["\']/i', $html, $matches)) {
+                    foreach ((array) $matches[1] as $candidate_url) {
+                        $candidate_url = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
+                        if ($candidate_url === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate_url, $base_url)) {
+                            continue;
+                        }
+                        $media['image_url'] = $candidate_url;
+                        $media['image_source'] = 'img_tag_match';
+                        $media['image_tag'] = 'img';
+                        $media['image_attr'] = 'src';
+                        break;
+                    }
+                }
             }
         }
 
@@ -718,68 +794,6 @@ class Alpha_RSS_AI_Generator_Helper
                 $media['link_url'] = $link_candidate['link_url'];
                 $media['link_text'] = !empty($link_candidate['link_text']) ? $link_candidate['link_text'] : '';
                 $media['link_source'] = !empty($link_candidate['link_source']) ? $link_candidate['link_source'] : '';
-            }
-        }
-
-        if ($media['image_url'] === '') {
-            $image_attributes = array('data-img-url', 'data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-full', 'data-large');
-            foreach ($image_attributes as $attribute) {
-                if (!preg_match_all('/<' . '[^>]+\\b' . preg_quote($attribute, '/') . '=["\']([^"\']+)["\']/i', $html, $matches)) {
-                    continue;
-                }
-
-                foreach ((array) $matches[1] as $candidate_url) {
-                    $candidate_url = trim((string) $candidate_url);
-                    if ($candidate_url === '') {
-                        continue;
-                    }
-                    $candidate_url = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
-                    if ($candidate_url === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate_url, $base_url)) {
-                        continue;
-                    }
-                    $media['image_url'] = $candidate_url;
-                    $media['image_source'] = $attribute;
-                    $media['image_tag'] = 'attr';
-                    $media['image_attr'] = $attribute;
-                    break 2;
-                }
-            }
-        }
-
-        if ($media['image_url'] === '') {
-            foreach (array('srcset', 'data-srcset') as $attribute) {
-                if (!preg_match_all('/<' . '[^>]+\\b' . preg_quote($attribute, '/') . '=["\']([^"\']+)["\']/i', $html, $matches)) {
-                    continue;
-                }
-
-                foreach ((array) $matches[1] as $candidate_set) {
-                    $candidate_url = self::pick_best_srcset_url((string) $candidate_set);
-                    $candidate_url = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
-                    if ($candidate_url === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate_url, $base_url)) {
-                        continue;
-                    }
-                    $media['image_url'] = $candidate_url;
-                    $media['image_source'] = $attribute;
-                    $media['image_tag'] = 'source';
-                    $media['image_attr'] = $attribute;
-                    break 2;
-                }
-            }
-        }
-
-        if ($media['image_url'] === '') {
-            if (preg_match_all('/<img\b[^>]+src=["\']([^"\']+)["\']/i', $html, $matches)) {
-                foreach ((array) $matches[1] as $candidate_url) {
-                    $candidate_url = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
-                    if ($candidate_url === '' || Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($candidate_url, $base_url)) {
-                        continue;
-                    }
-                    $media['image_url'] = $candidate_url;
-                    $media['image_source'] = 'img_tag_match';
-                    $media['image_tag'] = 'img';
-                    $media['image_attr'] = 'src';
-                    break;
-                }
             }
         }
 
