@@ -1054,7 +1054,7 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
 
-        if ($max_images > 0 && count($images) < $max_images) {
+        if ($max_images > 0 && count($images) < $max_images && ($image_selector_class === '' || $image_scope_active || $matches_image_selector)) {
             $image_url = '';
             $image_attr = '';
             $candidate_attrs = array('data-img-url', 'data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-full', 'data-large', 'src', 'srcset', 'data-srcset');

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.3
+Version: 1.9.4
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -56,7 +56,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.3';
+        const VERSION = '1.9.4';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -844,9 +844,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Escolha apenas uma.\n"
                 . "Prioridade: 1. Nome da obra, 2. Nome da franquia, 3. Principal acontecimento/revelação.\n\n"
                 . "TAGS\n"
-                . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
-                . "Máximo 4 tags.\n"
-                . "Se a lista estiver vazia, retorne [].\n\n"
+                . "As tags devem ser geradas pela IA com base no conteúdo, com no máximo 4 termos.\n"
+                . "Se houver {{selected_tags}}, use-as apenas como referência opcional, nao como limite.\n"
+                . "Se a lista estiver vazia, ainda assim retorne tags coerentes com o conteúdo.\n\n"
                 . "PEXELS_TAGS\n"
                 . "Máximo 4 termos.\n"
                 . "Use apenas elementos visuais concretos (ex: godzilla, nova york, dragao, arranha ceu, monstro gigante, traje preto, etc.).\n"
@@ -3096,17 +3096,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "O título deve ser natural, fiel aos fatos e adequado ao idioma final.\n"
                 . "A slug deve ser curta, limpa e coerente com o título.\n"
                 . "A meta description deve ser objetiva e curta.\n"
-                . "As tags devem ter no máximo 4 termos.\n"
+                . "As tags devem ser geradas pela IA com base no conteúdo e ter no máximo 4 termos.\n"
                 . "Pexels_tags deve ser um array com no máximo 4 termos visuais, concretos e específicos, sem palavras genéricas.\n"
-                . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
-                . "Se a lista estiver vazia, retorne [].\n"
+                . "Se houver {{selected_tags}}, use-as apenas como referência opcional, nao como limite.\n"
+                . "Se a lista estiver vazia, ainda assim retorne tags coerentes com o conteúdo.\n"
                 . "Regras:\n"
                 . "- Foque em title, slug, excerpt, tags, meta description e focus keyword.\n"
                 . "- Não escreva o corpo do artigo nesta resposta.\n"
                 . "- Mantenha o tom factual e direto.\n"
                 . "- Se a fonte for pobre, simplifique em vez de inventar.\n"
                 . "- Se a pauta for entretenimento, mantenha nomes próprios, obras e entidades reais quando existirem no contexto.\n"
-                . "- Se houver seleção de tags no gerador, use apenas esses termos nas tags finais; se não houver seleção, retorne [] para tags.";
+                . "- Se houver tags sugeridas no contexto, use-as como apoio, mas priorize tags geradas pela IA a partir do conteúdo.";
         }
 
         public static function get_default_keyword_prompt_template()
@@ -3119,20 +3119,20 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "O título deve ser natural, fiel aos fatos e adequado ao idioma final.\n"
                 . "A slug final deve permanecer exatamente igual a {{final_slug}}.\n"
                 . "A meta description deve ser curta e objetiva.\n"
-                . "As tags devem ter no máximo 4 termos e, quando houver seleção no gerador, somente termos dessa lista.\n"
+                . "As tags devem ser geradas pela IA com base no conteúdo e ter no máximo 4 termos.\n"
                 . "Pexels_tags deve ser um array com no máximo 4 termos visuais, concretos e específicos, sem palavras genéricas.\n"
                 . "Se houver título na planilha, use-o como base principal; se não houver, crie um título forte e natural a partir da keyword.\n"
                 . "Keyword: {{keyword}}\n"
                 . "Slug final: {{final_slug}}\n"
                 . "Dados da linha: {{row_data}}\n"
-                . "Use apenas as tags fornecidas em {{selected_tags}}.\n"
-                . "Se a lista estiver vazia, retorne [].\n"
+                . "Se houver {{selected_tags}}, use-as apenas como referência opcional, nao como limite.\n"
+                . "Se a lista estiver vazia, ainda assim retorne tags coerentes com o conteúdo.\n"
                 . "Regras:\n"
                 . "- Preserve os fatos, mas reescreva do zero.\n"
                 . "- Não invente fatos fora da keyword, da URL e dos dados da linha.\n"
                 . "- Não use Markdown; use apenas JSON.\n"
                 . "- Se a pauta for entretenimento, mantenha nomes próprios e entidades reais quando existirem no contexto.\n"
-                . "- Se houver seleção de tags no gerador, use apenas esses termos nas tags finais; se não houver seleção, retorne [] para tags.";
+                . "- Se houver tags sugeridas no contexto, use-as como apoio, mas priorize tags geradas pela IA a partir do conteúdo.";
         }
 
         public static function prompt_template_looks_like_keyword_default($prompt_template)
@@ -6781,8 +6781,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $default_tags = json_decode((string) $generator['tags_default'], true);
             $default_tags = is_array($default_tags) ? array_values(array_filter(array_map('sanitize_text_field', $default_tags))) : array();
             $tags = array();
-            if (!empty($default_tags)) {
-                $tags = self::filter_tags_against_selected_pool(!empty($article['tags']) && is_array($article['tags']) ? $article['tags'] : array(), $default_tags, 4);
+            if (!empty($article['tags']) && is_array($article['tags'])) {
+                $tags = array_values(array_unique(array_filter(array_map('sanitize_text_field', $article['tags']))));
+            }
+            if (empty($tags) && !empty($default_tags)) {
+                $tags = array_values(array_unique(array_filter(array_map('sanitize_text_field', $default_tags))));
+            }
+            if (!empty($tags)) {
+                $tags = array_slice($tags, 0, 4);
             }
             if (!empty($tags) && taxonomy_exists('post_tag') && is_object_in_taxonomy(get_post_type($post_id), 'post_tag')) {
                 wp_set_post_terms($post_id, $tags, 'post_tag', false);

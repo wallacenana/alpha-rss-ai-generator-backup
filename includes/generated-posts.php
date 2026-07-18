@@ -14,6 +14,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             add_action('admin_menu', array($this, 'admin_menu'), 21);
             add_action('admin_post_arc_regenerate_generated_post', array($this, 'handle_regenerate_post'));
             add_action('admin_post_arc_delete_generated_post', array($this, 'handle_delete_post'));
+            add_action('admin_post_arc_bulk_generated_posts_action', array($this, 'handle_bulk_generated_posts_action'));
         }
 
         public function admin_menu()
@@ -615,6 +616,82 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $this->redirect_with_notice('Post enviado para a lixeira.', 'success');
         }
 
+        public function handle_bulk_generated_posts_action()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_die('Acesso negado.');
+            }
+
+            check_admin_referer('arc_bulk_generated_posts_action', 'arc_bulk_generated_posts_nonce');
+
+            $bulk_action = isset($_POST['bulk_action']) ? sanitize_key(wp_unslash($_POST['bulk_action'])) : '';
+            if (!in_array($bulk_action, array('delete', 'publish', 'draft'), true)) {
+                $this->redirect_with_notice('Ação em lote inválida.', 'error', $this->get_current_filters_from_request());
+            }
+
+            $raw_post_ids = isset($_POST['post_ids']) ? wp_unslash($_POST['post_ids']) : array();
+            if (!is_array($raw_post_ids)) {
+                $raw_post_ids = array($raw_post_ids);
+            }
+
+            $post_ids = array_values(array_unique(array_filter(array_map('intval', $raw_post_ids))));
+            if (empty($post_ids)) {
+                $this->redirect_with_notice('Selecione ao menos um post.', 'error', $this->get_current_filters_from_request());
+            }
+
+            $processed = 0;
+            $failed = 0;
+            $action_labels = array(
+                'delete' => 'enviados para a lixeira',
+                'publish' => 'publicados',
+                'draft' => 'colocados em rascunho',
+            );
+
+            foreach ($post_ids as $post_id) {
+                $post = get_post($post_id);
+                if (!$post || intval(get_post_meta($post_id, '_arc_generator_id', true)) <= 0) {
+                    $failed++;
+                    continue;
+                }
+
+                if ($bulk_action === 'delete') {
+                    $result = wp_trash_post($post_id);
+                    if (!$result) {
+                        $failed++;
+                        continue;
+                    }
+                } else {
+                    $result = wp_update_post(array(
+                        'ID' => $post_id,
+                        'post_status' => $bulk_action,
+                    ), true);
+
+                    if (is_wp_error($result)) {
+                        $failed++;
+                        continue;
+                    }
+                }
+
+                $processed++;
+            }
+
+            if ($processed <= 0) {
+                $this->redirect_with_notice('Nao foi possivel aplicar a acao em lote.', 'error', $this->get_current_filters_from_request());
+            }
+
+            $message = sprintf(
+                _n('%d post %s com sucesso.', '%d posts %s com sucesso.', $processed),
+                $processed,
+                isset($action_labels[$bulk_action]) ? $action_labels[$bulk_action] : 'atualizados'
+            );
+
+            if ($failed > 0) {
+                $message .= sprintf(' %d falharam.', $failed);
+            }
+
+            $this->redirect_with_notice($message, 'success', $this->get_current_filters_from_request());
+        }
+
         private function redirect_with_notice($message, $type = 'success', $extra = array())
         {
             $url = add_query_arg(array_merge(array(
@@ -643,6 +720,28 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 echo ' <a href="' . esc_url($link) . '" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center rounded-md border border-current/20 px-2 py-0.5 text-xs font-semibold text-inherit no-underline">Abrir conteudo</a>';
             }
             echo '</p></div>';
+        }
+
+        private function get_current_filters_from_request()
+        {
+            $filters = array();
+
+            $paged = self::get_request_param('paged', '');
+            if ($paged !== '') {
+                $filters['paged'] = max(1, intval($paged));
+            }
+
+            $search = self::get_request_param('s', '');
+            if ($search !== '') {
+                $filters['s'] = $search;
+            }
+
+            $generator_id = self::get_request_param('generator_id', '');
+            if ($generator_id !== '' && intval($generator_id) > 0) {
+                $filters['generator_id'] = intval($generator_id);
+            }
+
+            return $filters;
         }
 
         private static function render_post_status_badge($status)
@@ -752,10 +851,36 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                         </div>
                     </div>
 
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="arc-generated-posts-bulk-form" class="border-b border-slate-200 bg-slate-50 px-6 py-4">
+                        <?php wp_nonce_field('arc_bulk_generated_posts_action', 'arc_bulk_generated_posts_nonce'); ?>
+                        <input type="hidden" name="action" value="arc_bulk_generated_posts_action" />
+                        <input type="hidden" name="paged" value="<?php echo esc_attr($paged); ?>" />
+                        <input type="hidden" name="s" value="<?php echo esc_attr($search); ?>" />
+                        <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator_id); ?>" />
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <div class="min-w-0 flex-1">
+                                <label class="mb-1 block text-[13px] font-medium text-slate-700">Ações em lote</label>
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                    <select name="bulk_action" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:max-w-xs">
+                                        <option value="">Selecione uma ação</option>
+                                        <option value="publish">Publicar</option>
+                                        <option value="draft">Colocar em rascunho</option>
+                                        <option value="delete">Excluir</option>
+                                    </select>
+                                    <div class="text-[13px] text-slate-500">Marque os posts desejados na tabela para aplicar a ação em massa.</div>
+                                </div>
+                            </div>
+                            <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Aplicar</button>
+                        </div>
+                    </form>
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200">
                             <thead class="bg-slate-50">
                                 <tr class="text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    <th class="w-12 px-4 py-3">
+                                        <input type="checkbox" class="arc-generated-posts-select-all h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" data-arc-select-all-generated-posts />
+                                    </th>
                                     <th class="px-6 py-3">Post</th>
                                     <th class="px-6 py-3">Gerador</th>
                                     <th class="px-6 py-3">Origem</th>
@@ -785,6 +910,9 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                         $can_regenerate = $generator_id_row > 0 && !empty($generator_name);
                                         ?>
                                         <tr class="align-top">
+                                            <td class="px-4 py-4 align-top">
+                                                <input type="checkbox" name="post_ids[]" value="<?php echo esc_attr($post_id); ?>" form="arc-generated-posts-bulk-form" class="arc-generated-posts-checkbox mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                            </td>
                                             <td class="px-6 py-4">
                                                 <div class="text-sm font-semibold leading-5 text-slate-950"><?php echo esc_html(get_the_title($post_id)); ?></div>
                                                 <div class="mt-1 text-[11px] text-slate-500">#<?php echo esc_html($post_id); ?> · <?php echo esc_html(get_post_type($post_id)); ?></div>
@@ -865,7 +993,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                                     <?php wp_reset_postdata(); ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="6" class="px-6 py-12 text-center text-sm text-slate-500">Nenhum post gerado encontrado.</td>
+                                        <td colspan="7" class="px-6 py-12 text-center text-sm text-slate-500">Nenhum post gerado encontrado.</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -932,6 +1060,44 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     <?php endif; ?>
                 </section>
             </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var master = document.querySelector('[data-arc-select-all-generated-posts]');
+                    if (!master) {
+                        return;
+                    }
+
+                    var syncMasterState = function () {
+                        var boxes = Array.prototype.slice.call(document.querySelectorAll('.arc-generated-posts-checkbox'));
+                        if (!boxes.length) {
+                            master.checked = false;
+                            master.indeterminate = false;
+                            return;
+                        }
+
+                        var checkedCount = boxes.filter(function (box) {
+                            return box.checked;
+                        }).length;
+
+                        master.checked = checkedCount === boxes.length;
+                        master.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+                    };
+
+                    master.addEventListener('change', function () {
+                        var boxes = Array.prototype.slice.call(document.querySelectorAll('.arc-generated-posts-checkbox'));
+                        boxes.forEach(function (box) {
+                            box.checked = master.checked;
+                        });
+                        syncMasterState();
+                    });
+
+                    document.addEventListener('change', function (event) {
+                        if (event.target && event.target.classList && event.target.classList.contains('arc-generated-posts-checkbox')) {
+                            syncMasterState();
+                        }
+                    });
+                });
+            </script>
             <?php
         }
     }
