@@ -7471,6 +7471,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $source_video_url
             );
 
+            $article['content_html'] = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html($article['content_html']);
+
             $post_data = self::build_post_data($generator, $article, $item);
             $post_id = wp_insert_post($post_data, true);
             if (is_wp_error($post_id)) {
@@ -7501,6 +7503,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     ),
                     $existing_image_map
                 );
+                $article['content_html'] = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html($article['content_html']);
                 if ($article['content_html'] !== '') {
                     $update_content = wp_update_post(array(
                         'ID' => $post_id,

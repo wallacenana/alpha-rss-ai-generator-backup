@@ -189,6 +189,174 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($text);
     }
 
+    public static function strip_source_page_noise_from_html($html, $content_selector = '')
+    {
+        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+
+        $previous_state = libxml_use_internal_errors(true);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = @$dom->loadHTML('<?xml encoding="UTF-8"><div id="arc-source-root">' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous_state);
+
+        if (!$loaded) {
+            $patterns = array(
+                '~<!--.*?-->~is',
+                '~<head\b[^>]*>.*?</head>~is',
+                '~<script\b[^>]*>.*?</script>~is',
+                '~<style\b[^>]*>.*?</style>~is',
+                '~<header\b[^>]*>.*?</header>~is',
+                '~<footer\b[^>]*>.*?</footer>~is',
+                '~<nav\b[^>]*>.*?</nav>~is',
+                '~<aside\b[^>]*>.*?</aside>~is',
+                '~<meta\b[^>]*>~is',
+                '~<link\b[^>]*>~is',
+            );
+
+            return trim(preg_replace($patterns, '', $html));
+        }
+
+        $xpath = new DOMXPath($dom);
+        $remove_queries = array(
+            '//comment()',
+            '//head',
+            '//script',
+            '//style',
+            '//header',
+            '//footer',
+            '//nav',
+            '//aside',
+            '//meta',
+            '//link',
+        );
+        foreach ($remove_queries as $query) {
+            $nodes = $xpath->query($query);
+            if (!$nodes || $nodes->length === 0) {
+                continue;
+            }
+
+            $to_remove = array();
+            foreach ($nodes as $node) {
+                if ($node instanceof DOMNode) {
+                    $to_remove[] = $node;
+                }
+            }
+
+            foreach (array_reverse($to_remove) as $node) {
+                if ($node->parentNode) {
+                    $node->parentNode->removeChild($node);
+                }
+            }
+        }
+
+        $root = $dom->getElementById('arc-source-root');
+        if (!$root) {
+            return trim($dom->saveHTML());
+        }
+
+        $output = '';
+        foreach ($root->childNodes as $child) {
+            $output .= $dom->saveHTML($child);
+        }
+
+        return trim($output);
+    }
+
+    public static function normalize_prompt_context_html($html, $content_selector = '')
+    {
+        $html = self::strip_source_page_noise_from_html($html, $content_selector);
+        $html = preg_replace('~\s+~u', ' ', (string) $html);
+        $html = trim((string) $html);
+        return $html;
+    }
+
+    public static function ensure_content_starts_with_paragraph_html($content)
+    {
+        $content = trim((string) $content);
+        if ($content === '') {
+            return '';
+        }
+
+        if (strpos($content, '<!-- wp:') !== false && function_exists('parse_blocks') && function_exists('serialize_blocks')) {
+            $blocks = parse_blocks($content);
+            if (empty($blocks)) {
+                return $content;
+            }
+
+            $paragraph_index = -1;
+            foreach ($blocks as $index => $block) {
+                if (!empty($block['blockName']) && $block['blockName'] === 'core/paragraph') {
+                    $paragraph_index = intval($index);
+                    break;
+                }
+            }
+
+            if ($paragraph_index <= 0) {
+                return $content;
+            }
+
+            $paragraph_block = $blocks[$paragraph_index];
+            array_splice($blocks, $paragraph_index, 1);
+            array_unshift($blocks, $paragraph_block);
+
+            return trim(serialize_blocks($blocks));
+        }
+
+        $previous_state = libxml_use_internal_errors(true);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = @$dom->loadHTML('<?xml encoding="UTF-8"><div id="arc-content-root">' . $content . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous_state);
+
+        if (!$loaded) {
+            return $content;
+        }
+
+        $root = $dom->getElementById('arc-content-root');
+        if (!$root || !$root->hasChildNodes()) {
+            return '';
+        }
+
+        $paragraph_node = null;
+        foreach ($root->childNodes as $child) {
+            if ($child instanceof DOMElement && strtolower((string) $child->nodeName) === 'p') {
+                $paragraph_node = $child;
+                break;
+            }
+        }
+
+        if (!$paragraph_node) {
+            $output = '';
+            foreach ($root->childNodes as $child) {
+                $output .= $dom->saveHTML($child);
+            }
+
+            return trim($output);
+        }
+
+        if ($root->firstChild === $paragraph_node) {
+            $output = '';
+            foreach ($root->childNodes as $child) {
+                $output .= $dom->saveHTML($child);
+            }
+
+            return trim($output);
+        }
+
+        $root->insertBefore($paragraph_node, $root->firstChild);
+
+        $output = '';
+        foreach ($root->childNodes as $child) {
+            $output .= $dom->saveHTML($child);
+        }
+
+        return trim($output);
+    }
+
     public static function normalize_plain_text($text)
     {
         return self::clean_source_text($text);
@@ -480,7 +648,7 @@ class Alpha_RSS_AI_Generator_Helper
 
     public static function extract_html_from_html_using_selector($html, $selector)
     {
-        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        $html = self::strip_source_page_noise_from_html($html, $selector);
         $selector = trim((string) $selector);
         if ($html === '' || $selector === '') {
             return '';
@@ -531,7 +699,7 @@ class Alpha_RSS_AI_Generator_Helper
 
     public static function extract_html_from_html_with_fallbacks($html, $selector = '')
     {
-        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        $html = self::strip_source_page_noise_from_html($html, $selector);
         if ($html === '') {
             return '';
         }
@@ -672,7 +840,7 @@ class Alpha_RSS_AI_Generator_Helper
 
     public static function extract_media_from_html($html, $base_url = '', $video_selector_class = '', $image_selector_class = '', $link_selector_class = '')
     {
-        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        $html = self::strip_source_page_noise_from_html($html);
         $media = array(
             'image_url' => '',
             'image_source' => '',
@@ -841,7 +1009,7 @@ class Alpha_RSS_AI_Generator_Helper
             return $empty_media;
         }
 
-        $html = self::fetch_source_page_html($url, 5, 'source_page_media');
+        $html = self::strip_source_page_noise_from_html(self::fetch_source_page_html($url, 5, 'source_page_media'));
         if ($html === '') {
             return $empty_media;
         }
@@ -929,7 +1097,7 @@ class Alpha_RSS_AI_Generator_Helper
 
     public static function extract_page_outline_from_html($html, $base_url = '', $max_sections = 6, $max_links_per_section = 5, $max_images_per_section = 3, $image_selector_class = '', $link_selector_class = '', $content_selector = '')
     {
-        $html = html_entity_decode((string) $html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+        $html = self::strip_source_page_noise_from_html($html, $content_selector);
         if ($html === '') {
             return array();
         }
@@ -2119,45 +2287,6 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
-        if (empty($settings['semantic_dedup_enabled'])) {
-            return 0;
-        }
-
-        $threshold = isset($settings['semantic_dedup_threshold']) ? max(0.0, min(0.82, floatval($settings['semantic_dedup_threshold']))) : 0.72;
-
-        $candidate_titles = array();
-        $candidate_attachment_ids = array();
-        foreach ($existing_image_map as $existing_key => $existing_value) {
-            $candidate_title = self::normalize_prompt_context_text((string) $existing_key);
-            $attachment_id = intval($existing_value);
-            if ($candidate_title === '' || $attachment_id <= 0) {
-                continue;
-            }
-
-            $candidate_titles[] = $candidate_title;
-            $candidate_attachment_ids[] = $attachment_id;
-        }
-
-        if (empty($candidate_titles)) {
-            return 0;
-        }
-
-        $best_score = 0.0;
-        $best_attachment_id = 0;
-        foreach ($candidate_attachment_ids as $offset => $attachment_id) {
-            $candidate_title = isset($candidate_titles[$offset]) ? (string) $candidate_titles[$offset] : '';
-            $semantic_score = Alpha_RSS_AI_Generator::calculate_semantic_title_fallback_score($section_title, $candidate_title);
-            if ($semantic_score > $best_score) {
-                $best_score = $semantic_score;
-                $best_attachment_id = $attachment_id;
-            }
-        }
-
-        if ($best_attachment_id > 0 && $best_score >= $threshold) {
-            return $best_attachment_id;
-        }
-
         return 0;
     }
 
@@ -2495,38 +2624,18 @@ class Alpha_RSS_AI_Generator_Helper
                 $heading_title = self::extract_block_heading_text($block);
                 $matched_section = null;
                 $matched_index = -1;
-                $match_mode = 'sequence';
-                $match_score = 100;
+                $match_mode = 'exact';
+                $match_score = 0;
 
                 if ($heading_title !== '') {
                     $match = self::find_best_outline_section_match($outline_sections, $heading_title, $used_section_indexes, $generator, $context);
                     $match_score = !empty($match['score']) ? intval($match['score']) : 0;
-                    if (!empty($match['section']) && $match_score >= 70) {
+                    if (!empty($match['section']) && $match_score >= 100) {
                         $matched_section = $match['section'];
                         $matched_index = intval($match['index']);
                         if (!empty($match['mode'])) {
                             $match_mode = sanitize_key((string) $match['mode']);
                         }
-                    }
-                }
-
-                if ($matched_section === null) {
-                    $semantic_match = self::find_best_outline_section_semantic_match($heading_title, $outline_sections, $used_section_indexes);
-                    if (!empty($semantic_match) && !empty($semantic_match['section']) && isset($semantic_match['section']['h2'])) {
-                        $matched_section = $semantic_match['section'];
-                        $matched_index = intval($semantic_match['index']);
-                        $match_mode = !empty($semantic_match['mode']) ? sanitize_key((string) $semantic_match['mode']) : 'embedding';
-                        $match_score = !empty($semantic_match['score']) ? (int) round(floatval($semantic_match['score']) * 100) : 0;
-                    }
-                }
-
-                if ($matched_section === null && $allow_sequence_fallback && isset($outline_sections[$section_index]) && is_array($outline_sections[$section_index])) {
-                    $sequence_section = $outline_sections[$section_index];
-                    if (!in_array($section_index, $used_section_indexes, true)) {
-                        $matched_section = $sequence_section;
-                        $matched_index = intval($section_index);
-                        $match_mode = 'sequence';
-                        $match_score = 100;
                     }
                 }
 
@@ -2971,8 +3080,7 @@ class Alpha_RSS_AI_Generator_Helper
         $source_page_title = isset($item['source_page_title']) ? self::normalize_prompt_context_text($item['source_page_title']) : '';
         $source_page_excerpt = isset($item['source_page_excerpt']) ? self::normalize_prompt_context_text($item['source_page_excerpt']) : '';
         $source_page_content = isset($item['source_page_content']) ? self::normalize_prompt_context_text($item['source_page_content']) : '';
-        $source_page_html = isset($item['source_page_html']) ? trim((string) $item['source_page_html']) : '';
-        $source_page_content_html = isset($item['source_page_content_html']) ? trim((string) $item['source_page_content_html']) : '';
+        $source_page_content_html = isset($item['source_page_content_html']) ? self::normalize_prompt_context_html((string) $item['source_page_content_html']) : '';
         $site_name = self::normalize_prompt_context_text(get_bloginfo('name'));
         $generation_language = !empty($generator['generation_language'])
             ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language'])
@@ -3003,11 +3111,8 @@ class Alpha_RSS_AI_Generator_Helper
         if ($source_page_content !== '') {
             $lines[] = 'Conteudo da pagina de origem: ' . $source_page_content;
         }
-        if ($source_page_html !== '') {
-            $lines[] = 'HTML completo da pagina de origem: ' . $source_page_html;
-        }
-        if ($source_page_content_html !== '' && ($source_page_html === '' || $source_page_content_html !== $source_page_html)) {
-            $lines[] = 'Conteudo bruto em HTML da pagina de origem: ' . $source_page_content_html;
+        if ($source_page_content_html !== '') {
+            $lines[] = 'Conteudo em HTML limpo da pagina de origem: ' . $source_page_content_html;
         }
         if ($site_name !== '') {
             $lines[] = 'Site: ' . $site_name;
@@ -3210,7 +3315,7 @@ class Alpha_RSS_AI_Generator_Helper
         $source_content_html = '';
         foreach (array('source_page_content_html', 'content_html', 'source_page_html') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
-                $source_content_html = trim((string) $item[$candidate_key]);
+                $source_content_html = self::normalize_prompt_context_html((string) $item[$candidate_key]);
                 break;
             }
         }
@@ -3512,7 +3617,6 @@ class Alpha_RSS_AI_Generator_Helper
             'Titulo da pagina de origem: {{source_page_title}}',
             'Resumo da pagina de origem: {{source_page_excerpt}}',
             'Conteudo da pagina de origem: {{source_page_content}}',
-            'HTML completo da pagina de origem: {{source_page_html}}',
             'Resumo da fonte: {{source_excerpt}}',
             'Conteúdo da fonte: {{source_content}}',
             'Slug final: {{generated_slug}}',
@@ -3538,7 +3642,7 @@ class Alpha_RSS_AI_Generator_Helper
             '{{source_page_title}}' => isset($item['source_page_title']) ? $item['source_page_title'] : '',
             '{{source_page_excerpt}}' => isset($item['source_page_excerpt']) ? $item['source_page_excerpt'] : '',
             '{{source_page_content}}' => isset($item['source_page_content']) ? $item['source_page_content'] : '',
-            '{{source_page_html}}' => isset($item['source_page_html']) ? $item['source_page_html'] : '',
+            '{{source_page_html}}' => isset($item['source_page_html']) ? self::normalize_prompt_context_html((string) $item['source_page_html']) : '',
             '{{source_page_outline}}' => isset($item['source_page_outline']) ? $item['source_page_outline'] : '',
             '{{source_excerpt}}' => $item['excerpt'],
             '{{source_content}}' => $item['content'],

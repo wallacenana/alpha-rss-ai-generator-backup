@@ -550,6 +550,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 );
             }
 
+            $content_html = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html($content_html);
+
             $update_result = wp_update_post(array(
                 'ID' => intval($post_id),
                 'post_title' => $title,

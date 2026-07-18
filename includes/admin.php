@@ -3842,6 +3842,12 @@ class Alpha_RSS_AI_Generator_Admin
         if (empty($_GET['arc_notice'])) {
             return;
         }
+
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        if (in_array($page, array('alpha-rss-ai-generated-posts', 'alpha-rss-ai-link-suggestions', 'alpha-rss-ai-content-plans'), true)) {
+            return;
+        }
+
         $type = isset($_GET['arc_notice_type']) ? sanitize_key(wp_unslash($_GET['arc_notice_type'])) : 'success';
         $class = 'notice notice-' . ($type === 'error' ? 'error' : 'success');
         $message = sanitize_text_field(wp_unslash($_GET['arc_notice']));
