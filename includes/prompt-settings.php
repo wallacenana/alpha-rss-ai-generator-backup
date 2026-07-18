@@ -131,13 +131,13 @@ class Alpha_RSS_AI_Prompt_Settings
 
         $storage = Alpha_RSS_AI_Generator::get_prompt_models_storage();
         $raw_models = array();
-        if (isset($raw['prompt_models']) && is_array($raw['prompt_models'])) {
-            $raw_models = wp_unslash($raw['prompt_models']);
-        } elseif (isset($raw['prompt_models_json']) && is_string($raw['prompt_models_json']) && trim((string) $raw['prompt_models_json']) !== '') {
+        if (isset($raw['prompt_models_json']) && is_string($raw['prompt_models_json']) && trim((string) $raw['prompt_models_json']) !== '') {
             $decoded = json_decode(wp_unslash((string) $raw['prompt_models_json']), true);
             if (is_array($decoded)) {
                 $raw_models = $decoded;
             }
+        } elseif (isset($raw['prompt_models']) && is_array($raw['prompt_models'])) {
+            $raw_models = wp_unslash($raw['prompt_models']);
         }
 
         $models = self::sanitize_prompt_models_from_request($raw_models);
@@ -245,10 +245,11 @@ class Alpha_RSS_AI_Prompt_Settings
                     </div>
                 </div>
 
-                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="p-6">
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="arc-prompt-settings-form p-6">
                     <?php wp_nonce_field('arc_save_prompt_settings', 'arc_prompt_settings_nonce'); ?>
                     <input type="hidden" name="action" value="arc_save_prompt_settings" />
                     <input type="hidden" name="prompt_models_migrated_from_generator_id" value="<?php echo esc_attr(isset($storage['prompt_models_migrated_from_generator_id']) ? intval($storage['prompt_models_migrated_from_generator_id']) : 0); ?>" />
+                    <textarea name="prompt_models_json" data-prompt-models-json class="hidden" aria-hidden="true" tabindex="-1"></textarea>
 
                     <div class="space-y-4">
                         <?php foreach ($prompt_models as $prompt_model): ?>
@@ -257,7 +258,15 @@ class Alpha_RSS_AI_Prompt_Settings
                             $prompt_model_name = isset($prompt_model['name']) ? (string) $prompt_model['name'] : '';
                             $prompt_model_outline_key = isset($prompt_model['outline_model_key']) ? (string) $prompt_model['outline_model_key'] : '';
                             ?>
-                            <details class="group rounded-2xl border border-slate-200 bg-slate-50" <?php echo $prompt_model_key === 'lista' ? 'open' : ''; ?>>
+                            <details
+                                class="group rounded-2xl border border-slate-200 bg-slate-50"
+                                data-prompt-model-card
+                                data-prompt-model-key="<?php echo esc_attr($prompt_model_key); ?>"
+                                data-prompt-model-name="<?php echo esc_attr($prompt_model_name); ?>"
+                                data-prompt-model-description="<?php echo esc_attr(isset($prompt_model['description']) ? (string) $prompt_model['description'] : ''); ?>"
+                                data-prompt-outline-key="<?php echo esc_attr($prompt_model_outline_key); ?>"
+                                <?php echo $prompt_model_key === 'lista' ? 'open' : ''; ?>
+                            >
                                 <summary class="flex cursor-pointer list-none items-center justify-between p-4 gap-4 font-medium text-slate-800">
                                     <span><?php echo esc_html($prompt_model_name); ?></span>
                                     <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
@@ -266,11 +275,11 @@ class Alpha_RSS_AI_Prompt_Settings
                                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Prompt SEO</label>
-                                            <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][seo_prompt_template]" rows="20" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['seo_prompt_template']) ? $prompt_model['seo_prompt_template'] : ''); ?></textarea>
+                                            <textarea data-prompt-seo-template name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][seo_prompt_template]" rows="20" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['seo_prompt_template']) ? $prompt_model['seo_prompt_template'] : ''); ?></textarea>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Prompt do conteúdo</label>
-                                            <textarea name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][content_prompt_template]" rows="20" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['content_prompt_template']) ? $prompt_model['content_prompt_template'] : ''); ?></textarea>
+                                            <textarea data-prompt-content-template name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][content_prompt_template]" rows="20" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['content_prompt_template']) ? $prompt_model['content_prompt_template'] : ''); ?></textarea>
                                         </div>
                                     </div>
                                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -323,6 +332,8 @@ class Alpha_RSS_AI_Prompt_Settings
         </div>
         <script>
             document.addEventListener('DOMContentLoaded', function() {
+                var form = document.querySelector('form.arc-prompt-settings-form');
+                var serializedField = document.querySelector('[data-prompt-models-json]');
                 document.querySelectorAll('[data-outline-block]').forEach(function(block) {
                     var toggleButton = block.querySelector('[data-outline-toggle]');
                     var editButton = block.querySelector('[data-outline-edit]');
@@ -365,6 +376,37 @@ class Alpha_RSS_AI_Prompt_Settings
                         }
                     });
                 });
+
+                if (form && serializedField) {
+                    form.addEventListener('submit', function() {
+                        var models = [];
+                        document.querySelectorAll('details[data-prompt-model-card]').forEach(function(card) {
+                            var keyInput = card.getAttribute('data-prompt-model-key') || '';
+                            var nameInput = card.getAttribute('data-prompt-model-name') || '';
+                            var descriptionInput = card.getAttribute('data-prompt-model-description') || '';
+                            var outlineKeyInput = card.getAttribute('data-prompt-outline-key') || '';
+                            var outlineTextarea = card.querySelector('[data-outline-textarea]');
+                            var seoTextarea = card.querySelector('[data-prompt-seo-template]');
+                            var contentTextarea = card.querySelector('[data-prompt-content-template]');
+
+                            if (keyInput === '' || nameInput === '' || outlineKeyInput === '' || !outlineTextarea || !seoTextarea || !contentTextarea) {
+                                return;
+                            }
+
+                            models.push({
+                                key: keyInput,
+                                name: nameInput,
+                                description: descriptionInput,
+                                outline_model_key: outlineKeyInput,
+                                outline_prompt_template: outlineTextarea.value || '',
+                                seo_prompt_template: seoTextarea.value || '',
+                                content_prompt_template: contentTextarea.value || ''
+                            });
+                        });
+
+                        serializedField.value = JSON.stringify(models);
+                    });
+                }
             });
         </script>
 <?php
