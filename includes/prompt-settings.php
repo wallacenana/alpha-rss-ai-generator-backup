@@ -19,8 +19,8 @@ class Alpha_RSS_AI_Prompt_Settings
             return;
         }
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
-        if (!empty($settings['prompt_models_initialized'])) {
+        $storage = Alpha_RSS_AI_Generator::get_prompt_models_storage();
+        if (!empty($storage['prompt_models_initialized'])) {
             return;
         }
 
@@ -48,10 +48,7 @@ class Alpha_RSS_AI_Prompt_Settings
             $prompt_models = Alpha_RSS_AI_Generator::get_default_prompt_models();
         }
 
-        $settings['prompt_models_json'] = wp_json_encode($prompt_models, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $settings['prompt_models_initialized'] = 1;
-        $settings['prompt_models_migrated_from_generator_id'] = $source_generator_id;
-        update_option(Alpha_RSS_AI_Generator::OPTION_KEY, $settings, false);
+        Alpha_RSS_AI_Generator::save_prompt_models_storage($prompt_models, $source_generator_id);
     }
 
     public function admin_menu()
@@ -68,13 +65,23 @@ class Alpha_RSS_AI_Prompt_Settings
 
     public static function get_prompt_models()
     {
-        $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+        $storage = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_prompt_models_storage() : array();
         $prompt_models = array();
 
-        if (!empty($settings['prompt_models_json'])) {
-            $decoded = json_decode((string) $settings['prompt_models_json'], true);
+        if (!empty($storage['prompt_models_json'])) {
+            $decoded = json_decode((string) $storage['prompt_models_json'], true);
             if (is_array($decoded)) {
                 $prompt_models = $decoded;
+            }
+        }
+
+        if (empty($prompt_models) && class_exists('Alpha_RSS_AI_Generator')) {
+            $settings = Alpha_RSS_AI_Generator::get_settings();
+            if (!empty($settings['prompt_models_json'])) {
+                $decoded = json_decode((string) $settings['prompt_models_json'], true);
+                if (is_array($decoded)) {
+                    $prompt_models = $decoded;
+                }
             }
         }
 
@@ -122,7 +129,7 @@ class Alpha_RSS_AI_Prompt_Settings
             return new WP_Error('arc_prompt_settings_unavailable', 'O gerador ainda nao esta carregado.');
         }
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
+        $storage = Alpha_RSS_AI_Generator::get_prompt_models_storage();
         $raw_models = array();
         if (isset($raw['prompt_models']) && is_array($raw['prompt_models'])) {
             $raw_models = wp_unslash($raw['prompt_models']);
@@ -138,11 +145,12 @@ class Alpha_RSS_AI_Prompt_Settings
             $models = Alpha_RSS_AI_Generator::get_default_prompt_models();
         }
 
-        $settings['prompt_models_json'] = wp_json_encode($models, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $settings['prompt_models_initialized'] = 1;
-        $settings['prompt_models_migrated_from_generator_id'] = isset($raw['prompt_models_migrated_from_generator_id']) ? max(0, intval($raw['prompt_models_migrated_from_generator_id'])) : (!empty($settings['prompt_models_migrated_from_generator_id']) ? intval($settings['prompt_models_migrated_from_generator_id']) : 0);
+        $migrated_from_generator_id = isset($raw['prompt_models_migrated_from_generator_id']) ? max(0, intval($raw['prompt_models_migrated_from_generator_id'])) : 0;
+        if ($migrated_from_generator_id <= 0 && !empty($storage['prompt_models_migrated_from_generator_id'])) {
+            $migrated_from_generator_id = intval($storage['prompt_models_migrated_from_generator_id']);
+        }
 
-        update_option(Alpha_RSS_AI_Generator::OPTION_KEY, $settings, false);
+        Alpha_RSS_AI_Generator::save_prompt_models_storage($models, $migrated_from_generator_id);
 
         return $models;
     }
@@ -177,11 +185,7 @@ class Alpha_RSS_AI_Prompt_Settings
             wp_die('O gerador ainda nao esta carregado.');
         }
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
-        $settings['prompt_models_json'] = wp_json_encode(Alpha_RSS_AI_Generator::get_default_prompt_models(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $settings['prompt_models_initialized'] = 1;
-        $settings['prompt_models_migrated_from_generator_id'] = 0;
-        update_option(Alpha_RSS_AI_Generator::OPTION_KEY, $settings, false);
+        Alpha_RSS_AI_Generator::save_prompt_models_storage(Alpha_RSS_AI_Generator::get_default_prompt_models(), 0);
 
         Alpha_RSS_AI_Generator::redirect_with_notice('Prompts restaurados para o padrão.', 'success', array(
             'page' => 'alpha-rss-ai-prompts',
@@ -200,7 +204,7 @@ class Alpha_RSS_AI_Prompt_Settings
 
         self::maybe_migrate_prompt_settings();
 
-        $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+        $storage = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_prompt_models_storage() : array();
         $prompt_models = self::get_prompt_models();
         $outline_models = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_outline_models() : array();
 
@@ -244,7 +248,7 @@ class Alpha_RSS_AI_Prompt_Settings
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="p-6">
                     <?php wp_nonce_field('arc_save_prompt_settings', 'arc_prompt_settings_nonce'); ?>
                     <input type="hidden" name="action" value="arc_save_prompt_settings" />
-                    <input type="hidden" name="prompt_models_migrated_from_generator_id" value="<?php echo esc_attr(isset($settings['prompt_models_migrated_from_generator_id']) ? intval($settings['prompt_models_migrated_from_generator_id']) : 0); ?>" />
+                    <input type="hidden" name="prompt_models_migrated_from_generator_id" value="<?php echo esc_attr(isset($storage['prompt_models_migrated_from_generator_id']) ? intval($storage['prompt_models_migrated_from_generator_id']) : 0); ?>" />
 
                     <div class="space-y-4">
                         <?php foreach ($prompt_models as $prompt_model): ?>

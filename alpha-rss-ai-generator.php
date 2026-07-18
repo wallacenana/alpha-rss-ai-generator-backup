@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.1
+Version: 1.9.2
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -56,10 +56,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.1';
+        const VERSION = '1.9.2';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
+        const OPTION_KEY_PROMPT_MODELS = 'alpha_rss_ai_prompt_models';
         const OPTION_KEY_OUTLINE_MODELS = 'alpha_rss_ai_outline_models';
         const TABLE_SUFFIX_GENERATORS = 'arc_generators';
         const TABLE_SUFFIX_RUNS = 'arc_runs';
@@ -974,6 +975,32 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return array_values($normalized);
         }
 
+        public static function get_prompt_models_storage()
+        {
+            $storage = get_option(self::OPTION_KEY_PROMPT_MODELS, array());
+            return is_array($storage) ? $storage : array();
+        }
+
+        public static function save_prompt_models_storage($models, $migrated_from_generator_id = 0)
+        {
+            $normalized_models = self::normalize_prompt_models($models);
+            $payload = array(
+                'prompt_models_json' => wp_json_encode($normalized_models, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'prompt_models_initialized' => 1,
+                'prompt_models_migrated_from_generator_id' => max(0, intval($migrated_from_generator_id)),
+            );
+
+            update_option(self::OPTION_KEY_PROMPT_MODELS, $payload, false);
+
+            $settings = self::get_settings();
+            $settings['prompt_models_json'] = $payload['prompt_models_json'];
+            $settings['prompt_models_initialized'] = 1;
+            $settings['prompt_models_migrated_from_generator_id'] = $payload['prompt_models_migrated_from_generator_id'];
+            update_option(self::OPTION_KEY, $settings, false);
+
+            return $payload;
+        }
+
         public static function get_default_prompt_model_key()
         {
             return '';
@@ -1061,11 +1088,21 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $generator = is_array($generator) ? $generator : array();
             $models = array();
 
-            $settings = self::get_settings();
-            if (!empty($settings['prompt_models_json'])) {
-                $decoded = json_decode((string) $settings['prompt_models_json'], true);
+            $prompt_models_settings = self::get_prompt_models_storage();
+            if (!empty($prompt_models_settings['prompt_models_json'])) {
+                $decoded = json_decode((string) $prompt_models_settings['prompt_models_json'], true);
                 if (is_array($decoded)) {
                     $models = $decoded;
+                }
+            }
+
+            if (empty($models)) {
+                $settings = self::get_settings();
+                if (!empty($settings['prompt_models_json'])) {
+                    $decoded = json_decode((string) $settings['prompt_models_json'], true);
+                    if (is_array($decoded)) {
+                        $models = $decoded;
+                    }
                 }
             }
 
