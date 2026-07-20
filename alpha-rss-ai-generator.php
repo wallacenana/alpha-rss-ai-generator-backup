@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.6
+Version: 1.9.7
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
