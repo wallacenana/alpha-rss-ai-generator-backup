@@ -865,7 +865,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 '/^\s*Conteudo da fonte:.*(?:\r?\n|$)/mi',
                 '/^\s*Titulo do item:.*(?:\r?\n|$)/mi',
                 '/^\s*Link do item:.*(?:\r?\n|$)/mi',
+                '/^\s*T[ií]tulo da fonte:.*(?:\r?\n|$)/mi',
                 '/^\s*Titulo da origem:.*(?:\r?\n|$)/mi',
+                '/^\s*T[ií]tulo da origem:.*(?:\r?\n|$)/mi',
+                '/^\s*T[ií]tulo da pagina de origem:.*(?:\r?\n|$)/mi',
+                '/^\s*T[ií]tulo da p[aá]gina de origem:.*(?:\r?\n|$)/mi',
                 '/^\s*URL de origem:.*(?:\r?\n|$)/mi',
                 '/^\s*Site:.*(?:\r?\n|$)/mi',
                 '/^\s*Gerador:.*(?:\r?\n|$)/mi',
@@ -3125,14 +3129,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Keyword: {{keyword}}\n"
                 . "Slug final: {{final_slug}}\n"
                 . "Dados da linha: {{row_data}}\n"
-                . "Se houver {{selected_tags}}, use-as apenas como referência opcional, nao como limite.\n"
-                . "Se a lista estiver vazia, ainda assim retorne tags coerentes com o conteúdo.\n"
                 . "Regras:\n"
                 . "- Preserve os fatos, mas reescreva do zero.\n"
                 . "- Não invente fatos fora da keyword, da URL e dos dados da linha.\n"
                 . "- Não use Markdown; use apenas JSON.\n"
                 . "- Se a pauta for entretenimento, mantenha nomes próprios e entidades reais quando existirem no contexto.\n"
-                . "- Se houver tags sugeridas no contexto, use-as como apoio, mas priorize tags geradas pela IA a partir do conteúdo.";
+                . "- Gere tags apenas a partir do conteúdo e da keyword.";
         }
 
         public static function prompt_template_looks_like_keyword_default($prompt_template)
@@ -3166,13 +3168,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Use o focus keyword já definido: {{generated_focus_keyword}}.\n"
                 . "Use a meta description já definida: {{generated_meta_description}}.\n"
                 . "Use a fonte apenas como base factual.\n"
-                . "Conteudo da fonte: {{source_content}}\n"
                 . "Resumo da fonte: {{source_excerpt}}\n"
                 . "URL de origem: {{source_url}}\n"
-                . "Titulo da origem: {{source_title}}\n"
                 . "Keyword: {{keyword}}\n"
-                . "Slug final: {{generated_slug}}\n"
-                . "Palavras-chave selecionadas: {{selected_tags}}\n";
+                . "Slug final: {{generated_slug}}\n";
         }
 
         public static function get_default_content_prompt_template_visible()
@@ -3418,6 +3417,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'max_completion_tokens' => $max_tokens,
             );
 
+            error_log("prompt: " . $prompt);
             $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -6225,6 +6225,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return new WP_Error('arc_item_locked', 'Esse item j? est? em processamento.');
             }
 
+            error_log("item: " . print_r($selected_item, true));
+
             $result = self::create_post_from_generator_item($generator, $selected_item);
             if (is_wp_error($result)) {
                 self::delete_item_processed_by_guid($generator['id'], $selected_item['guid']);
@@ -6715,9 +6717,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($source_title !== '') {
                 $post_content_parts[] = '<p>Fonte original: ' . esc_html($source_title) . '</p>';
             }
-            if ($permalink !== '') {
-                $post_content_parts[] = '<p>URL da fonte: <a href="' . esc_url($permalink) . '">' . esc_html($permalink) . '</a></p>';
-            }
 
             $post_data = array(
                 'post_type' => !empty($generator['post_type']) && post_type_exists($generator['post_type']) ? $generator['post_type'] : 'post',
@@ -6875,6 +6874,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             if (!empty($item['source_page_excerpt'])) {
                 update_post_meta($post_id, '_arc_source_page_excerpt', sanitize_text_field($item['source_page_excerpt']));
+            }
+            $source_page_content_html = '';
+            foreach (array('source_page_content_html', 'source_page_html') as $candidate_key) {
+                if (!empty($item[$candidate_key])) {
+                    $source_page_content_html = (string) $item[$candidate_key];
+                    break;
+                }
+            }
+            if ($source_page_content_html !== '') {
+                update_post_meta($post_id, '_arc_source_page_content_html', wp_slash($source_page_content_html));
+                update_post_meta($post_id, '_arc_source_page_html', wp_slash($source_page_content_html));
             }
             if (!empty($item['source_page_content'])) {
                 update_post_meta($post_id, '_arc_source_page_content', wp_strip_all_tags($item['source_page_content']));
@@ -7870,6 +7880,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         continue;
                     }
 
+                    error_log("item 2: " . print_r($selected_item, true));
                     $result = self::create_post_from_generator_item($generator, $selected_item);
                     if (is_wp_error($result)) {
                         self::delete_item_processed_by_guid($generator['id'], $selected_item['guid']);
@@ -8132,6 +8143,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
+                error_log("item 3: " . print_r($item, true));
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
                     self::delete_item_processed_by_guid($generator['id'], $item['guid']);
@@ -8214,6 +8226,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
+                error_log("item x: " . print_r($item, true));
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
                     self::delete_item_processed_by_guid($generator['id'], $item['guid']);

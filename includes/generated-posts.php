@@ -139,6 +139,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 'source_page_title' => (string) get_post_meta($post_id, '_arc_source_page_title', true),
                 'source_page_excerpt' => (string) get_post_meta($post_id, '_arc_source_page_excerpt', true),
                 'source_page_content' => (string) get_post_meta($post_id, '_arc_source_page_content', true),
+                'source_page_content_html' => (string) get_post_meta($post_id, '_arc_source_page_content_html', true),
+                'source_page_html' => (string) get_post_meta($post_id, '_arc_source_page_html', true),
                 'source_page_outline' => (string) get_post_meta($post_id, '_arc_source_page_outline', true),
                 'source_page_outline_sections' => array(),
                 'source_video_url' => (string) get_post_meta($post_id, '_arc_source_video_url', true),
@@ -237,6 +239,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     'source_page_title',
                     'source_page_excerpt',
                     'source_page_content',
+                    'source_page_content_html',
+                    'source_page_html',
                     'source_page_outline',
                     'source_page_outline_sections',
                 ) as $key) {
@@ -308,6 +312,8 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     'source_page_title',
                     'source_page_excerpt',
                     'source_page_content',
+                    'source_page_content_html',
+                    'source_page_html',
                     'source_page_outline',
                     'source_page_outline_sections',
                 ) as $key) {
