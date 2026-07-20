@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
@@ -288,6 +288,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'semantic_duplicate_post_id' => 'bigint(20) unsigned DEFAULT NULL',
                 'semantic_duplicate_score' => 'decimal(6,4) DEFAULT NULL',
                 'semantic_duplicate_method' => 'varchar(40) DEFAULT NULL',
+                'item_status' => "varchar(20) NOT NULL DEFAULT 'processing'",
             );
 
             foreach ($columns_to_check as $column_name => $column_definition) {
@@ -511,6 +512,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 item_permalink text DEFAULT NULL,
                 item_title text DEFAULT NULL,
                 post_id bigint(20) unsigned DEFAULT NULL,
+                item_status varchar(20) NOT NULL DEFAULT 'processing',
                 item_hash varchar(64) DEFAULT NULL,
                 title_embedding_model varchar(120) DEFAULT NULL,
                 title_embedding_json longtext DEFAULT NULL,
@@ -520,7 +522,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
                 UNIQUE KEY generator_item (generator_id, item_guid(191)),
-                KEY generator_post (generator_id, post_id)
+                KEY generator_post (generator_id, post_id),
+                KEY generator_status (generator_id, item_status)
             ) {$charset_collate};";
 
             $schema_queries = array(
@@ -6251,7 +6254,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $result = self::create_post_from_generator_item($generator, $selected_item);
             if (is_wp_error($result)) {
-                self::delete_item_processed_by_guid($generator['id'], $selected_item['guid']);
+                self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
                 return $result;
             }
 
@@ -6276,9 +6279,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return false;
             }
 
+            $item_status = !empty($record['item_status']) ? sanitize_key((string) $record['item_status']) : '';
+            if ($item_status === 'processing' || $item_status === 'processed' || $item_status === 'failed') {
+                return true;
+            }
+
             $post_id = !empty($record['post_id']) ? intval($record['post_id']) : 0;
             if ($post_id <= 0) {
-                return false;
+                return true;
             }
 
             if (!get_post($post_id)) {
@@ -6340,6 +6348,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'item_permalink' => $item_permalink,
                     'item_title' => $item_title,
                     'post_id' => intval($post_id),
+                    'item_status' => 'processed',
                     'item_hash' => $item_hash,
                     'title_embedding_model' => $title_embedding_model,
                     'title_embedding_json' => $title_embedding_json,
@@ -6348,7 +6357,36 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'semantic_duplicate_method' => $semantic_duplicate_method,
                     'created_at' => current_time('mysql'),
                 ),
-                array('%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s', '%s')
+                array('%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%f', '%s', '%s')
+            );
+        }
+
+        public static function mark_item_failed($generator_id, $item, $error_code = '', $error_message = '')
+        {
+            global $wpdb;
+            $generator_id = intval($generator_id);
+            $item_guid = isset($item['guid']) ? (string) $item['guid'] : '';
+            $item_permalink = isset($item['permalink']) ? (string) $item['permalink'] : '';
+            $item_title = isset($item['title']) ? (string) $item['title'] : '';
+            $item_hash = md5($item_guid . '|' . $item_permalink);
+
+            if ($generator_id <= 0 || $item_guid === '') {
+                return 0;
+            }
+
+            return $wpdb->replace(
+                self::$table_items,
+                array(
+                    'generator_id' => $generator_id,
+                    'item_guid' => $item_guid,
+                    'item_permalink' => $item_permalink,
+                    'item_title' => $item_title,
+                    'post_id' => 0,
+                    'item_status' => 'failed',
+                    'item_hash' => $item_hash,
+                    'created_at' => current_time('mysql'),
+                ),
+                array('%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s')
             );
         }
 
@@ -6373,10 +6411,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'item_permalink' => $item_permalink,
                     'item_title' => $item_title,
                     'post_id' => 0,
+                    'item_status' => 'processing',
                     'item_hash' => $item_hash,
                     'created_at' => current_time('mysql'),
                 ),
-                array('%d', '%s', '%s', '%s', '%d', '%s', '%s')
+                array('%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s')
             );
 
             if ($result !== false) {
@@ -7902,13 +7941,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         continue;
                     }
 
-                    error_log("item 2: " . print_r($selected_item, true));
-                    $result = self::create_post_from_generator_item($generator, $selected_item);
-                    if (is_wp_error($result)) {
-                        self::delete_item_processed_by_guid($generator['id'], $selected_item['guid']);
-                        $failed++;
-                        $wpdb->update(
-                            $tables['rows'],
+                error_log("item 2: " . print_r($selected_item, true));
+                $result = self::create_post_from_generator_item($generator, $selected_item);
+                if (is_wp_error($result)) {
+                    self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
+                    $failed++;
+                    $wpdb->update(
+                        $tables['rows'],
                             array(
                                 'row_status' => 'failed',
                                 'error_message' => $result->get_error_message(),
@@ -8168,7 +8207,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 error_log("item 3: " . print_r($item, true));
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
-                    self::delete_item_processed_by_guid($generator['id'], $item['guid']);
+                    self::mark_item_failed($generator['id'], $item, $result->get_error_code(), $result->get_error_message());
                     $failed++;
                     self::insert_run_log($generator['id'], 'error', $result->get_error_message(), array(
                         'request' => array(
@@ -8251,7 +8290,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 error_log("item x: " . print_r($item, true));
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
-                    self::delete_item_processed_by_guid($generator['id'], $item['guid']);
+                    self::mark_item_failed($generator['id'], $item, $result->get_error_code(), $result->get_error_message());
                     $failed++;
                     self::insert_run_log($generator['id'], 'error', $result->get_error_message(), array(
                         'request' => array('guid' => $item['guid']),

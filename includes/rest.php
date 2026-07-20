@@ -521,7 +521,7 @@ class Alpha_RSS_AI_Generator_REST
         try {
             $result = Alpha_RSS_AI_Generator::create_post_from_generator_item($temp_generator, $selected_item);
             if (is_wp_error($result)) {
-                Alpha_RSS_AI_Generator::delete_item_processed_by_guid($temp_generator['id'], $selected_item['guid']);
+                Alpha_RSS_AI_Generator::mark_item_failed($temp_generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
                 $wpdb->update(
                     $tables['rows'],
                     array(
