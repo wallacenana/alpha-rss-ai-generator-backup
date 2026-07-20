@@ -845,6 +845,8 @@ class Alpha_RSS_AI_Generator_Admin
                     var manualRunCurrentGeneratorId = '';
                     var manualRunCurrentGeneratorName = '';
                     var manualRunLoadingRequest = null;
+                    var manualRunRefreshTimer = null;
+                    var manualRunRefreshCooldownSeconds = 12;
 
                     function hideFieldByName(name) {
                         var el = byName(name);
@@ -1345,6 +1347,40 @@ class Alpha_RSS_AI_Generator_Admin
                         }
                     }
 
+                    function clearManualRunRefreshCooldown() {
+                        if (manualRunRefreshTimer) {
+                            clearTimeout(manualRunRefreshTimer);
+                            manualRunRefreshTimer = null;
+                        }
+                        if (manualRunRefresh) {
+                            manualRunRefresh.disabled = false;
+                            manualRunRefresh.textContent = 'Atualizar itens';
+                        }
+                    }
+
+                    function startManualRunRefreshCooldown(generatorId) {
+                        if (!generatorId) {
+                            return;
+                        }
+                        clearManualRunRefreshCooldown();
+                        var seconds = Math.max(1, parseInt(manualRunRefreshCooldownSeconds, 10) || 12);
+                        if (manualRunRefresh) {
+                            manualRunRefresh.disabled = true;
+                            manualRunRefresh.textContent = 'Aguarde ' + seconds + 's';
+                        }
+                        setManualRunStatus('Aguarde ' + seconds + ' segundos para nao ser bloqueado como bot.', 'warning');
+                        manualRunRefreshTimer = window.setTimeout(function() {
+                            manualRunRefreshTimer = null;
+                            if (manualRunRefresh) {
+                                manualRunRefresh.disabled = false;
+                                manualRunRefresh.textContent = 'Atualizar itens';
+                            }
+                            if (manualRunCurrentGeneratorId) {
+                                loadManualRunItems(manualRunCurrentGeneratorId);
+                            }
+                        }, seconds * 1000);
+                    }
+
                     function setManualRunItems(items) {
                         if (!manualRunList) {
                             return;
@@ -1743,6 +1779,7 @@ class Alpha_RSS_AI_Generator_Admin
                     document.querySelectorAll('[data-close-manual-run-modal]').forEach(function(button) {
                         button.addEventListener('click', function() {
                             closeModal(manualRunModal);
+                            clearManualRunRefreshCooldown();
                             setManualRunStatus('', '');
                             if (manualRunList) {
                                 manualRunList.innerHTML = '';
@@ -1778,6 +1815,7 @@ class Alpha_RSS_AI_Generator_Admin
                     if (manualRunBackdrop) {
                         manualRunBackdrop.addEventListener('click', function() {
                             closeModal(manualRunModal);
+                            clearManualRunRefreshCooldown();
                             setManualRunStatus('', '');
                             if (manualRunList) {
                                 manualRunList.innerHTML = '';
@@ -1794,7 +1832,7 @@ class Alpha_RSS_AI_Generator_Admin
                     if (manualRunRefresh) {
                         manualRunRefresh.addEventListener('click', function() {
                             if (manualRunCurrentGeneratorId) {
-                                loadManualRunItems(manualRunCurrentGeneratorId);
+                                startManualRunRefreshCooldown(manualRunCurrentGeneratorId);
                             }
                         });
                     }
@@ -1826,6 +1864,7 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             if (manualRunModal && !manualRunModal.classList.contains('hidden')) {
                                 closeModal(manualRunModal);
+                                clearManualRunRefreshCooldown();
                                 setManualRunStatus('', '');
                                 if (manualRunList) {
                                     manualRunList.innerHTML = '';

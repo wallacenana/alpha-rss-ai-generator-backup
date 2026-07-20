@@ -1114,7 +1114,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 }
                 $post_result = Alpha_RSS_AI_Generator::create_post_from_generator_item($satellite_generator, $item);
                 if (is_wp_error($post_result)) {
-                    Alpha_RSS_AI_Generator::delete_item_processed_by_guid($satellite_generator['id'], $item['guid']);
+                    Alpha_RSS_AI_Generator::mark_item_failed($satellite_generator['id'], $item, $post_result->get_error_code(), $post_result->get_error_message());
                     $errors[] = $post_result->get_error_message();
                     continue;
                 }
