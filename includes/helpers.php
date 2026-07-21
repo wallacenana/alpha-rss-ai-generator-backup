@@ -3433,78 +3433,71 @@ class Alpha_RSS_AI_Generator_Helper
         if (empty($outline_context['outline_model_hint_key'])) {
             $outline_context['outline_model_hint_key'] = $outline_model_hint_key;
         }
-        $outline_prompt = self::build_outline_analysis_prompt($generator, $item, $seo_article, $outline_context);
-        $outline_response = Alpha_RSS_AI_Generator::request_openai_json($generator, $outline_prompt, array(
-            'stage' => 'outline',
-            'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-            'item_title' => !empty($item['source_title']) ? $item['source_title'] : '',
-            'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
-            'allow_missing_content_html' => 1,
-            'preserve_extra_fields' => 1,
-        ));
-
-        if (is_wp_error($outline_response)) {
-            $outline_context['outline_error'] = $outline_response->get_error_message();
-            $outline_context['outline_text'] = self::format_outline_analysis_for_prompt($outline_context);
-            return $outline_context;
+        $source_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $outline_sections = array();
+        if ($source_outline_titles !== '') {
+            $outline_lines = preg_split('/\R/u', $source_outline_titles);
+            if (is_array($outline_lines)) {
+                foreach ($outline_lines as $outline_line) {
+                    $outline_line = trim((string) $outline_line);
+                    if ($outline_line === '') {
+                        continue;
+                    }
+                    $title = preg_replace('/^\d+\.\s*/u', '', $outline_line);
+                    $title = self::normalize_prompt_context_text($title);
+                    if ($title === '') {
+                        continue;
+                    }
+                    $outline_sections[] = array(
+                        'type' => 'h2',
+                        'h2' => $title,
+                        'title' => $title,
+                        'purpose' => '',
+                        'word_budget' => 0,
+                        'quantity_min' => 1,
+                        'quantity_max' => 1,
+                    );
+                }
+            }
         }
 
-        $outline_context = self::normalize_outline_analysis_context($outline_response, $outline_context);
+        $outline_context['content_type'] = !empty($outline_model_hint_key) ? $outline_model_hint_key : (!empty($outline_context['content_type']) ? sanitize_key((string) $outline_context['content_type']) : 'guide_long');
+        $outline_context['funnel_level'] = !empty($outline_context['funnel_level']) ? sanitize_key((string) $outline_context['funnel_level']) : 'mid';
+        $outline_context['tone'] = !empty($outline_context['tone']) ? sanitize_text_field((string) $outline_context['tone']) : 'editorial';
+        $outline_context['primary_pain'] = !empty($outline_context['primary_pain']) ? sanitize_textarea_field((string) $outline_context['primary_pain']) : '';
+        $outline_context['focus_keyword'] = !empty($outline_context['focus_keyword']) ? sanitize_text_field((string) $outline_context['focus_keyword']) : (!empty($item['keyword']) ? sanitize_text_field((string) $item['keyword']) : (!empty($item['source_title']) ? sanitize_text_field((string) $item['source_title']) : ''));
+        $outline_context['outline_sections'] = $outline_sections;
 
         if (!empty($outline_model_hint_key) && $outline_model_hint_key === 'news_short') {
             $outline_context['content_type'] = 'news_short';
             $outline_context['recommended_outline_model_key'] = 'news_short';
             $outline_context['recommended_prompt_model_key'] = 'noticia';
-        }
-
-        $prompt_models = Alpha_RSS_AI_Generator::get_prompt_models($generator);
-        $available_prompt_model_keys = array();
-        foreach ($prompt_models as $prompt_model) {
-            if (!empty($prompt_model['key'])) {
-                $available_prompt_model_keys[] = (string) $prompt_model['key'];
-            }
-        }
-
-        if (!empty($outline_context['recommended_prompt_model_key']) && !empty($available_prompt_model_keys) && !in_array($outline_context['recommended_prompt_model_key'], $available_prompt_model_keys, true)) {
-            $outline_context['recommended_prompt_model_key'] = '';
-        }
-
-        if (!empty($outline_context['recommended_prompt_model_key'])) {
-            $prompt_model = Alpha_RSS_AI_Generator::get_prompt_model($outline_context['recommended_prompt_model_key'], $generator);
-            if (!empty($prompt_model['outline_model_key'])) {
-                $outline_context['recommended_outline_model_key'] = (string) $prompt_model['outline_model_key'];
-            }
         } else {
-            $candidate_outline_model_key = !empty($outline_context['recommended_outline_model_key']) ? sanitize_key((string) $outline_context['recommended_outline_model_key']) : $outline_model_hint_key;
-            if ($candidate_outline_model_key === '') {
-                $candidate_prompt_model_key = Alpha_RSS_AI_Generator::get_prompt_model_key_for_content_type(
-                    !empty($outline_context['content_type']) ? $outline_context['content_type'] : '',
-                    $outline_context,
-                    $generator
-                );
-                if ($candidate_prompt_model_key !== '') {
-                    $prompt_model = Alpha_RSS_AI_Generator::get_prompt_model($candidate_prompt_model_key, $generator);
-                    if (!empty($prompt_model)) {
-                        $outline_context['recommended_prompt_model_key'] = $candidate_prompt_model_key;
-                        if (!empty($prompt_model['outline_model_key'])) {
-                            $outline_context['recommended_outline_model_key'] = (string) $prompt_model['outline_model_key'];
-                        }
-                    }
-                }
-            } else {
-                foreach ($prompt_models as $prompt_model) {
-                    if (!is_array($prompt_model)) {
-                        continue;
-                    }
-                    if (!empty($prompt_model['outline_model_key']) && $prompt_model['outline_model_key'] === $candidate_outline_model_key && !empty($prompt_model['key'])) {
-                        $outline_context['recommended_prompt_model_key'] = (string) $prompt_model['key'];
-                        break;
-                    }
-                }
+            $outline_context['recommended_outline_model_key'] = !empty($outline_context['content_type']) ? sanitize_key((string) $outline_context['content_type']) : '';
+            $outline_context['recommended_prompt_model_key'] = Alpha_RSS_AI_Generator::get_prompt_model_key_for_content_type(
+                !empty($outline_context['content_type']) ? $outline_context['content_type'] : '',
+                $outline_context,
+                $generator
+            );
+        }
+
+        if ($outline_context['recommended_prompt_model_key'] === '' && !empty($generator['prompt_model_key'])) {
+            $outline_context['recommended_prompt_model_key'] = sanitize_key((string) $generator['prompt_model_key']);
+        }
+
+        if ($outline_context['recommended_prompt_model_key'] !== '') {
+            $prompt_model = Alpha_RSS_AI_Generator::get_prompt_model($outline_context['recommended_prompt_model_key'], $generator);
+            if (!empty($prompt_model) && !empty($prompt_model['outline_model_key'])) {
+                $outline_context['recommended_outline_model_key'] = (string) $prompt_model['outline_model_key'];
             }
         }
 
         $outline_context = Alpha_RSS_AI_Generator::apply_outline_model_context($generator, $outline_context);
+        if (empty($outline_context['outline_sections']) && $source_outline_titles !== '') {
+            $outline_context['outline_sections'] = $outline_sections;
+        }
+        $outline_context['outline_error'] = '';
+        $outline_context['outline_text'] = self::format_outline_analysis_for_prompt($outline_context);
         return $outline_context;
     }
     public static function build_prompt($generator, $item, $outline_context = array())

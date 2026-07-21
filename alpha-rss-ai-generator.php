@@ -3403,10 +3403,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $model = trim((string) $settings['default_model']);
             $temperature = max(0.0, min(2.0, floatval($settings['default_temperature'])));
             $max_tokens = max(256, intval($settings['default_max_tokens']));
+            $use_responses_api = self::should_use_responses_api($model);
 
-            $body = array(
-                'model' => $model,
-                'messages' => array(
+            $body = array('model' => $model);
+            if ($use_responses_api) {
+                $body['input'] = array(
                     array(
                         'role' => 'system',
                         'content' => 'Você é um editor jornalístico especializado. Retorne apenas JSON válido.'
@@ -3415,13 +3416,39 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         'role' => 'user',
                         'content' => $prompt,
                     ),
-                ),
-                'temperature' => $temperature,
-                'max_completion_tokens' => $max_tokens,
-            );
+                );
+                $body['temperature'] = $temperature;
+                $body['max_output_tokens'] = $max_tokens;
+                $body['text'] = array(
+                    'format' => array(
+                        'type' => 'json_object',
+                    ),
+                );
+                if (strpos(strtolower($model), 'gpt-5') === 0) {
+                    $body['reasoning'] = array(
+                        'effort' => 'low',
+                    );
+                }
+            } else {
+                $body['messages'] = array(
+                    array(
+                        'role' => 'system',
+                        'content' => 'Você é um editor jornalístico especializado. Retorne apenas JSON válido.'
+                    ),
+                    array(
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ),
+                );
+                $body['temperature'] = $temperature;
+                $body['max_completion_tokens'] = $max_tokens;
+                $body['response_format'] = array(
+                    'type' => 'json_object',
+                );
+            }
 
             error_log("prompt: " . $prompt);
-            $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
+            $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $api_key,
@@ -3444,11 +3471,39 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $text = '';
-
-            if (isset($data['choices'][0]['message']['content'])) {
+            if ($use_responses_api) {
+                if (!empty($data['output_text'])) {
+                    $text = trim((string) $data['output_text']);
+                } elseif (!empty($data['output']) && is_array($data['output'])) {
+                    foreach ($data['output'] as $output_item) {
+                        if (!is_array($output_item) || empty($output_item['content']) || !is_array($output_item['content'])) {
+                            continue;
+                        }
+                        foreach ($output_item['content'] as $content_item) {
+                            if (!is_array($content_item) || empty($content_item['type'])) {
+                                continue;
+                            }
+                            if ($content_item['type'] === 'output_text' && isset($content_item['text'])) {
+                                $text .= (string) $content_item['text'];
+                            }
+                        }
+                    }
+                    $text = trim($text);
+                }
+            } elseif (isset($data['choices'][0]['message']['content'])) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
             return self::parse_ai_json($text, $context);
+        }
+
+        public static function should_use_responses_api($model = '')
+        {
+            $model = strtolower(trim((string) $model));
+            if ($model === '') {
+                return false;
+            }
+
+            return strpos($model, 'gpt-5') === 0;
         }
 
         protected static function normalize_semantic_title_text($text)
