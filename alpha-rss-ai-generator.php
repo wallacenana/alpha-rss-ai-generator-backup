@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.10
+Version: 1.9.11
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -56,7 +56,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.10';
+        const VERSION = '1.9.11';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -6735,6 +6735,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $post_title = Alpha_RSS_AI_Generator_Helper::normalize_generated_title($post_title, !empty($item['source_title']) ? $item['source_title'] : '');
             if ($post_title === '' || $post_title === 'Artigo sem título' || $must_force_draft) {
                 $post_status = 'draft';
+            } elseif ($generation_mode === 'satellite') {
+                $post_status = 'future';
             }
             $post_slug = $forced_slug !== '' ? $forced_slug : (!empty($article['slug']) ? $article['slug'] : sanitize_title($post_title));
 
@@ -6765,7 +6767,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!empty($item['date'])) {
                 $post_date = self::bulk_parse_timestamp_value($item['date']);
                 if ($generation_mode === 'satellite' && $post_status !== 'future') {
-                    $post_date = '';
+                    $post_status = 'future';
                 }
                 if ($post_date === '' && $post_status === 'future') {
                     $post_date = self::format_timestamp_for_db(current_time('timestamp') + HOUR_IN_SECONDS);
@@ -7895,7 +7897,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $created = 0;
             $skipped = 0;
             $failed = 0;
-            $limit = max(1, intval($generator['posts_per_run']));
+            $limit = $manual ? max(1, intval($generator['posts_per_run'])) : 1;
             $scan_offset = 0;
             $scan_limit = 250;
             $tables = self::bulk_tables();
