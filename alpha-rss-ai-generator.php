@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.9
+Version: 1.9.10
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -56,7 +56,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.6';
+        const VERSION = '1.9.10';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -5587,6 +5587,28 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $permalink = method_exists($item, 'get_permalink') ? (string) $item->get_permalink() : '';
                 $permalink = self::resolve_google_alerts_redirect_url($permalink);
                 $feed_title = method_exists($feed, 'get_title') ? (string) $feed->get_title() : '';
+                $date_raw = '';
+                if (method_exists($item, 'get_date')) {
+                    $date_raw = trim((string) $item->get_date('r'));
+                }
+                if ($date_raw === '' && method_exists($item, 'get_timestamp')) {
+                    $timestamp = intval($item->get_timestamp());
+                    if ($timestamp > 0) {
+                        $date_raw = gmdate('r', $timestamp);
+                    }
+                }
+                $date_label = $date_raw;
+                if (method_exists($item, 'get_timestamp')) {
+                    $timestamp = intval($item->get_timestamp());
+                    if ($timestamp > 0) {
+                        $date_label = wp_date('d/m/Y H:i', $timestamp, function_exists('wp_timezone') ? wp_timezone() : null);
+                    }
+                } elseif ($date_raw !== '') {
+                    $timestamp = strtotime($date_raw);
+                    if ($timestamp !== false) {
+                        $date_label = wp_date('d/m/Y H:i', $timestamp, function_exists('wp_timezone') ? wp_timezone() : null);
+                    }
+                }
                 $categories = array();
                 if (method_exists($item, 'get_categories')) {
                     $item_categories = $item->get_categories();
@@ -5613,7 +5635,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'excerpt' => self::clean_source_text($excerpt_html),
                     'content' => self::clean_source_text($content_html),
                     'feed_title' => $feed_title,
-                    'date' => (string) $item->get_date('c'),
+                    'date' => $date_raw !== '' ? $date_raw : (string) $item->get_date('c'),
+                    'date_label' => $date_label,
                     'categories' => array_values(array_unique($categories)),
                     'source_image_url' => isset($media['image_url']) ? $media['image_url'] : '',
                     'source_link_url' => isset($media['link_url']) ? $media['link_url'] : '',
@@ -6693,13 +6716,16 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $author_id = get_current_user_id();
             }
             $generation_mode = !empty($generator['generation_mode']) ? self::normalize_generation_mode((string) $generator['generation_mode']) : self::get_default_generation_mode();
+            $article_title_raw = isset($article['title']) ? trim((string) $article['title']) : '';
+            $article_content_raw = isset($article['content_html']) ? trim((string) $article['content_html']) : '';
+            $must_force_draft = ($article_title_raw === '' || $article_content_raw === '');
 
             $forced_slug = '';
             if (!empty($item['final_slug'])) {
                 $forced_slug = trim((string) $item['final_slug']);
             }
 
-            $post_title = isset($article['title']) ? trim((string) $article['title']) : '';
+            $post_title = $article_title_raw;
             if ($post_title === '' && !empty($item['source_title'])) {
                 $post_title = trim((string) $item['source_title']);
             }
@@ -6707,6 +6733,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $post_title = sanitize_text_field($item['keyword']);
             }
             $post_title = Alpha_RSS_AI_Generator_Helper::normalize_generated_title($post_title, !empty($item['source_title']) ? $item['source_title'] : '');
+            if ($post_title === '' || $post_title === 'Artigo sem título' || $must_force_draft) {
+                $post_status = 'draft';
+            }
             $post_slug = $forced_slug !== '' ? $forced_slug : (!empty($article['slug']) ? $article['slug'] : sanitize_title($post_title));
 
             $default_tags = json_decode((string) $generator['tags_default'], true);
@@ -6720,7 +6749,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'post_author' => $author_id,
                 'post_title' => $post_title,
                 'post_name' => $post_slug,
-                'post_content' => isset($article['content_html']) ? $article['content_html'] : '',
+                'post_content' => $article_content_raw,
             );
 
             $post_excerpt = '';

@@ -1404,7 +1404,7 @@ class Alpha_RSS_AI_Generator_Admin
                         items.forEach(function(item) {
                             var excerpt = item.excerpt ? escapeHtml(item.excerpt) : '';
                             var permalink = item.permalink ? escapeHtml(item.permalink) : '';
-                            var date = item.date ? escapeHtml(item.date) : '';
+                            var date = item.date_label ? escapeHtml(item.date_label) : (item.date ? escapeHtml(item.date) : '');
                             var card = document.createElement('article');
                             card.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm';
                             card.innerHTML = [
