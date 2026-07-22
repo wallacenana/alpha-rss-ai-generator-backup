@@ -372,6 +372,69 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($output);
     }
 
+    public static function html_contains_image_markup($html)
+    {
+        $html = trim((string) $html);
+        if ($html === '') {
+            return false;
+        }
+
+        return (bool) preg_match('~<img\b|wp-block-image|wp-image-\d+|<figure\b[^>]*class=["\'][^"\']*\bwp-block-image\b~i', $html);
+    }
+
+    public static function inject_image_after_first_paragraph_html($content, $attachment_id, $image_size = 'medium', $alt_text = '')
+    {
+        $content = trim((string) $content);
+        $attachment_id = intval($attachment_id);
+        if ($content === '' || $attachment_id <= 0) {
+            return $content;
+        }
+
+        if (self::html_contains_image_markup($content)) {
+            return $content;
+        }
+
+        if (!class_exists('Alpha_RSS_AI_Generator')) {
+            return $content;
+        }
+
+        $image_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($attachment_id, $image_size, $alt_text, 'alignnone');
+        if ($image_html === '') {
+            return $content;
+        }
+
+        if (strpos($content, '<!-- wp:') !== false && function_exists('parse_blocks') && function_exists('serialize_blocks')) {
+            $blocks = parse_blocks($content);
+            if (!empty($blocks) && is_array($blocks)) {
+                $insert_index = 0;
+                foreach ($blocks as $index => $block) {
+                    if (!empty($block['blockName']) && $block['blockName'] === 'core/paragraph') {
+                        $insert_index = intval($index) + 1;
+                        break;
+                    }
+                }
+
+                $image_block = array(
+                    'blockName' => 'core/html',
+                    'attrs' => array(),
+                    'innerBlocks' => array(),
+                    'innerHTML' => $image_html,
+                    'innerContent' => array($image_html),
+                );
+                array_splice($blocks, $insert_index, 0, array($image_block));
+                return trim(serialize_blocks($blocks));
+            }
+        }
+
+        $paragraph_pos = stripos($content, '</p>');
+        if ($paragraph_pos !== false) {
+            $paragraph_end = $paragraph_pos + 4;
+            return trim(substr($content, 0, $paragraph_end) . "\n" . $image_html . "\n" . substr($content, $paragraph_end));
+        }
+
+        return trim($image_html . "\n" . $content);
+    }
+
     public static function normalize_plain_text($text)
     {
         return self::clean_source_text($text);
@@ -1908,7 +1971,7 @@ class Alpha_RSS_AI_Generator_Helper
         $post_id = intval($post_id);
         $image_size = Alpha_RSS_AI_Generator::normalize_image_display_size($image_size);
         $existing_image_map = is_array($existing_image_map) ? $existing_image_map : array();
-        $existing_attachment_id = self::find_existing_outline_section_image_attachment_id($section_title, $existing_image_map);
+        $existing_attachment_id = self::find_existing_outline_section_image_attachment_id_by_index($section_index, $existing_image_map);
 
         if ($existing_attachment_id > 0) {
             $image_html = Alpha_RSS_AI_Generator::build_attachment_image_figure_html($existing_attachment_id, $image_size, $section_title, 'alignnone');
@@ -1970,12 +2033,11 @@ class Alpha_RSS_AI_Generator_Helper
             return false;
         }
 
-        $section_title = isset($section['h2']) ? self::clean_source_text($section['h2']) : '';
-        if ($section_title === '') {
+        if ($section_index < 0) {
             return false;
         }
 
-        $existing_attachment_id = self::find_existing_outline_section_image_attachment_id($section_title, $existing_image_map);
+        $existing_attachment_id = self::find_existing_outline_section_image_attachment_id_by_index($section_index, $existing_image_map);
         if ($existing_attachment_id > 0) {
             return true;
         }
@@ -2265,23 +2327,24 @@ class Alpha_RSS_AI_Generator_Helper
         );
     }
 
-    protected static function find_existing_outline_section_image_attachment_id($section_title, $existing_image_map = array())
+    protected static function find_existing_outline_section_image_attachment_id_by_index($section_index, $existing_image_map = array())
     {
         if (!class_exists('Alpha_RSS_AI_Generator')) {
             return 0;
         }
 
-        $section_title = self::normalize_prompt_context_text($section_title);
-        if ($section_title === '' || !is_array($existing_image_map) || empty($existing_image_map)) {
+        $section_index = intval($section_index);
+        if ($section_index < 0 || !is_array($existing_image_map) || empty($existing_image_map)) {
             return 0;
         }
 
-        $normalized_section_title = self::normalize_outline_section_match_text($section_title);
-        foreach ($existing_image_map as $existing_key => $existing_value) {
-            $existing_key_normalized = self::normalize_outline_section_match_text((string) $existing_key);
-            if ($existing_key_normalized !== '' && $existing_key_normalized === $normalized_section_title && intval($existing_value) > 0) {
-                return intval($existing_value);
-            }
+        if (isset($existing_image_map[$section_index]) && intval($existing_image_map[$section_index]) > 0) {
+            return intval($existing_image_map[$section_index]);
+        }
+
+        $string_key = (string) $section_index;
+        if (isset($existing_image_map[$string_key]) && intval($existing_image_map[$string_key]) > 0) {
+            return intval($existing_image_map[$string_key]);
         }
 
         return 0;
@@ -2576,10 +2639,6 @@ class Alpha_RSS_AI_Generator_Helper
             return $content;
         }
 
-        $outline_section_count = count($outline_sections);
-        $outline_count_hint = !empty($context['outline_target_h2_count_hint']) ? intval($context['outline_target_h2_count_hint']) : 0;
-        $allow_sequence_fallback = $outline_section_count > 0 && $outline_section_count <= 10 && ($outline_count_hint <= 0 || $outline_count_hint <= 10);
-
         $blocks = parse_blocks($content);
         if (empty($blocks) || !is_array($blocks)) {
             return $content;
@@ -2589,7 +2648,6 @@ class Alpha_RSS_AI_Generator_Helper
         $section_index = -1;
         $pending_link_html = '';
         $inserted_any = false;
-        $used_section_indexes = array();
 
         foreach ($blocks as $block_index => $block) {
             $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
@@ -2618,45 +2676,12 @@ class Alpha_RSS_AI_Generator_Helper
 
                 $result_blocks[] = $block;
                 $section_index++;
-                $heading_title = self::extract_block_heading_text($block);
-                $matched_section = null;
-                $matched_index = -1;
-                $match_mode = 'exact';
-                $match_score = 0;
+                $matched_index = $section_index;
+                $matched_section = (isset($outline_sections[$matched_index]) && is_array($outline_sections[$matched_index]))
+                    ? $outline_sections[$matched_index]
+                    : null;
 
-                if ($heading_title !== '') {
-                    $match = self::find_best_outline_section_match($outline_sections, $heading_title, $used_section_indexes, $generator, $context);
-                    $match_score = !empty($match['score']) ? intval($match['score']) : 0;
-                    if (!empty($match['section']) && $match_score >= 100) {
-                        $matched_section = $match['section'];
-                        $matched_index = intval($match['index']);
-                        if (!empty($match['mode'])) {
-                            $match_mode = sanitize_key((string) $match['mode']);
-                        }
-                    }
-                }
-
-                if ($matched_section === null && $allow_sequence_fallback) {
-                    if (isset($outline_sections[$section_index]) && is_array($outline_sections[$section_index]) && !in_array($section_index, $used_section_indexes, true)) {
-                        $matched_section = $outline_sections[$section_index];
-                        $matched_index = $section_index;
-                        $match_mode = 'sequence';
-                        $match_score = 0;
-                    } else {
-                        $fallback_index = self::find_next_unused_outline_section_index($outline_sections, $used_section_indexes);
-                        if ($fallback_index >= 0 && isset($outline_sections[$fallback_index]) && is_array($outline_sections[$fallback_index])) {
-                            $matched_section = $outline_sections[$fallback_index];
-                            $matched_index = intval($fallback_index);
-                            $match_mode = 'sequence';
-                            $match_score = 0;
-                        }
-                    }
-                }
-
-                if ($matched_section !== null && $matched_index >= 0) {
-                    if (!in_array($matched_index, $used_section_indexes, true)) {
-                        $used_section_indexes[] = $matched_index;
-                    }
+                if ($matched_section !== null) {
                     $section_has_markup_image = self::outline_section_contains_image_markup($blocks, $block_index);
                     if ($use_images && $is_heading_level_2 && !$section_has_markup_image && !self::outline_section_has_existing_image($matched_section, $existing_image_map, $matched_index)) {
                         $section_image_html = self::build_outline_section_image_html($matched_section, $post_id, $image_size, $existing_image_map, $matched_index, $fallback_image_candidates);
@@ -2763,7 +2788,7 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $map = array();
-        $current_section_title = '';
+        $current_section_index = -1;
 
         foreach ($blocks as $block) {
             $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
@@ -2773,19 +2798,14 @@ class Alpha_RSS_AI_Generator_Helper
                     $level = intval($block['attrs']['level']);
                 }
                 if ($level === 2 || $level === 3) {
-                    $current_section_title = '';
-                    if (!empty($block['innerHTML'])) {
-                        $current_section_title = self::clean_source_text($block['innerHTML']);
-                    } elseif (!empty($block['innerContent']) && is_array($block['innerContent'])) {
-                        $current_section_title = self::clean_source_text(implode('', array_map('strval', $block['innerContent'])));
-                    }
+                    $current_section_index++;
                 } else {
-                    $current_section_title = '';
+                    $current_section_index = -1;
                 }
                 continue;
             }
 
-            if ($current_section_title === '') {
+            if ($current_section_index < 0) {
                 continue;
             }
 
@@ -2805,9 +2825,8 @@ class Alpha_RSS_AI_Generator_Helper
             }
 
             $attachment_id = intval($matches[1]);
-            $normalized_section_title = self::normalize_outline_section_match_text($current_section_title);
-            if ($attachment_id > 0 && $normalized_section_title !== '' && !isset($map[$normalized_section_title])) {
-                $map[$normalized_section_title] = $attachment_id;
+            if ($attachment_id > 0 && !isset($map[$current_section_index])) {
+                $map[$current_section_index] = $attachment_id;
             }
         }
 
