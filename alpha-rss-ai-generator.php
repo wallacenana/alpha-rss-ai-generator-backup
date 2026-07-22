@@ -76,6 +76,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static $table_lists;
         public static $table_list_rows;
         public static $table_import_logs;
+        public static $last_openai_response_id = '';
 
         public static function instance()
         {
@@ -873,9 +874,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 '/^\s*T[ií]tulo da origem:.*(?:\r?\n|$)/mi',
                 '/^\s*T[ií]tulo da pagina de origem:.*(?:\r?\n|$)/mi',
                 '/^\s*T[ií]tulo da p[aá]gina de origem:.*(?:\r?\n|$)/mi',
-                '/^\s*URL de origem:.*(?:\r?\n|$)/mi',
-                '/^\s*Site:.*(?:\r?\n|$)/mi',
-                '/^\s*Gerador:.*(?:\r?\n|$)/mi',
                 '/^\s*Idioma final:.*(?:\r?\n|$)/mi',
             );
 
@@ -900,7 +898,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function get_content_prompt_output_suffix()
         {
             return "FORMATO FINAL\n"
-                . 'Saída: Retorne APENAS o JSON com a chave "content_html". Sem textos explicativos antes ou depois do JSON.';
+                . 'Saída: Retorne APENAS o JSON com a chave "content_html". seja muito criterioso com esse formato final do json, pois o sistema depende de que seja um formato perfeito de json';
         }
 
         public static function append_content_prompt_output_suffix($prompt)
@@ -1013,6 +1011,51 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return '';
         }
 
+        public static function normalize_prompt_model_key($prompt_model_key = '')
+        {
+            $prompt_model_key = sanitize_key((string) $prompt_model_key);
+            if ($prompt_model_key === '') {
+                return '';
+            }
+
+            $aliases = array(
+                'article' => 'artigo',
+                'artigo' => 'artigo',
+                'guide' => 'artigo',
+                'guide_long' => 'artigo',
+                'analysis' => 'artigo',
+                'analise' => 'artigo',
+                'opinion' => 'artigo',
+                'opiniao' => 'artigo',
+                'list' => 'lista',
+                'lista' => 'lista',
+                'ranking' => 'lista',
+                'ranking_list' => 'lista',
+                'list_article' => 'lista',
+                'review' => 'review',
+                'resenha' => 'review',
+                'avaliacao' => 'review',
+                'faq' => 'faq',
+                'tutorial' => 'tutorial',
+                'howto' => 'tutorial',
+                'how_to' => 'tutorial',
+                'passo_a_passo' => 'tutorial',
+                'comparativo' => 'comparativo',
+                'comparison' => 'comparativo',
+                'versus' => 'comparativo',
+                'vs' => 'comparativo',
+                'noticia' => 'noticia',
+                'news' => 'noticia',
+                'news_short' => 'noticia',
+            );
+
+            if (isset($aliases[$prompt_model_key])) {
+                return $aliases[$prompt_model_key];
+            }
+
+            return $prompt_model_key;
+        }
+
         public static function get_default_content_model_type()
         {
             return 'pillar';
@@ -1080,7 +1123,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_default_prompt_model($prompt_model_key = '')
         {
-            $prompt_model_key = sanitize_key((string) $prompt_model_key);
+            $prompt_model_key = self::normalize_prompt_model_key($prompt_model_key);
             foreach (self::get_default_prompt_models() as $model) {
                 if (!empty($model['key']) && $model['key'] === $prompt_model_key) {
                     return $model;
@@ -1129,7 +1172,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function get_prompt_model($prompt_model_key = '', $generator = array())
         {
-            $prompt_model_key = sanitize_key((string) $prompt_model_key);
+            $prompt_model_key = self::normalize_prompt_model_key($prompt_model_key);
             $models = self::get_prompt_models($generator);
             foreach ($models as $model) {
                 if (!empty($model['key']) && $model['key'] === $prompt_model_key) {
@@ -1199,10 +1242,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
 
             if ($outline_model_key !== '' && isset($outline_to_prompt_map[$outline_model_key])) {
-                return $outline_to_prompt_map[$outline_model_key];
+                return self::normalize_prompt_model_key($outline_to_prompt_map[$outline_model_key]);
             }
 
-            return '';
+            return self::normalize_prompt_model_key($content_type);
         }
 
         public static function get_generator_prompt_model($generator, $outline_context = array())
@@ -1212,7 +1255,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $prompt_model_key = '';
             if (!empty($outline_context['recommended_prompt_model_key'])) {
-                $prompt_model_key = sanitize_key((string) $outline_context['recommended_prompt_model_key']);
+                $prompt_model_key = self::normalize_prompt_model_key($outline_context['recommended_prompt_model_key']);
             } else {
                 $prompt_model_key = self::get_prompt_model_key_for_content_type(
                     !empty($outline_context['content_type']) ? $outline_context['content_type'] : '',
@@ -1222,7 +1265,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             if ($prompt_model_key === '' && !empty($generator['prompt_model_key'])) {
-                $prompt_model_key = sanitize_key((string) $generator['prompt_model_key']);
+                $prompt_model_key = self::normalize_prompt_model_key($generator['prompt_model_key']);
             }
 
             if ($prompt_model_key === '' && !empty($outline_context['recommended_outline_model_key'])) {
@@ -1230,7 +1273,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $models = self::get_prompt_models($generator);
                 foreach ($models as $model) {
                     if (!empty($model['outline_model_key']) && $model['outline_model_key'] === $outline_model_key) {
-                        $prompt_model_key = !empty($model['key']) ? (string) $model['key'] : '';
+                        $prompt_model_key = !empty($model['key']) ? self::normalize_prompt_model_key((string) $model['key']) : '';
                         break;
                     }
                 }
@@ -3172,7 +3215,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "Use a meta description já definida: {{generated_meta_description}}.\n"
                 . "Use a fonte apenas como base factual.\n"
                 . "Resumo da fonte: {{source_excerpt}}\n"
-                . "URL de origem: {{source_url}}\n"
                 . "Keyword: {{keyword}}\n"
                 . "Slug final: {{generated_slug}}\n";
         }
@@ -3188,13 +3230,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "- Abra com um lead comportamental que conecte o leitor ao tema de forma imediata.\n"
                 . "- Use 2 a 3 parágrafos curtos na introdução, sem frases genéricas.\n"
                 . "- Use a estrutura editorial indicada pelo outline interno e pelo modelo selecionado.\n"
+                . "- Escreva no formato piramide invertida, com os fatos mais importantes no início.\n"
                 . "- Garanta no minimo 3 H2 no corpo do texto, mesmo em noticias curtas.\n"
                 . "- Se houver seções, mantenha a ordem definida pelo esboço interno; não reordene, não agrupe e não pule itens.\n"
                 . "- Depois de cada bloco principal, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
                 . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
                 . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
                 . "- Escreva com tom humano, sem soar mecânico.\n"
-                . "- Priorize 1000 a 1800 palavras quando houver material suficiente.\n"
+                . "- O texto deve ter no minimo 500 palavras.\n"
                 . "- Use parágrafos curtos e ajuste a estrutura conforme a densidade do tema e o outline interno.\n"
                 . "- Avance com fatos novos em cada bloco e evite repetição de ideias.\n"
                 . "- Não use Markdown.\n"
@@ -3403,10 +3446,15 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $model = trim((string) $settings['default_model']);
             $temperature = max(0.0, min(2.0, floatval($settings['default_temperature'])));
             $max_tokens = max(256, intval($settings['default_max_tokens']));
+            $use_responses_api = self::should_use_responses_api($model);
+            $prompt_cache_retention = '24h';
 
-            $body = array(
-                'model' => $model,
-                'messages' => array(
+            $body = array('model' => $model);
+            if ($use_responses_api) {
+                if (!empty($context['previous_response_id'])) {
+                    $body['previous_response_id'] = sanitize_text_field((string) $context['previous_response_id']);
+                }
+                $body['input'] = array(
                     array(
                         'role' => 'system',
                         'content' => 'Você é um editor jornalístico especializado. Retorne apenas JSON válido.'
@@ -3415,13 +3463,40 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         'role' => 'user',
                         'content' => $prompt,
                     ),
-                ),
-                'temperature' => $temperature,
-                'max_completion_tokens' => $max_tokens,
-            );
+                );
+                $body['max_output_tokens'] = $max_tokens;
+                $body['text'] = array(
+                    'format' => array(
+                        'type' => 'json_object',
+                    ),
+                );
+                $body['prompt_cache_retention'] = $prompt_cache_retention;
+                if (strpos(strtolower($model), 'gpt-5') === 0) {
+                    $body['reasoning'] = array(
+                        'effort' => 'low',
+                    );
+                }
+            } else {
+                $body['messages'] = array(
+                    array(
+                        'role' => 'system',
+                        'content' => 'Você é um editor jornalístico especializado. Retorne apenas JSON válido.'
+                    ),
+                    array(
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ),
+                );
+                $body['temperature'] = $temperature;
+                $body['max_completion_tokens'] = $max_tokens;
+                $body['response_format'] = array(
+                    'type' => 'json_object',
+                );
+                $body['prompt_cache_retention'] = $prompt_cache_retention;
+            }
 
             error_log("prompt: " . $prompt);
-            $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
+            $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $api_key,
@@ -3440,15 +3515,50 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             if ($code !== 200) {
                 $message = isset($data['error']['message']) ? $data['error']['message'] : 'Erro desconhecido da OpenAI';
+                if ($use_responses_api) {
+                    self::$last_openai_response_id = '';
+                }
                 return new WP_Error('arc_openai_error', $message);
             }
 
             $text = '';
-
-            if (isset($data['choices'][0]['message']['content'])) {
+            if ($use_responses_api) {
+                self::$last_openai_response_id = !empty($data['id']) ? sanitize_text_field((string) $data['id']) : '';
+                if (!empty($data['output_text'])) {
+                    $text = trim((string) $data['output_text']);
+                } elseif (!empty($data['output']) && is_array($data['output'])) {
+                    foreach ($data['output'] as $output_item) {
+                        if (!is_array($output_item) || empty($output_item['content']) || !is_array($output_item['content'])) {
+                            continue;
+                        }
+                        foreach ($output_item['content'] as $content_item) {
+                            if (!is_array($content_item) || empty($content_item['type'])) {
+                                continue;
+                            }
+                            if ($content_item['type'] === 'output_text' && isset($content_item['text'])) {
+                                $text .= (string) $content_item['text'];
+                            }
+                        }
+                    }
+                    $text = trim($text);
+                }
+            } elseif (isset($data['choices'][0]['message']['content'])) {
+                self::$last_openai_response_id = '';
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
+
+            error_log("response: " . print_r($text, true));
             return self::parse_ai_json($text, $context);
+        }
+
+        public static function should_use_responses_api($model = '')
+        {
+            $model = strtolower(trim((string) $model));
+            if ($model === '') {
+                return false;
+            }
+
+            return strpos($model, 'gpt-5') === 0;
         }
 
         protected static function normalize_semantic_title_text($text)
@@ -3878,11 +3988,28 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $text = preg_replace('/\s*```$/', '', $text);
 
             $data = json_decode($text, true);
+            if (!is_array($data)) {
+                $first_brace = strpos($text, '{');
+                $last_brace = strrpos($text, '}');
+                if ($first_brace !== false && $last_brace !== false && $last_brace > $first_brace) {
+                    $maybe_json = trim(substr($text, $first_brace, $last_brace - $first_brace + 1));
+                    $data = json_decode($maybe_json, true);
+                    if (is_array($data)) {
+                        return self::normalize_generated_article($data, $context);
+                    }
+                }
+            }
+
             if (is_array($data)) {
                 return self::normalize_generated_article($data, $context);
             }
 
-            return new WP_Error('arc_invalid_ai_json', 'A resposta da OpenAI não veio em JSON valido.');
+            $json_error_message = function_exists('json_last_error_msg') ? json_last_error_msg() : 'erro desconhecido';
+
+            return new WP_Error(
+                'arc_invalid_ai_json',
+                'A resposta da OpenAI nao veio em JSON valido: ' . $json_error_message
+            );
         }
 
         public static function normalize_generated_article($data, $context = array())

@@ -282,40 +282,6 @@ class Alpha_RSS_AI_Prompt_Settings
                                             <textarea data-prompt-content-template name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][content_prompt_template]" rows="20" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea(isset($prompt_model['content_prompt_template']) ? $prompt_model['content_prompt_template'] : ''); ?></textarea>
                                         </div>
                                     </div>
-                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div class="space-y-2">
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">Outline do backend</label>
-                                            <?php
-                                            $outline_model = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_outline_model($prompt_model_outline_key) : array();
-                                            $outline_model_label = !empty($outline_model['name']) ? (string) $outline_model['name'] : $prompt_model_outline_key;
-                                            $outline_prompt_template = '';
-                                            if (!empty($prompt_model['outline_prompt_template'])) {
-                                                $outline_prompt_template = (string) $prompt_model['outline_prompt_template'];
-                                            } elseif (class_exists('Alpha_RSS_AI_Generator')) {
-                                                $outline_prompt_template = Alpha_RSS_AI_Generator::format_outline_model_for_prompt($outline_model, array());
-                                            }
-                                            ?>
-                                            <div class="rounded-xl border border-slate-300 bg-white p-3" data-outline-block>
-                                                <div class="flex items-center justify-between gap-3">
-                                                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">Outline: <?php echo esc_html($outline_model_label); ?></div>
-                                                    <button type="button" data-outline-toggle class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Ver outline</button>
-                                                </div>
-                                                <div data-outline-panel class="mt-3 hidden">
-                                                    <div class="mb-2 flex items-center justify-end gap-3">
-                                                        <button type="button" data-outline-edit class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">Editar outline</button>
-                                                    </div>
-                                                    <textarea
-                                                        name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][outline_prompt_template]"
-                                                        data-outline-textarea
-                                                        rows="14"
-                                                        readonly
-                                                        spellcheck="false"
-                                                        class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"><?php echo esc_textarea($outline_prompt_template); ?></textarea>
-                                                </div>
-                                                <input type="hidden" name="prompt_models[<?php echo esc_attr($prompt_model_key); ?>][outline_model_key]" value="<?php echo esc_attr($prompt_model_outline_key); ?>" />
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             </details>
                         <?php endforeach; ?>
@@ -385,11 +351,10 @@ class Alpha_RSS_AI_Prompt_Settings
                             var nameInput = card.getAttribute('data-prompt-model-name') || '';
                             var descriptionInput = card.getAttribute('data-prompt-model-description') || '';
                             var outlineKeyInput = card.getAttribute('data-prompt-outline-key') || '';
-                            var outlineTextarea = card.querySelector('[data-outline-textarea]');
                             var seoTextarea = card.querySelector('[data-prompt-seo-template]');
                             var contentTextarea = card.querySelector('[data-prompt-content-template]');
 
-                            if (keyInput === '' || nameInput === '' || outlineKeyInput === '' || !outlineTextarea || !seoTextarea || !contentTextarea) {
+                            if (keyInput === '' || nameInput === '' || outlineKeyInput === '' || !seoTextarea || !contentTextarea) {
                                 return;
                             }
 
@@ -398,13 +363,13 @@ class Alpha_RSS_AI_Prompt_Settings
                                 name: nameInput,
                                 description: descriptionInput,
                                 outline_model_key: outlineKeyInput,
-                                outline_prompt_template: outlineTextarea.value || '',
+                                outline_prompt_template: '',
                                 seo_prompt_template: seoTextarea.value || '',
                                 content_prompt_template: contentTextarea.value || ''
                             });
                         });
 
-                        serializedField.value = JSON.stringify(models);
+                        serializedField.value = models.length ? JSON.stringify(models) : '';
                     });
                 }
             });
