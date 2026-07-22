@@ -916,7 +916,7 @@ class Alpha_RSS_AI_Generator_Helper
         return $result;
     }
 
-    public static function extract_media_from_html($html, $base_url = '', $video_selector_class = '', $image_selector_class = '', $link_selector_class = '')
+    public static function extract_media_from_html($html, $base_url = '', $video_selector_class = '', $image_selector_class = '', $link_selector_class = '', $prefer_selector_image = true)
     {
         $html = self::strip_source_page_noise_from_html($html);
         $media = array(
@@ -938,7 +938,8 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $image_selector_class = trim((string) $image_selector_class);
-        if ($image_selector_class !== '') {
+        $prefer_selector_image = !empty($prefer_selector_image);
+        if ($image_selector_class !== '' && $prefer_selector_image) {
             $selector_candidate = self::extract_selector_media_candidate_from_html($html, $base_url, $image_selector_class, 'image');
             if (!empty($selector_candidate['image_url'])) {
                 $media['image_url'] = !empty($selector_candidate['image_url']) ? $selector_candidate['image_url'] : '';
@@ -949,7 +950,7 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
 
-        if ($media['image_url'] === '' && $image_selector_class === '') {
+        if ($media['image_url'] === '') {
             foreach (array('og:image', 'og:image:url', 'twitter:image', 'twitter:image:src', 'thumbnailUrl', 'image') as $key) {
                 if ($media['image_url'] !== '') {
                     break;
@@ -968,6 +969,17 @@ class Alpha_RSS_AI_Generator_Helper
                     $media['image_tag'] = 'meta';
                     $media['image_attr'] = 'content';
                     break 2;
+                }
+            }
+
+            if ($media['image_url'] === '' && $image_selector_class !== '') {
+                $selector_candidate = self::extract_selector_media_candidate_from_html($html, $base_url, $image_selector_class, 'image');
+                if (!empty($selector_candidate['image_url'])) {
+                    $media['image_url'] = !empty($selector_candidate['image_url']) ? $selector_candidate['image_url'] : '';
+                    $media['image_source'] = !empty($selector_candidate['image_source']) ? $selector_candidate['image_source'] : 'selector:' . $image_selector_class;
+                    $media['image_class'] = !empty($selector_candidate['image_class']) ? $selector_candidate['image_class'] : $image_selector_class;
+                    $media['image_attr'] = !empty($selector_candidate['image_attr']) ? $selector_candidate['image_attr'] : '';
+                    $media['image_tag'] = !empty($selector_candidate['image_tag']) ? $selector_candidate['image_tag'] : 'selector';
                 }
             }
 
@@ -1066,7 +1078,7 @@ class Alpha_RSS_AI_Generator_Helper
         return $media;
     }
 
-    public static function extract_media_from_source_page($url,  $video_selector_class = '', $image_selector_class = '', $link_selector_class = '')
+    public static function extract_media_from_source_page($url,  $video_selector_class = '', $image_selector_class = '', $link_selector_class = '', $prefer_selector_image = true)
     {
         $empty_media = array(
             'image_url' => '',
@@ -1092,7 +1104,7 @@ class Alpha_RSS_AI_Generator_Helper
             return $empty_media;
         }
 
-        $media = self::extract_media_from_html($html, $url, $video_selector_class, $image_selector_class, $link_selector_class);
+        $media = self::extract_media_from_html($html, $url, $video_selector_class, $image_selector_class, $link_selector_class, $prefer_selector_image);
         if ($video_selector_class === '' && $media['video_url'] === '') {
             foreach (array('og:video', 'og:video:url', 'twitter:player:stream') as $key) {
                 if (preg_match('/<meta[^>]+(?:property|name|itemprop)=["\']' . preg_quote($key, '/') . '["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $matches)) {

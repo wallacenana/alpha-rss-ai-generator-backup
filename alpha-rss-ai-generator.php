@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.14
+Version: 1.9.15
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -56,7 +56,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.14';
+        const VERSION = '1.9.15';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -5187,10 +5187,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $candidates = array();
             if (!empty($content_html)) {
-                $candidates[] = Alpha_RSS_AI_Generator_Helper::extract_media_from_html($content_html, $permalink, $video_selector_class, $image_selector_class, $link_selector_class);
+                $candidates[] = Alpha_RSS_AI_Generator_Helper::extract_media_from_html($content_html, $permalink, $video_selector_class, $image_selector_class, $link_selector_class, false);
             }
             if (!empty($excerpt_html)) {
-                $candidates[] = Alpha_RSS_AI_Generator_Helper::extract_media_from_html($excerpt_html, $permalink, $video_selector_class, $image_selector_class, $link_selector_class);
+                $candidates[] = Alpha_RSS_AI_Generator_Helper::extract_media_from_html($excerpt_html, $permalink, $video_selector_class, $image_selector_class, $link_selector_class, false);
             }
 
             foreach ($candidates as $candidate) {
@@ -5205,7 +5205,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             if (!empty($permalink) && (empty($page_media['image_url']) || empty($page_media['video_url']) || empty($page_media['link_url']))) {
-                $source_page_media = Alpha_RSS_AI_Generator_Helper::extract_media_from_source_page($permalink, $video_selector_class, $image_selector_class, $link_selector_class);
+                $source_page_media = Alpha_RSS_AI_Generator_Helper::extract_media_from_source_page($permalink, $video_selector_class, $image_selector_class, $link_selector_class, false);
                 if (is_array($source_page_media)) {
                     foreach (array('image_url', 'image_source', 'image_class', 'image_attr', 'image_tag', 'link_url', 'link_text', 'link_source', 'video_url', 'video_embed_html', 'video_source') as $key) {
                         if (empty($page_media[$key]) && !empty($source_page_media[$key])) {
