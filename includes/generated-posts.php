@@ -158,6 +158,15 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 'final_slug' => (string) get_post_meta($post_id, '_arc_source_final_slug', true),
                 'source_context_enriched' => 0,
             );
+            if ($item['title'] === '' && !empty($post->post_title)) {
+                $item['title'] = (string) $post->post_title;
+            }
+            if (empty($item['source_title'])) {
+                $item['source_title'] = $item['title'] !== '' ? $item['title'] : (!empty($post->post_title) ? (string) $post->post_title : '');
+            }
+            if (empty($item['source_page_title'])) {
+                $item['source_page_title'] = $item['source_title'];
+            }
             $original_item = $item;
 
             $outline_sections_raw = (string) get_post_meta($post_id, '_arc_source_page_outline_sections', true);
