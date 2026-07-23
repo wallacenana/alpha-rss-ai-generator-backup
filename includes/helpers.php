@@ -12,11 +12,21 @@ class Alpha_RSS_AI_Generator_Helper
         if ($url === '') {
             return array(
                 'html' => '',
+                'requested_url' => '',
+                'resolved_url' => '',
                 'status_code' => 0,
                 'blocked' => false,
                 'error_code' => '',
                 'error_message' => '',
             );
+        }
+
+        $requested_url = $url;
+        if (class_exists('Alpha_RSS_AI_Generator') && method_exists('Alpha_RSS_AI_Generator', 'resolve_google_alerts_redirect_url')) {
+            $resolved_url = Alpha_RSS_AI_Generator::resolve_google_alerts_redirect_url($url);
+            if (!empty($resolved_url)) {
+                $url = esc_url_raw(trim((string) $resolved_url));
+            }
         }
 
         $cache_ttl = max(1, intval($cache_ttl));
@@ -28,6 +38,8 @@ class Alpha_RSS_AI_Generator_Helper
         if (!empty($blocked_until) && intval($blocked_until) > time()) {
             return array(
                 'html' => '',
+                'requested_url' => $requested_url,
+                'resolved_url' => $url,
                 'status_code' => 403,
                 'blocked' => true,
                 'error_code' => 'arc_source_forbidden',
@@ -39,6 +51,8 @@ class Alpha_RSS_AI_Generator_Helper
         if (is_string($cached_day_html) && $cached_day_html !== '') {
             return array(
                 'html' => $cached_day_html,
+                'requested_url' => $requested_url,
+                'resolved_url' => $url,
                 'status_code' => 200,
                 'blocked' => false,
                 'error_code' => '',
@@ -50,6 +64,8 @@ class Alpha_RSS_AI_Generator_Helper
         if (is_string($cached_html) && $cached_html !== '') {
             return array(
                 'html' => $cached_html,
+                'requested_url' => $requested_url,
+                'resolved_url' => $url,
                 'status_code' => 200,
                 'blocked' => false,
                 'error_code' => '',
@@ -84,6 +100,8 @@ class Alpha_RSS_AI_Generator_Helper
         if (is_wp_error($response)) {
             return array(
                 'html' => '',
+                'requested_url' => $requested_url,
+                'resolved_url' => $url,
                 'status_code' => 0,
                 'blocked' => false,
                 'error_code' => $response->get_error_code(),
@@ -97,6 +115,8 @@ class Alpha_RSS_AI_Generator_Helper
             }
             return array(
                 'html' => '',
+                'requested_url' => $requested_url,
+                'resolved_url' => $url,
                 'status_code' => $code,
                 'blocked' => $code === 403,
                 'error_code' => $code === 403 ? 'arc_source_forbidden' : 'arc_source_http_error',
@@ -108,6 +128,8 @@ class Alpha_RSS_AI_Generator_Helper
         if ($html === '') {
             return array(
                 'html' => '',
+                'requested_url' => $requested_url,
+                'resolved_url' => $url,
                 'status_code' => $code,
                 'blocked' => false,
                 'error_code' => 'arc_source_empty',
@@ -120,6 +142,8 @@ class Alpha_RSS_AI_Generator_Helper
 
         return array(
             'html' => $html,
+            'requested_url' => $requested_url,
+            'resolved_url' => $url,
             'status_code' => $code,
             'blocked' => false,
             'error_code' => '',
@@ -314,9 +338,21 @@ class Alpha_RSS_AI_Generator_Helper
                 return $content;
             }
 
-            $paragraph_block = $blocks[$paragraph_index];
-            array_splice($blocks, $paragraph_index, 1);
-            array_unshift($blocks, $paragraph_block);
+            foreach (range(0, $paragraph_index - 1) as $index) {
+                if (empty($blocks[$index]) || empty($blocks[$index]['blockName']) || $blocks[$index]['blockName'] !== 'core/heading') {
+                    continue;
+                }
+
+                $level = 2;
+                if (isset($blocks[$index]['attrs']['level'])) {
+                    $level = intval($blocks[$index]['attrs']['level']);
+                }
+                if ($level >= 1 && $level <= 6) {
+                    unset($blocks[$index]);
+                }
+            }
+
+            $blocks = array_values($blocks);
 
             return trim(serialize_blocks($blocks));
         }
@@ -353,16 +389,20 @@ class Alpha_RSS_AI_Generator_Helper
             return trim($output);
         }
 
-        if ($root->firstChild === $paragraph_node) {
-            $output = '';
-            foreach ($root->childNodes as $child) {
-                $output .= $dom->saveHTML($child);
-            }
-
-            return trim($output);
+        $child_nodes = array();
+        foreach ($root->childNodes as $child) {
+            $child_nodes[] = $child;
         }
 
-        $root->insertBefore($paragraph_node, $root->firstChild);
+        foreach ($child_nodes as $child) {
+            if ($child === $paragraph_node) {
+                break;
+            }
+
+            if ($child instanceof DOMElement && in_array(strtolower((string) $child->nodeName), array('h1', 'h2', 'h3', 'h4', 'h5', 'h6'), true)) {
+                $root->removeChild($child);
+            }
+        }
 
         $output = '';
         foreach ($root->childNodes as $child) {
@@ -744,8 +784,14 @@ class Alpha_RSS_AI_Generator_Helper
             return '';
         }
 
+        return self::extract_best_html_from_xpath_queries($dom, $xpath, $queries);
+    }
+
+    private static function extract_best_html_from_xpath_queries($dom, $xpath, array $queries)
+    {
         $best_html = '';
         $best_length = 0;
+
         foreach ($queries as $query) {
             $nodes = $xpath->query($query);
             if (!$nodes || $nodes->length === 0) {
@@ -797,49 +843,50 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $xpath = new DOMXPath($dom);
-        $selectors = array(
-            '//article',
-            '//*[@role="main"]',
-            '//main',
-            '//*[contains(concat(" ", normalize-space(@class), " "), " entry-content ")]',
-            '//*[contains(concat(" ", normalize-space(@class), " "), " post-content ")]',
-            '//*[contains(concat(" ", normalize-space(@class), " "), " content ")]',
-            '//*[contains(concat(" ", normalize-space(@class), " "), " article-body ")]',
-            '//*[contains(concat(" ", normalize-space(@class), " "), " story-body ")]',
-            '//*[@id="content"]',
-            '//*[@id="main"]',
+        $priority_query_groups = array(
+            array(
+                '//article//*[contains(concat(" ", normalize-space(@class), " "), " article__body ")]',
+                '//article//*[@itemprop="articleBody"]',
+                '//article//*[contains(concat(" ", normalize-space(@class), " "), " entry-content ")]',
+                '//article//*[contains(concat(" ", normalize-space(@class), " "), " post-content ")]',
+                '//article//*[contains(concat(" ", normalize-space(@class), " "), " content ")]',
+                '//article//*[contains(concat(" ", normalize-space(@class), " "), " article-body ")]',
+                '//article//*[contains(concat(" ", normalize-space(@class), " "), " story-body ")]',
+            ),
+            array(
+                '//main//*[contains(concat(" ", normalize-space(@class), " "), " article__body ")]',
+                '//main//*[@itemprop="articleBody"]',
+                '//main//*[contains(concat(" ", normalize-space(@class), " "), " entry-content ")]',
+                '//main//*[contains(concat(" ", normalize-space(@class), " "), " post-content ")]',
+                '//main//*[contains(concat(" ", normalize-space(@class), " "), " content ")]',
+                '//main//*[contains(concat(" ", normalize-space(@class), " "), " article-body ")]',
+                '//main//*[contains(concat(" ", normalize-space(@class), " "), " story-body ")]',
+            ),
+            array(
+                '//body//*[contains(concat(" ", normalize-space(@class), " "), " article__body ")]',
+                '//body//*[@itemprop="articleBody"]',
+                '//body//*[contains(concat(" ", normalize-space(@class), " "), " entry-content ")]',
+                '//body//*[contains(concat(" ", normalize-space(@class), " "), " post-content ")]',
+                '//body//*[contains(concat(" ", normalize-space(@class), " "), " content ")]',
+                '//body//*[contains(concat(" ", normalize-space(@class), " "), " article-body ")]',
+                '//body//*[contains(concat(" ", normalize-space(@class), " "), " story-body ")]',
+            ),
+            array('//article', '//main', '//body'),
+            array('//*[@role="main"]'),
+            array('//*[contains(concat(" ", normalize-space(@class), " "), " entry-content ")]'),
+            array('//*[contains(concat(" ", normalize-space(@class), " "), " post-content ")]'),
+            array('//*[contains(concat(" ", normalize-space(@class), " "), " content ")]'),
+            array('//*[contains(concat(" ", normalize-space(@class), " "), " article-body ")]'),
+            array('//*[contains(concat(" ", normalize-space(@class), " "), " story-body ")]'),
+            array('//*[@id="content"]'),
+            array('//*[@id="main"]'),
         );
 
-        $best_html = '';
-        $best_length = 0;
-        foreach ($selectors as $scope_selector) {
-            $nodes = $xpath->query($scope_selector);
-            if (!$nodes || $nodes->length === 0) {
-                continue;
+        foreach ($priority_query_groups as $queries) {
+            $selected_html = self::extract_best_html_from_xpath_queries($dom, $xpath, $queries);
+            if ($selected_html !== '') {
+                return $selected_html;
             }
-
-            for ($i = 0; $i < min(2, $nodes->length); $i++) {
-                $node = $nodes->item($i);
-                if (!($node instanceof DOMNode)) {
-                    continue;
-                }
-
-                $candidate = $dom->saveHTML($node);
-                $candidate = is_string($candidate) ? trim($candidate) : '';
-                if ($candidate === '') {
-                    continue;
-                }
-
-                $candidate_length = strlen($candidate);
-                if ($candidate_length > $best_length) {
-                    $best_length = $candidate_length;
-                    $best_html = $candidate;
-                }
-            }
-        }
-
-        if ($best_html !== '') {
-            return $best_html;
         }
 
         return $html;
@@ -3124,6 +3171,13 @@ class Alpha_RSS_AI_Generator_Helper
         if ($source_url === '') {
             $source_url = isset($item['permalink']) ? trim((string) $item['permalink']) : '';
         }
+        $source_site_name = '';
+        if ($source_url !== '') {
+            $parts = wp_parse_url($source_url);
+            if (!empty($parts['host'])) {
+                $source_site_name = preg_replace('/^www\./i', '', (string) $parts['host']);
+            }
+        }
         $source_excerpt = '';
         if (!empty($item['source_page_excerpt'])) {
             $source_excerpt = self::normalize_plain_text((string) $item['source_page_excerpt']);
@@ -3138,6 +3192,12 @@ class Alpha_RSS_AI_Generator_Helper
 
         if ($source_title !== '') {
             $lines[] = 'Titulo da fonte: ' . $source_title;
+        }
+        if ($source_site_name !== '') {
+            $lines[] = 'Site de referencia: ' . $source_site_name;
+        }
+        if ($source_url !== '') {
+            $lines[] = 'URL de referencia: ' . $source_url;
         }
 
         if ($source_excerpt !== '') {
@@ -3301,12 +3361,12 @@ class Alpha_RSS_AI_Generator_Helper
             || (bool) preg_match('/^\s*(?:[-*?]|\d+[.)])\s+/m', $source_blob)
             || (bool) preg_match('/\b(?:lista|ranking|top\s+\d+|melhores|best\s+\d+|sele[c?][a?]o|recomenda[c?][a?]o)\b/ui', $combined);
 
-        if ($has_guide_markers) {
-            return 'guide_long';
-        }
-
         if ($has_list_structure) {
             return 'list_article';
+        }
+
+        if ($has_guide_markers) {
+            return 'guide_long';
         }
 
         if ($has_news_markers) {
@@ -3320,7 +3380,7 @@ class Alpha_RSS_AI_Generator_Helper
     {
         $outline_context = is_array($outline_context) ? $outline_context : array();
         $lines = array();
-        $content_type = !empty($outline_context['content_type']) ? sanitize_text_field((string) $outline_context['content_type']) : '';
+        $content_type = !empty($outline_context['content_type']) ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $outline_context['content_type']) : '';
         $funnel_level = !empty($outline_context['funnel_level']) ? sanitize_text_field((string) $outline_context['funnel_level']) : '';
         $tone = !empty($outline_context['tone']) ? sanitize_text_field((string) $outline_context['tone']) : '';
         $primary_pain = !empty($outline_context['primary_pain']) ? sanitize_textarea_field((string) $outline_context['primary_pain']) : '';
@@ -3420,6 +3480,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Analise o conteudo html enviado e escolha apenas 1 modelo.',
             'Ignore rodape, sidebar, widgets, navegacao e blocos auxiliares (caso exista).',
             'Retorne apenas JSON valido com estas chaves: content_type, funnel_level, tone, primary_pain, focus_keyword, recommended_prompt_model_key.',
+            'Use content_type somente como uma destas chaves canonicas: lista, artigo, noticia, review, faq, tutorial, comparativo.',
             'Escolha recommended_prompt_model_key usando somente uma das chaves validas do modelo base abaixo.',
             'Lista de modelos:',
             $available_prompt_models_text,
@@ -3435,7 +3496,11 @@ class Alpha_RSS_AI_Generator_Helper
         $outline_context = is_array($outline_context) ? $outline_context : array();
         $analysis = is_array($analysis) ? $analysis : array();
 
-        $outline_context['content_type'] = !empty($analysis['content_type']) ? sanitize_key((string) $analysis['content_type']) : (!empty($outline_context['content_type']) ? sanitize_key((string) $outline_context['content_type']) : 'article');
+        $outline_context['content_type'] = !empty($analysis['content_type'])
+            ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $analysis['content_type'])
+            : (!empty($outline_context['content_type'])
+                ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $outline_context['content_type'])
+                : 'artigo');
         $outline_context['funnel_level'] = !empty($analysis['funnel_level']) ? sanitize_key((string) $analysis['funnel_level']) : (!empty($outline_context['funnel_level']) ? sanitize_key((string) $outline_context['funnel_level']) : 'mid');
         $outline_context['tone'] = !empty($analysis['tone']) ? sanitize_text_field((string) $analysis['tone']) : (!empty($outline_context['tone']) ? sanitize_text_field((string) $outline_context['tone']) : '');
         $outline_context['primary_pain'] = !empty($analysis['primary_pain']) ? sanitize_textarea_field((string) $analysis['primary_pain']) : (!empty($outline_context['primary_pain']) ? sanitize_textarea_field((string) $outline_context['primary_pain']) : '');
@@ -3483,7 +3548,9 @@ class Alpha_RSS_AI_Generator_Helper
         }
         $use_outline_ai = !isset($outline_context['force_outline_ai']) || !empty($outline_context['force_outline_ai']);
         if (!$use_outline_ai) {
-            $outline_context['content_type'] = !empty($outline_model_hint_key) ? $outline_model_hint_key : 'article';
+            $outline_context['content_type'] = !empty($outline_model_hint_key)
+                ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $outline_model_hint_key)
+                : 'artigo';
             $outline_context['funnel_level'] = $outline_model_hint_key === 'news_short' ? 'top' : 'mid';
             $outline_context['tone'] = !empty($outline_context['tone']) ? $outline_context['tone'] : 'editorial';
             $outline_context['primary_pain'] = !empty($outline_context['primary_pain'])
@@ -3639,6 +3706,13 @@ class Alpha_RSS_AI_Generator_Helper
         if ($source_url === '' && isset($item['permalink'])) {
             $source_url = $item['permalink'];
         }
+        $source_site_name = '';
+        if ($source_url !== '') {
+            $parts = wp_parse_url($source_url);
+            if (!empty($parts['host'])) {
+                $source_site_name = preg_replace('/^www\./i', '', (string) $parts['host']);
+            }
+        }
         $source_page_html = '';
         foreach (array('source_page_content_html', 'source_page_html', 'content_html') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
@@ -3686,6 +3760,7 @@ class Alpha_RSS_AI_Generator_Helper
             '{{source_title}}' => $source_title,
             '{{keyword}}' => isset($item['keyword']) ? $item['keyword'] : '',
             '{{source_url}}' => $source_url,
+            '{{source_site_name}}' => $source_site_name,
             '{{source_permalink}}' => $item['permalink'],
             '{{source_image_url}}' => $source_image_url,
             '{{source_link_url}}' => $source_link_url,
@@ -3743,6 +3818,13 @@ class Alpha_RSS_AI_Generator_Helper
         if ($source_url === '' && isset($item['permalink'])) {
             $source_url = $item['permalink'];
         }
+        $source_site_name = '';
+        if ($source_url !== '') {
+            $parts = wp_parse_url($source_url);
+            if (!empty($parts['host'])) {
+                $source_site_name = preg_replace('/^www\./i', '', (string) $parts['host']);
+            }
+        }
         $source_page_html = '';
         if (!$use_previous_response_context) {
             foreach (array('source_page_content_html', 'source_page_html', 'content_html') as $candidate_key) {
@@ -3784,6 +3866,8 @@ class Alpha_RSS_AI_Generator_Helper
             'kw: {{generated_focus_keyword}}',
             'Meta description: {{generated_meta_description}}',
             'Midias e CTAs da fonte: o sistema vai inserir a imagem baixada e o link localmente; nao escreva imagens, figures ou CTAs manuais no texto.',
+            'Site de referencia: {{source_site_name}}',
+            'URL de referencia: {{source_url}}',
             'Slug final: {{generated_slug}}',
             'Modelo de prompt: {{prompt_model_name}}',
             'Chave do modelo de prompt: {{prompt_model_key}}',
@@ -3804,6 +3888,7 @@ class Alpha_RSS_AI_Generator_Helper
             '{{source_title}}' => $source_title,
             '{{keyword}}' => isset($item['keyword']) ? $item['keyword'] : '',
             '{{source_url}}' => $source_url,
+            '{{source_site_name}}' => $source_site_name,
             '{{source_permalink}}' => $item['permalink'],
             '{{source_page_title}}' => isset($item['source_page_title']) ? $item['source_page_title'] : '',
             '{{source_page_excerpt}}' => isset($item['source_page_excerpt']) ? $item['source_page_excerpt'] : '',

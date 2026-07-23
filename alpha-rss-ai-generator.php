@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.15
+Version: 1.9.16
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -56,7 +56,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.15';
+        const VERSION = '1.9.16';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -4510,6 +4510,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return new WP_Error('arc_source_forbidden', !empty($html_result['error_message']) ? (string) $html_result['error_message'] : 'A fonte retornou 403 e o acesso foi bloqueado.');
             }
             $html = is_array($html_result) && isset($html_result['html']) ? (string) $html_result['html'] : '';
+            $resolved_url = is_array($html_result) && !empty($html_result['resolved_url']) ? (string) $html_result['resolved_url'] : $url;
             if ($html === '') {
                 return array(
                     'title' => '',
@@ -4526,7 +4527,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $content = self::extract_page_content_from_html($html, $content_selector);
             $content_html = Alpha_RSS_AI_Generator_Helper::extract_html_from_html_with_fallbacks($html, $content_selector);
             $excerpt = $content !== '' ? wp_trim_words($content, 24) : '';
-            $outline = Alpha_RSS_AI_Generator_Helper::extract_page_outline_from_html($html, $url, 50, 10, 5, $image_selector_class, $link_selector_class, $content_selector);
+            $outline = Alpha_RSS_AI_Generator_Helper::extract_page_outline_from_html($html, $resolved_url, 50, 10, 5, $image_selector_class, $link_selector_class, $content_selector);
             $page_context = array(
                 'title' => $title,
                 'html' => $html,
@@ -4536,6 +4537,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'outline' => $outline,
                 'outline_sections' => $outline,
                 'outline_text' => Alpha_RSS_AI_Generator_Helper::format_page_outline_for_prompt($outline),
+                'source_url' => $resolved_url,
             );
             $page_context = Alpha_RSS_AI_Generator_Helper::apply_source_context_filters_to_page_context($page_context, $source_context_filters);
             $outline = !empty($page_context['outline']) && is_array($page_context['outline']) ? $page_context['outline'] : array();
@@ -4765,6 +4767,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return '';
             }
 
+            $url = html_entity_decode($url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
             $parts = wp_parse_url($url);
             if (empty($parts['host']) || empty($parts['path'])) {
                 return esc_url_raw($url);
