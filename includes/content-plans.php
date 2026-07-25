@@ -23,7 +23,6 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         public function __construct()
         {
             add_action('admin_menu', array($this, 'admin_menu'), 22);
-            add_action('admin_init', array($this, 'register_row_action_filters'));
             add_action('wp_ajax_arc_content_plan_search_posts', array($this, 'ajax_search_posts'));
             add_action('admin_post_arc_generate_content_plan', array($this, 'handle_generate_plan'));
             add_action('admin_post_arc_generate_content_satellites', array($this, 'handle_generate_satellites'));

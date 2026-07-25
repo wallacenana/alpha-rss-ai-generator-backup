@@ -273,6 +273,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $this->redirect_with_notice($article->get_error_message(), 'error');
             }
 
+            if (!empty($article['content_html']) && !empty($generator['random_bolds_enabled'])) {
+                $article['content_html'] = Alpha_RSS_AI_Generator_Helper::apply_humanized_bold_markup_to_content($article['content_html']);
+            }
+
             $title_outline_count = Alpha_RSS_AI_Generator_Helper::extract_outline_target_h2_count_from_title(
                 !empty($article['title']) ? $article['title'] : '',
                 !empty($item['source_title']) ? $item['source_title'] : (!empty($item['title']) ? $item['title'] : '')

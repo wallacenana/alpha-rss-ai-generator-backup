@@ -587,6 +587,13 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="full">Original</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Negritos aleatórios no conteúdo</label>
+                                    <select name="random_bolds_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                        <option value="0" <?php selected(isset($editing_generator['random_bolds_enabled']) ? intval($editing_generator['random_bolds_enabled']) : 0, 0); ?>>Não</option>
+                                        <option value="1" <?php selected(isset($editing_generator['random_bolds_enabled']) ? intval($editing_generator['random_bolds_enabled']) : 0, 1); ?>>Sim</option>
+                                    </select>
+                                </div>
                                 <div class="md:col-span-2" data-rss-link-phrases-field>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Frases do link da fonte</label>
                                     <textarea name="source_link_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Assista na plataforma&#10;Veja no catálogo&#10;Confira a fonte"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases()); ?></textarea>
@@ -778,6 +785,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'link_selector_class' => '',
                                         'content_selector' => '',
                                         'content_image_size' => 'medium',
+                                        'random_bolds_enabled' => '0',
                                         'source_link_phrases' => Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases(),
                                         'source_context_exclude_phrases' => '',
                                         'source_context_rating_label' => 'IMDb',
@@ -1529,6 +1537,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('video_selector_class', defaults.video_selector_class);
                         setValue('content_selector', defaults.content_selector);
                         setValue('content_image_size', defaults.content_image_size);
+                        setValue('random_bolds_enabled', defaults.random_bolds_enabled);
                         setValue('source_link_phrases', defaults.source_link_phrases);
                         setValue('seo_enabled', defaults.seo_enabled);
                         setValue('generation_language', defaults.generation_language);
@@ -1585,6 +1594,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('video_selector_class', generator.video_selector_class || defaults.video_selector_class);
                         setValue('content_selector', generator.content_selector || defaults.content_selector);
                         setValue('content_image_size', generator.content_image_size || defaults.content_image_size);
+                        setValue('random_bolds_enabled', String(typeof generator.random_bolds_enabled !== 'undefined' ? generator.random_bolds_enabled : defaults.random_bolds_enabled));
                         setValue('source_link_phrases', generator.source_link_phrases || defaults.source_link_phrases);
                         setValue('seo_enabled', String(typeof generator.seo_enabled !== 'undefined' ? generator.seo_enabled : defaults.seo_enabled));
                         setValue('generation_language', generator.generation_language || defaults.generation_language);

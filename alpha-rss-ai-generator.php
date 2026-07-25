@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.17
+Version: 1.9.18
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -250,6 +250,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'prompt_models_json',
                     'prompt_model_key',
                     'internal_links_count',
+                    'random_bolds_enabled',
                 );
                 foreach ($required_generator_columns as $column_name) {
                     $found_column = $wpdb->get_var($wpdb->prepare(
@@ -407,6 +408,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 link_selector_class varchar(255) NOT NULL DEFAULT '',
                 content_selector varchar(255) NOT NULL DEFAULT '',
                 content_image_size varchar(20) NOT NULL DEFAULT 'medium',
+                random_bolds_enabled tinyint(1) NOT NULL DEFAULT 0,
                 seo_enabled tinyint(1) NOT NULL DEFAULT 1,
                 generation_language varchar(80) NOT NULL DEFAULT 'Português do Brasil',
                 prompt_template longtext DEFAULT NULL,
@@ -899,7 +901,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function get_content_prompt_output_suffix()
         {
             return "FORMATO FINAL\n"
-                . 'Saída: Retorne APENAS o JSON com a chave "content_html". seja muito criterioso com esse formato final do json, pois o sistema depende de que seja um formato perfeito de json';
+                . "Saída: retorne APENAS um JSON válido com exatamente esta estrutura:\n"
+                . "{\n"
+                . "  \"content_html\": \"\"\n"
+                . "}\n"
+                . "Não inclua title, slug, resumo, meta_descricao, tags, pexels_tags, focus_keyword ou qualquer outra chave.\n"
+                . "Não escreva texto fora do JSON.\n"
+                . "Se não houver conteúdo, ainda assim retorne a chave content_html vazia.";
         }
 
         public static function append_content_prompt_output_suffix($prompt)
@@ -3011,6 +3019,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['link_selector_class'] = isset($raw['link_selector_class']) ? sanitize_text_field(wp_unslash($raw['link_selector_class'])) : '';
             $payload['content_selector'] = isset($raw['content_selector']) ? sanitize_text_field(wp_unslash($raw['content_selector'])) : '';
             $payload['content_image_size'] = isset($raw['content_image_size']) ? self::normalize_image_display_size(sanitize_key(wp_unslash($raw['content_image_size']))) : 'medium';
+            $payload['random_bolds_enabled'] = !empty($raw['random_bolds_enabled']) ? 1 : 0;
             $payload['seo_enabled'] = 1;
             $payload['generation_language'] = isset($raw['generation_language']) ? self::normalize_generation_language_value(sanitize_text_field(wp_unslash($raw['generation_language']))) : self::get_default_generation_language();
             $payload['prompt_template'] = isset($raw['prompt_template']) ? wp_kses_post(wp_unslash($raw['prompt_template'])) : '';
@@ -3449,6 +3458,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $max_tokens = max(256, intval($settings['default_max_tokens']));
             $use_responses_api = self::should_use_responses_api($model);
             $prompt_cache_retention = '24h';
+            $response_schema = (isset($context['response_schema']) && is_array($context['response_schema'])) ? $context['response_schema'] : array();
+            $response_schema_name = !empty($context['response_schema_name']) ? sanitize_key((string) $context['response_schema_name']) : 'arc_response';
+            $response_schema_description = !empty($context['response_schema_description']) ? sanitize_text_field((string) $context['response_schema_description']) : '';
 
             $body = array('model' => $model);
             if ($use_responses_api) {
@@ -3467,10 +3479,18 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 );
                 $body['max_output_tokens'] = $max_tokens;
                 $body['text'] = array(
-                    'format' => array(
+                    'format' => !empty($response_schema) ? array(
+                        'type' => 'json_schema',
+                        'name' => $response_schema_name,
+                        'schema' => $response_schema,
+                        'strict' => true,
+                    ) : array(
                         'type' => 'json_object',
                     ),
                 );
+                if ($response_schema_description !== '') {
+                    $body['text']['format']['description'] = $response_schema_description;
+                }
                 $body['prompt_cache_retention'] = $prompt_cache_retention;
                 if (strpos(strtolower($model), 'gpt-5') === 0) {
                     $body['reasoning'] = array(
@@ -3490,13 +3510,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 );
                 $body['temperature'] = $temperature;
                 $body['max_completion_tokens'] = $max_tokens;
-                $body['response_format'] = array(
+                $body['response_format'] = !empty($response_schema) ? array(
+                    'type' => 'json_schema',
+                    'json_schema' => array(
+                        'name' => $response_schema_name,
+                        'schema' => $response_schema,
+                        'strict' => true,
+                    ),
+                ) : array(
                     'type' => 'json_object',
                 );
+                if ($response_schema_description !== '' && !empty($response_schema)) {
+                    $body['response_format']['json_schema']['description'] = $response_schema_description;
+                }
                 $body['prompt_cache_retention'] = $prompt_cache_retention;
             }
 
-            error_log("prompt: " . $prompt);
+            // error_log("prompt: " . $prompt);
             $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -3548,7 +3578,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
 
-            error_log("response: " . print_r($text, true));
+            // error_log("response: " . print_r($text, true));
             return self::parse_ai_json($text, $context);
         }
 
@@ -7725,6 +7755,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return $article;
             }
 
+            if (!empty($article['content_html']) && !empty($generator['random_bolds_enabled'])) {
+                $article['content_html'] = Alpha_RSS_AI_Generator_Helper::apply_humanized_bold_markup_to_content($article['content_html']);
+            }
+
             $title_outline_count = Alpha_RSS_AI_Generator_Helper::extract_outline_target_h2_count_from_title(
                 !empty($article['title']) ? $article['title'] : '',
                 !empty($item['source_title']) ? $item['source_title'] : (!empty($item['title']) ? $item['title'] : '')
@@ -8511,6 +8545,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'link_selector_class' => $payload['link_selector_class'],
                 'content_selector' => $payload['content_selector'],
                 'content_image_size' => $payload['content_image_size'],
+                'random_bolds_enabled' => $payload['random_bolds_enabled'],
                 'source_link_phrases' => $payload['source_link_phrases'],
                 'source_context_filters_json' => $payload['source_context_filters_json'],
                 'prompt_model_key' => $payload['prompt_model_key'],
@@ -8617,6 +8652,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'link_selector_class' => isset($generator['link_selector_class']) ? $generator['link_selector_class'] : '',
                 'content_selector' => isset($generator['content_selector']) ? $generator['content_selector'] : '',
                 'content_image_size' => isset($generator['content_image_size']) ? $generator['content_image_size'] : 'medium',
+                'random_bolds_enabled' => isset($generator['random_bolds_enabled']) ? intval($generator['random_bolds_enabled']) : 0,
                 'source_link_phrases' => isset($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
                 'source_context_exclude_phrases' => isset($generator['source_context_exclude_phrases']) ? $generator['source_context_exclude_phrases'] : '',
                 'source_context_rating_label' => isset($generator['source_context_rating_label']) ? $generator['source_context_rating_label'] : 'IMDb',

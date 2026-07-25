@@ -22,7 +22,6 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
         public function __construct()
         {
             add_action('admin_menu', array($this, 'admin_menu'), 22);
-            add_action('admin_init', array($this, 'register_row_action_filters'));
             add_action('wp_ajax_arc_link_suggestions_search_posts', array($this, 'ajax_search_posts'));
             add_action('admin_post_arc_generate_link_suggestions', array($this, 'handle_generate_link_suggestions'));
             add_action('admin_post_arc_apply_link_suggestions', array($this, 'handle_apply_link_suggestions'));
