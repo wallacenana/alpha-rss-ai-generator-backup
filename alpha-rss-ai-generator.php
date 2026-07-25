@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.18
+Version: 1.9.19
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -57,7 +57,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.17';
+        const VERSION = '1.9.19';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -6589,8 +6589,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return new WP_Error('arc_item_locked', 'Esse item j? est? em processamento.');
             }
 
-            error_log("item: " . print_r($selected_item, true));
-
             $result = self::create_post_from_generator_item($generator, $selected_item);
             if (is_wp_error($result)) {
                 self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
@@ -8103,7 +8101,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         continue;
                     }
 
-                error_log("item 2: " . print_r($selected_item, true));
                 $result = self::create_post_from_generator_item($generator, $selected_item);
                 if (is_wp_error($result)) {
                     self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
@@ -8366,7 +8363,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
-                error_log("item 3: " . print_r($item, true));
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
                     self::mark_item_failed($generator['id'], $item, $result->get_error_code(), $result->get_error_message());
@@ -8449,7 +8445,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
-                error_log("item x: " . print_r($item, true));
                 $result = self::create_post_from_generator_item($generator, $item);
                 if (is_wp_error($result)) {
                     self::mark_item_failed($generator['id'], $item, $result->get_error_code(), $result->get_error_message());

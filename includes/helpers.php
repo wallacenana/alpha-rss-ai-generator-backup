@@ -613,12 +613,26 @@ class Alpha_RSS_AI_Generator_Helper
             $output .= $dom->saveHTML($child);
         }
 
+        // Keep word boundaries readable even when an existing text node was
+        // already split by a previous bold operation.
+        $output = preg_replace('/([\p{L}\p{N}])(<strong\b[^>]*>)/u', '$1 $2', $output);
+        $output = preg_replace('/(<\/strong>)([\p{L}\p{N}])/u', '$1 $2', $output);
+
         return trim($output) !== '' ? trim($output) : $content;
     }
 
     protected static function build_humanized_bold_markup_for_text_v2($text)
     {
-        $text = trim((string) $text);
+        $raw_text = (string) $text;
+        $leading_whitespace = '';
+        $trailing_whitespace = '';
+        if (preg_match('/^\s+/u', $raw_text, $whitespace_match)) {
+            $leading_whitespace = (string) $whitespace_match[0];
+        }
+        if (preg_match('/\s+$/u', $raw_text, $whitespace_match)) {
+            $trailing_whitespace = (string) $whitespace_match[0];
+        }
+        $text = trim($raw_text);
         if ($text === '' || !preg_match_all('/\b[\p{L}\p{N}][\p{L}\p{N}\x{2019}\x{0027}\-]*\b/u', $text, $matches, PREG_OFFSET_CAPTURE)) {
             return array();
         }
@@ -646,13 +660,92 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $stopwords = array(
-            'a', 'o', 'os', 'as', 'e', 'de', 'da', 'do', 'das', 'dos', 'em', 'no', 'na', 'nos', 'nas',
-            'um', 'uma', 'uns', 'umas', 'para', 'por', 'com', 'sem', 'sobre', 'entre', 'que', 'se',
-            'ao', 'aos', 'ate', 'e', 'eu', 'tu', 'ele', 'ela', 'eles', 'elas', 'esse', 'essa', 'esses',
-            'essas', 'este', 'esta', 'estes', 'estas', 'isso', 'isto', 'aquilo', 'ser', 'ter', 'vai',
-            'foi', 'sao', 'estao', 'era', 'eram', 'tem', 'tinha', 'havia', 'seu', 'sua', 'seus', 'suas',
-            'meu', 'minha', 'meus', 'minhas', 'ja', 'nao', 'muito', 'muita', 'muitos', 'muitas', 'mais',
-            'the', 'and', 'or', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'from', 'by',
+            'a',
+            'o',
+            'os',
+            'as',
+            'e',
+            'de',
+            'da',
+            'do',
+            'das',
+            'dos',
+            'em',
+            'no',
+            'na',
+            'nos',
+            'nas',
+            'um',
+            'uma',
+            'uns',
+            'umas',
+            'para',
+            'por',
+            'com',
+            'sem',
+            'sobre',
+            'entre',
+            'que',
+            'se',
+            'ao',
+            'aos',
+            'ate',
+            'e',
+            'eu',
+            'tu',
+            'ele',
+            'ela',
+            'eles',
+            'elas',
+            'esse',
+            'essa',
+            'esses',
+            'essas',
+            'este',
+            'esta',
+            'estes',
+            'estas',
+            'isso',
+            'isto',
+            'aquilo',
+            'ser',
+            'ter',
+            'vai',
+            'foi',
+            'sao',
+            'estao',
+            'era',
+            'eram',
+            'tem',
+            'tinha',
+            'havia',
+            'seu',
+            'sua',
+            'seus',
+            'suas',
+            'meu',
+            'minha',
+            'meus',
+            'minhas',
+            'ja',
+            'nao',
+            'muito',
+            'muita',
+            'muitos',
+            'muitas',
+            'mais',
+            'the',
+            'and',
+            'or',
+            'to',
+            'of',
+            'in',
+            'on',
+            'at',
+            'for',
+            'with',
+            'from',
+            'by',
         );
         $sizes = array(1, 2, 3);
         shuffle($sizes);
@@ -702,7 +795,7 @@ class Alpha_RSS_AI_Generator_Helper
                 }
 
                 return array(
-                    'html' => esc_html($prefix) . '<strong>' . esc_html($middle) . '</strong>' . esc_html($suffix),
+                    'html' => esc_html($leading_whitespace . $prefix) . '<strong>' . esc_html($middle) . '</strong>' . esc_html($suffix . $trailing_whitespace),
                     'phrase' => trim(implode(' ', array_column($slice, 'text'))),
                 );
             }
@@ -755,10 +848,69 @@ class Alpha_RSS_AI_Generator_Helper
         shuffle($size_order);
 
         $stopwords = array(
-            'a', 'o', 'os', 'as', 'e', 'de', 'da', 'do', 'das', 'dos', 'em', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'uns', 'umas',
-            'para', 'por', 'com', 'sem', 'sobre', 'entre', 'que', 'se', 'ao', 'aos', 'às', 'as', 'este', 'esta', 'esse', 'essa',
-            'isso', 'aquilo', 'lhe', 'lhes', 'te', 'me', 'tu', 'eu', 'nós', 'voce', 'você', 'eles', 'elas', 'ser', 'ter', 'ir',
-            'the', 'and', 'or', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'from', 'by',
+            'a',
+            'o',
+            'os',
+            'as',
+            'e',
+            'de',
+            'da',
+            'do',
+            'das',
+            'dos',
+            'em',
+            'no',
+            'na',
+            'nos',
+            'nas',
+            'um',
+            'uma',
+            'uns',
+            'umas',
+            'para',
+            'por',
+            'com',
+            'sem',
+            'sobre',
+            'entre',
+            'que',
+            'se',
+            'ao',
+            'aos',
+            'às',
+            'as',
+            'este',
+            'esta',
+            'esse',
+            'essa',
+            'isso',
+            'aquilo',
+            'lhe',
+            'lhes',
+            'te',
+            'me',
+            'tu',
+            'eu',
+            'nós',
+            'voce',
+            'você',
+            'eles',
+            'elas',
+            'ser',
+            'ter',
+            'ir',
+            'the',
+            'and',
+            'or',
+            'to',
+            'of',
+            'in',
+            'on',
+            'at',
+            'for',
+            'with',
+            'from',
+            'by',
         );
 
         foreach ($size_order as $size) {
@@ -3810,11 +3962,24 @@ class Alpha_RSS_AI_Generator_Helper
 
         // Tolerate headings damaged by an earlier charset conversion as well.
         $normalized = strtr($normalized, array(
-            'Ã¡' => 'a', 'Ã¢' => 'a', 'Ã£' => 'a', 'Ã¤' => 'a',
-            'Ã©' => 'e', 'Ãª' => 'e', 'Ã«' => 'e',
-            'Ã­' => 'i', 'Ã®' => 'i', 'Ã¯' => 'i',
-            'Ã³' => 'o', 'Ã´' => 'o', 'Ãµ' => 'o', 'Ã¶' => 'o',
-            'Ãº' => 'u', 'Ã»' => 'u', 'Ã¼' => 'u', 'Ã§' => 'c',
+            'Ã¡' => 'a',
+            'Ã¢' => 'a',
+            'Ã£' => 'a',
+            'Ã¤' => 'a',
+            'Ã©' => 'e',
+            'Ãª' => 'e',
+            'Ã«' => 'e',
+            'Ã­' => 'i',
+            'Ã®' => 'i',
+            'Ã¯' => 'i',
+            'Ã³' => 'o',
+            'Ã´' => 'o',
+            'Ãµ' => 'o',
+            'Ã¶' => 'o',
+            'Ãº' => 'u',
+            'Ã»' => 'u',
+            'Ã¼' => 'u',
+            'Ã§' => 'c',
         ));
         $normalized = strtolower($normalized);
         $normalized = preg_replace('/[^a-z0-9]+/', ' ', $normalized);
@@ -4267,10 +4432,22 @@ class Alpha_RSS_AI_Generator_Helper
         $source_content_html = '';
         foreach (array('source_page_content_html', 'content_html', 'source_page_html') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
-                $source_content_html = self::limit_prompt_html_chars(self::normalize_prompt_context_html(preg_replace('/<title[^>]*>.*?<\/title>/is', '', (string) $item[$candidate_key])), 6000);
+                // Planning must scan the complete list whenever possible.
+                $source_content_html = self::limit_prompt_html_chars(self::normalize_prompt_context_html(preg_replace('/<title[^>]*>.*?<\/title>/is', '', (string) $item[$candidate_key])), 18000);
                 break;
             }
         }
+        $source_item_count = self::extract_outline_target_h2_count_from_title($source_title, '');
+        if ($source_item_count <= 0) {
+            $source_title_for_count = strtolower(self::normalize_prompt_context_text($source_title));
+            if (function_exists('remove_accents')) {
+                $source_title_for_count = strtolower(remove_accents($source_title_for_count));
+            }
+            if (preg_match('/\b(\d{1,2})\b.{0,50}\b(?:classicos?|jogos?|titulos?|itens?)\b/i', $source_title_for_count, $count_match)) {
+                $source_item_count = intval($count_match[1]);
+            }
+        }
+        $source_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
         $available_prompt_models = Alpha_RSS_AI_Generator::get_prompt_models($generator);
         $available_prompt_model_keys = array();
         $available_prompt_models_text = array();
@@ -4301,11 +4478,16 @@ class Alpha_RSS_AI_Generator_Helper
             'Seja criterioso entre noticia e artigo, e entre lista e artigo.',
             'A frase chave deve ser fluida e natural, não crie uma kw parecendo tags e não deve ser longa também',
             'Escolha recommended_prompt_model_key usando somente uma das chaves validas do modelo base abaixo.',
+            'Varra o HTML inteiro, do inicio ao fim. Nao pare na introducao e nao transforme os primeiros fatos em um resumo do restante.',
+            'Se o titulo ou a estrutura indicar uma quantidade de itens, identifique todos os itens citados na fonte. Crie pelo menos um bullet especifico para cada item, com o nome exato e os fatos correspondentes, antes de incluir contexto historico ou fatos gerais.',
+            'Nunca substitua uma lista completa de itens por uma frase dizendo que existem varios itens. Preserve os nomes e a ordem em que aparecem na fonte.',
             'key_facts deve ser um array com o maior numero possivel de fatos concretos, relevantes e verificaveis encontrados na fonte.',
             'Escreva cada fato como um bullet autocontido e rico, incluindo nomes, acontecimentos, datas, numeros, locais, relacoes e atribuicoes quando existirem.',
             'Nao inclua frases genericas, opinioes inventadas, conselhos, transicoes ou fatos que nao estejam na fonte. Nao repita o mesmo fato.',
             'Organize os fatos em uma ordem editorial fluida, que ajude o redator a construir o conteudo com sentido do inicio ao fim.',
             'Título da fonte: ' . ($source_title !== '' ? $source_title : '[sem título disponível]'),
+            $source_item_count > 0 ? 'Quantidade de itens indicada pelo titulo: ' . $source_item_count . '. A resposta deve cobrir todos os itens encontrados.' : '',
+            $source_outline_titles !== '' ? 'Titulos e subtitulos extraidos da fonte, preserve os nomes e a ordem:' . "\n" . $source_outline_titles : '',
             'Lista de modelos:',
             $available_prompt_models_text,
             'Fonte em HTML filtrado:',
@@ -4483,6 +4665,49 @@ class Alpha_RSS_AI_Generator_Helper
             $outline_context['outline_error'] = $outline_response->get_error_message();
         } else {
             $outline_context = self::normalize_outline_analysis_context($outline_response, $outline_context);
+
+            // Preserve every source item named by a quantified headline. The AI
+            // often summarizes the introduction and omits the remaining names.
+            $source_title_for_count = '';
+            foreach (array('source_title', 'source_page_title', 'title', 'item_title', 'feed_title') as $candidate_key) {
+                if (!empty($item[$candidate_key])) {
+                    $source_title_for_count = self::normalize_prompt_context_text($item[$candidate_key]);
+                    break;
+                }
+            }
+            $source_item_count = self::extract_outline_target_h2_count_from_title($source_title_for_count, '');
+            if ($source_item_count <= 0) {
+                $source_title_for_count = strtolower($source_title_for_count);
+                if (function_exists('remove_accents')) {
+                    $source_title_for_count = strtolower(remove_accents($source_title_for_count));
+                }
+                if (preg_match('/\b(\d{1,2})\b.{0,50}\b(?:classicos?|jogos?|titulos?|itens?)\b/i', $source_title_for_count, $count_match)) {
+                    $source_item_count = intval($count_match[1]);
+                }
+            }
+            if ($source_item_count > 0) {
+                $source_outline_titles = self::build_source_outline_titles_for_prompt($item, min(10, max(10, $source_item_count)));
+                if ($source_outline_titles !== '') {
+                    $existing_fact_keys = array();
+                    foreach ($outline_context['key_facts'] as $existing_fact) {
+                        $existing_fact_key = function_exists('mb_strtolower') ? mb_strtolower((string) $existing_fact, 'UTF-8') : strtolower((string) $existing_fact);
+                        $existing_fact_keys[$existing_fact_key] = true;
+                    }
+                    foreach (preg_split('/\R/u', $source_outline_titles) as $source_outline_title) {
+                        $source_outline_title = trim((string) $source_outline_title);
+                        $source_outline_title = preg_replace('/^\d+\.\s*/', '', $source_outline_title);
+                        if ($source_outline_title === '') {
+                            continue;
+                        }
+                        $source_fact = 'Item da fonte: ' . $source_outline_title;
+                        $source_fact_key = function_exists('mb_strtolower') ? mb_strtolower($source_fact, 'UTF-8') : strtolower($source_fact);
+                        if (!isset($existing_fact_keys[$source_fact_key])) {
+                            $outline_context['key_facts'][] = $source_fact;
+                            $existing_fact_keys[$source_fact_key] = true;
+                        }
+                    }
+                }
+            }
         }
 
         if (!empty($outline_model_hint_key) && $outline_model_hint_key === 'news_short') {
@@ -4607,17 +4832,6 @@ class Alpha_RSS_AI_Generator_Helper
         $content_length_min_words = isset($content_length_range['min_words']) ? intval($content_length_range['min_words']) : 0;
         $content_length_max_words = isset($content_length_range['max_words']) ? intval($content_length_range['max_words']) : 0;
 
-        error_log('[alpha-rss-ai-generator] content_generation_start | ' . wp_json_encode(array(
-            'generator_id' => !empty($generator['id']) ? intval($generator['id']) : 0,
-            'item_guid' => !empty($item['guid']) ? (string) $item['guid'] : '',
-            'source_title' => $source_title,
-            'source_page_html_source' => $source_page_html_source,
-            'source_page_html_length' => strlen($source_page_html),
-            'source_page_html_preview' => $source_page_html !== '' ? mb_substr($source_page_html, 0, 1200) : '',
-            'source_excerpt_length' => strlen($source_excerpt_summary),
-            'source_excerpt_preview' => $source_excerpt_summary !== '' ? mb_substr($source_excerpt_summary, 0, 500) : '',
-        ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
         $replacements = array(
             '{{feed_title}}' => $item['feed_title'],
             '{{source_title}}' => $source_title,
@@ -4741,7 +4955,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Conteudo HTML filtrado da fonte: {{source_content}}',
         );
         if ($key_facts_text !== '') {
-            $hidden_context[] = 'Fatos essenciais extraidos no planejamento. Use esses dados factuais de forma absolutam pois já estão interpretados e devem ser usados:';
+            $hidden_context[] = 'Fatos essenciais extraidos no planejamento. Use esses dados factuais de forma absolutam pois já estão interpretados e devem ser usados. Esses dados são parte do conteúdo, são apenas um filtro com os dados mais importantes, para ter noção do tamanho do conteúdo, use apenas o conteudo em html filtrado, não use esses fatos como base para o tamanho do conteúdo, pois ele só repete o que o conteúdo principal já tem:';
             $hidden_context[] = '{{key_facts}}';
             $hidden_context[] = 'Use o maior numero possivel desses fatos concretos, sem inventar, repetir ou substituir por frases genericas. Mantenha a ordem quando ela der sentido ao texto.';
         }
