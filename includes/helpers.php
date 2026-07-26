@@ -1736,7 +1736,8 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
 
-        $video_candidate = Alpha_RSS_AI_Generator::extract_video_candidate_from_html($html, $base_url, $video_selector_class);
+        // Video capture is automatic: use the first valid video on the page.
+        $video_candidate = Alpha_RSS_AI_Generator::extract_video_candidate_from_html($html, $base_url, '');
         if (!empty($video_candidate['video_url'])) {
             $media['video_url'] = $video_candidate['video_url'];
         }
@@ -1782,7 +1783,7 @@ class Alpha_RSS_AI_Generator_Helper
         foreach (array('image_url', 'image_source', 'image_class', 'image_attr', 'image_tag') as $image_key) {
             $media[$image_key] = !empty($featured_image[$image_key]) ? $featured_image[$image_key] : '';
         }
-        if ($video_selector_class === '' && $media['video_url'] === '') {
+        if ($media['video_url'] === '') {
             foreach (array('og:video', 'og:video:url', 'twitter:player:stream') as $key) {
                 if (preg_match('/<meta[^>]+(?:property|name|itemprop)=["\']' . preg_quote($key, '/') . '["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $matches)) {
                     $candidate = Alpha_RSS_AI_Generator::resolve_url_against_base(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $url);

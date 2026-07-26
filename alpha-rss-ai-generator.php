@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.19
+Version: 1.9.20
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -57,7 +57,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.19';
+        const VERSION = '1.9.20';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -5017,6 +5017,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return $result;
             }
 
+            // Keep the argument for backwards compatibility, but never limit
+            // video discovery to a user-provided CSS class.
+            $video_selector_class = '';
+
             if ($video_selector_class !== '') {
                 $tokens = self::normalize_video_selector_class_tokens($video_selector_class);
                 if (empty($tokens) || !class_exists('DOMDocument') || !class_exists('DOMXPath')) {
@@ -5204,7 +5208,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function resolve_item_media($item, $permalink, $excerpt_html, $content_html, $video_selector_class = '', $image_selector_class = '', $link_selector_class = '')
         {
-            $allow_video_enclosures = trim((string) $video_selector_class) === '';
+            // Video enclosures are always eligible; the selector is no longer
+            // used to decide whether a page contains a video.
+            $allow_video_enclosures = true;
             $page_media = array(
                 'image_url' => '',
                 'image_source' => '',
