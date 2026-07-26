@@ -275,6 +275,9 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $generator = $context['generator'];
             $item = $context['item'];
             $post = $context['post'];
+            $original_post_name = ($post instanceof WP_Post && !empty($post->post_name))
+                ? (string) $post->post_name
+                : '';
 
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
             if (is_wp_error($article)) {
@@ -404,6 +407,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $article['content_html'] = $content_html;
             $post_data = Alpha_RSS_AI_Generator::build_post_data($generator, $article, $item);
             $post_data['ID'] = intval($post_id);
+            if ($original_post_name !== '') {
+                // Regeneration may update the title, but never changes the indexed URL.
+                $post_data['post_name'] = $original_post_name;
+            }
 
             $update_result = wp_update_post($post_data, true);
 
