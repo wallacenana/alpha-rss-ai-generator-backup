@@ -157,6 +157,44 @@ class Alpha_RSS_AI_Generator_Helper
         return is_array($result) && isset($result['html']) ? (string) $result['html'] : '';
     }
 
+    public static function extract_video_from_raw_source_html($html, $base_url = '')
+    {
+        $result = array(
+            'video_url' => '',
+            'video_embed_html' => '',
+            'video_source' => '',
+        );
+        $html = (string) $html;
+        if ($html === '') {
+            return $result;
+        }
+
+        $candidate = Alpha_RSS_AI_Generator::extract_video_candidate_from_html($html, $base_url, '');
+        if (is_array($candidate)) {
+            foreach (array('video_url', 'video_embed_html', 'video_source') as $key) {
+                if (!empty($candidate[$key])) {
+                    $result[$key] = $candidate[$key];
+                }
+            }
+        }
+
+        if ($result['video_url'] === '') {
+            foreach (array('og:video', 'og:video:url', 'twitter:player:stream') as $key) {
+                if (!preg_match('/<meta[^>]+(?:property|name|itemprop)=["\']' . preg_quote($key, '/') . '["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $matches)) {
+                    continue;
+                }
+                $candidate_url = self::resolve_url_against_base(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, get_bloginfo('charset')), $base_url);
+                if ($candidate_url !== '' && Alpha_RSS_AI_Generator::is_video_embed_url($candidate_url)) {
+                    $result['video_url'] = $candidate_url;
+                    $result['video_source'] = $key;
+                    break;
+                }
+            }
+        }
+
+        return $result;
+    }
+
     public static function resolve_url_against_base($url, $base_url = '')
     {
         if (class_exists('Alpha_RSS_AI_Generator') && method_exists('Alpha_RSS_AI_Generator', 'resolve_url_against_base')) {
@@ -1773,15 +1811,21 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $raw_html = self::fetch_source_page_html($url, 5, 'source_page_media');
+        $raw_video = self::extract_video_from_raw_source_html($raw_html, $url);
         $featured_image = self::extract_featured_image_from_html($raw_html, $url);
         $html = self::strip_source_page_noise_from_html($raw_html);
         if ($html === '') {
-            return $empty_media;
+            return wp_parse_args($raw_video, $empty_media);
         }
 
         $media = self::extract_media_from_html($html, $url, $video_selector_class, $image_selector_class, $link_selector_class, $prefer_selector_image);
         foreach (array('image_url', 'image_source', 'image_class', 'image_attr', 'image_tag') as $image_key) {
             $media[$image_key] = !empty($featured_image[$image_key]) ? $featured_image[$image_key] : '';
+        }
+        foreach (array('video_url', 'video_embed_html', 'video_source') as $video_key) {
+            if (!empty($raw_video[$video_key])) {
+                $media[$video_key] = $raw_video[$video_key];
+            }
         }
         if ($media['video_url'] === '') {
             foreach (array('og:video', 'og:video:url', 'twitter:player:stream') as $key) {
