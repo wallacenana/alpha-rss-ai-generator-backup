@@ -2307,7 +2307,7 @@ class Alpha_RSS_AI_Generator_Admin
                 <div>
                     <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
                     <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Planilhas e palavras-chave</h1>
-                    <p class="mt-2 max-w-3xl text-sm text-slate-600">Importe CSV, XLS ou XLSX, escolha a coluna da palavra-chave e a coluna da slug final, e depois use essas listas nos geradores.</p>
+                    <p class="mt-2 max-w-3xl text-sm text-slate-600">Importe CSV, XLS ou XLSX usando uma coluna de palavras-chave. URL, slug, título e demais campos são opcionais.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" data-open-keyword-import-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar / analisar lista</button>
@@ -2373,7 +2373,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                                             <div>
                                                 <h3 class="text-base font-semibold text-slate-950">Mapeamento das colunas</h3>
-                                                <p class="mt-1 text-sm text-slate-500">Escolha aqui a coluna da palavra-chave, da URL/slug e os campos extras da planilha.</p>
+                                                <p class="mt-1 text-sm text-slate-500">A coluna de palavra-chave é obrigatória. URL, slug e campos extras são opcionais.</p>
                                             </div>
                                             <div id="arc-keyword-preview-summary" class="text-sm text-slate-500"></div>
                                         </div>
@@ -2389,11 +2389,11 @@ class Alpha_RSS_AI_Generator_Admin
                                             <select id="arc-keyword-column-title" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da URL</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da URL (opcional)</label>
                                             <select id="arc-keyword-column-url" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
-                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da slug final</label>
+                                            <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da slug final (opcional)</label>
                                             <select id="arc-keyword-column-slug" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>

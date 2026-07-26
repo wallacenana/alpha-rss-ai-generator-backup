@@ -198,10 +198,6 @@ class Alpha_RSS_AI_Generator_REST
         if (empty($column_map['keyword_column'])) {
             return new WP_Error('arc_keyword_missing_column', 'Selecione uma coluna de palavra-chave.', array('status' => 400));
         }
-        if (empty($column_map['slug_column']) && empty($column_map['source_url_column'])) {
-            return new WP_Error('arc_keyword_missing_slug_column', 'Selecione a coluna de URL ou slug.', array('status' => 400));
-        }
-
         $wpdb->insert(
             Alpha_RSS_AI_Generator::$table_lists,
             array(

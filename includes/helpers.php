@@ -1440,6 +1440,7 @@ class Alpha_RSS_AI_Generator_Helper
         $slug_info = Alpha_RSS_AI_Generator::bulk_resolve_slug_info($slug_candidate);
         $canonical_source_url = Alpha_RSS_AI_Generator::bulk_normalize_url_for_dedupe($source_url_candidate);
         $source_url = !empty($slug_info['source_url']) ? $slug_info['source_url'] : $source_url_candidate;
+        $has_source_reference = ($slug_candidate !== '' || $source_url_candidate !== '');
         $error_message = '';
         $row_status = 'pending';
         $slug_is_valid = 1;
@@ -1448,7 +1449,7 @@ class Alpha_RSS_AI_Generator_Helper
             $row_status = 'invalid_slug';
             $slug_is_valid = 0;
             $error_message = 'Keyword vazia';
-        } elseif (empty($slug_info['valid'])) {
+        } elseif ($has_source_reference && empty($slug_info['valid'])) {
             $row_status = 'invalid_slug';
             $slug_is_valid = 0;
             $error_message = !empty($slug_info['extension'])
