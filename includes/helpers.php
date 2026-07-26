@@ -110,6 +110,9 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         if ($code < 200 || $code >= 300) {
+            if (in_array($code, array(402, 403), true) && class_exists('Alpha_RSS_AI_Global_Filters')) {
+                Alpha_RSS_AI_Global_Filters::add_source_from_http_status($url, $code);
+            }
             if ($code === 403) {
                 set_transient($blocked_key, time() + 300, 300);
             }
@@ -118,9 +121,9 @@ class Alpha_RSS_AI_Generator_Helper
                 'requested_url' => $requested_url,
                 'resolved_url' => $url,
                 'status_code' => $code,
-                'blocked' => $code === 403,
-                'error_code' => $code === 403 ? 'arc_source_forbidden' : 'arc_source_http_error',
-                'error_message' => $code === 403 ? 'A fonte retornou 403 e o acesso ficou bloqueado temporariamente.' : 'A fonte retornou um status HTTP inesperado.',
+                'blocked' => in_array($code, array(402, 403), true),
+                'error_code' => in_array($code, array(402, 403), true) ? 'arc_source_blocked' : 'arc_source_http_error',
+                'error_message' => in_array($code, array(402, 403), true) ? 'A fonte retornou HTTP ' . $code . ' e foi adicionada a blacklist global.' : 'A fonte retornou um status HTTP inesperado.',
             );
         }
 
@@ -193,6 +196,221 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         return $result;
+    }
+
+    /**
+     * Extract videos in the source order, associating each one with its H2.
+     * The section index is intentionally independent from the generated title.
+     */
+    public static function extract_video_sections_from_raw_source_html($html, $base_url = '', $content_selector = '')
+    {
+        $html = (string) $html;
+        if ($html === '' || !class_exists('DOMDocument') || !class_exists('DOMXPath')) {
+            return array();
+        }
+
+        $source_html = $html;
+        $content_selector = trim((string) $content_selector);
+        if ($content_selector !== '') {
+            $selected_html = self::extract_html_from_html_with_fallbacks($html, $content_selector);
+            if ($selected_html !== '') {
+                $source_html = $selected_html;
+            }
+        } else {
+            $source_html = self::strip_source_page_noise_from_html($html);
+        }
+
+        if (trim($source_html) === '') {
+            return array();
+        }
+
+        $previous_libxml_state = libxml_use_internal_errors(true);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = @$dom->loadHTML('<?xml encoding="UTF-8">' . $source_html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous_libxml_state);
+        if (!$loaded) {
+            return array();
+        }
+
+        $xpath = new DOMXPath($dom);
+        $h2_nodes = $xpath->query('//h2');
+        $heading_tag = ($h2_nodes && $h2_nodes->length > 0) ? 'h2' : 'h3';
+        $sections = array();
+        $current_section_index = -1;
+        $seen_video_urls = array();
+        $nodes = $xpath->query('//*');
+        if (!$nodes) {
+            return array();
+        }
+
+        $video_attributes = array(
+            'src',
+            'data-src',
+            'data-lazy-src',
+            'data-video-url',
+            'data-video',
+            'data-embed-url',
+            'data-oembed-url',
+            'data-url',
+            'data-player-url',
+            'data-youtube-url',
+        );
+
+        foreach ($nodes as $node) {
+            if (!($node instanceof DOMElement)) {
+                continue;
+            }
+
+            $tag = strtolower((string) $node->nodeName);
+            if ($tag === $heading_tag) {
+                $title = self::clean_source_text($node->textContent);
+                if ($title === '' || self::is_auxiliary_outline_heading_text_v2($title)) {
+                    $current_section_index = -1;
+                    continue;
+                }
+
+                $current_section_index = count($sections);
+                $sections[] = array(
+                    'section_index' => $current_section_index,
+                    'heading_title' => $title,
+                    'heading_level' => intval(substr($heading_tag, 1)),
+                    'videos' => array(),
+                );
+                continue;
+            }
+
+            if ($current_section_index < 0 || !isset($sections[$current_section_index])) {
+                continue;
+            }
+
+            if ($tag === 'source' && $node->parentNode instanceof DOMElement && strtolower((string) $node->parentNode->nodeName) === 'video') {
+                continue;
+            }
+
+            $candidate_tags = array('iframe', 'video', 'embed', 'object', 'source');
+            $has_video_attribute = false;
+            foreach ($video_attributes as $attribute) {
+                if ($node->hasAttribute($attribute)) {
+                    $has_video_attribute = true;
+                    break;
+                }
+            }
+            if (!in_array($tag, $candidate_tags, true) && !$has_video_attribute) {
+                continue;
+            }
+
+            $candidate_url = '';
+            foreach ($video_attributes as $attribute) {
+                if ($node->hasAttribute($attribute)) {
+                    $candidate_url = trim((string) $node->getAttribute($attribute));
+                    if ($candidate_url !== '') {
+                        break;
+                    }
+                }
+            }
+
+            $outer_html = is_object($node->ownerDocument) ? trim((string) $node->ownerDocument->saveHTML($node)) : '';
+            if ($candidate_url === '' && $outer_html !== '' && method_exists('Alpha_RSS_AI_Generator', 'extract_video_url_from_embed_html')) {
+                $candidate_url = Alpha_RSS_AI_Generator::extract_video_url_from_embed_html($outer_html, $base_url);
+            }
+
+            $candidate_url = html_entity_decode($candidate_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+            $resolved_url = self::resolve_url_against_base($candidate_url, $base_url);
+            if ($resolved_url === '' || !Alpha_RSS_AI_Generator::is_video_embed_url($resolved_url)) {
+                continue;
+            }
+
+            $normalized_url = strtolower(rtrim($resolved_url, '/'));
+            if (isset($seen_video_urls[$normalized_url])) {
+                continue;
+            }
+            $seen_video_urls[$normalized_url] = true;
+
+            $host = strtolower((string) wp_parse_url($resolved_url, PHP_URL_HOST));
+            $source = (strpos($host, 'youtube.') !== false || $host === 'youtu.be') ? 'youtube' : 'video';
+            $sections[$current_section_index]['videos'][] = array(
+                'video_url' => esc_url_raw($resolved_url),
+                'video_embed_html' => $outer_html,
+                'video_source' => $source,
+            );
+        }
+
+        return $sections;
+    }
+
+    public static function inject_source_video_sections_into_content($content, $video_sections)
+    {
+        $content = (string) $content;
+        if ($content === '' || !is_array($video_sections) || empty($video_sections) || !function_exists('parse_blocks') || !function_exists('serialize_blocks')) {
+            return $content;
+        }
+
+        $blocks = parse_blocks($content);
+        if (!is_array($blocks) || empty($blocks)) {
+            return $content;
+        }
+
+        $section_map = array();
+        foreach (array_values($video_sections) as $section_index => $section) {
+            if (!is_array($section) || empty($section['videos']) || !is_array($section['videos'])) {
+                continue;
+            }
+            $section_key = isset($section['section_index']) ? intval($section['section_index']) : $section_index;
+            $section_map[$section_key] = $section;
+        }
+        if (empty($section_map)) {
+            return $content;
+        }
+
+        $serialized_content = $content;
+        $output_blocks = array();
+        $current_h2_index = -1;
+
+        foreach ($blocks as $block) {
+            if (is_array($block) && isset($block['blockName']) && $block['blockName'] === 'core/heading') {
+                $level = !empty($block['attrs']['level']) ? intval($block['attrs']['level']) : 2;
+                if ($level === 2) {
+                    if ($current_h2_index >= 0 && isset($section_map[$current_h2_index])) {
+                        $output_blocks = array_merge($output_blocks, self::build_source_video_blocks_for_section($section_map[$current_h2_index], $serialized_content));
+                    }
+                    $current_h2_index++;
+                }
+            }
+
+            $output_blocks[] = $block;
+        }
+
+        if ($current_h2_index >= 0 && isset($section_map[$current_h2_index])) {
+            $output_blocks = array_merge($output_blocks, self::build_source_video_blocks_for_section($section_map[$current_h2_index], $serialized_content));
+        }
+
+        return serialize_blocks($output_blocks);
+    }
+
+    private static function build_source_video_blocks_for_section($section, $serialized_content)
+    {
+        $blocks = array();
+        if (!is_array($section) || empty($section['videos']) || !is_array($section['videos'])) {
+            return $blocks;
+        }
+
+        foreach ($section['videos'] as $video) {
+            if (!is_array($video)) {
+                continue;
+            }
+            $video_url = !empty($video['video_url']) ? esc_url_raw((string) $video['video_url']) : '';
+            if ($video_url === '' || strpos($serialized_content, $video_url) !== false) {
+                continue;
+            }
+            $embed_html = !empty($video['video_embed_html']) ? (string) $video['video_embed_html'] : '';
+            $block = Alpha_RSS_AI_Generator::build_gutenberg_embed_block_from_html($embed_html, $video_url);
+            if (!empty($block)) {
+                $blocks[] = $block;
+            }
+        }
+
+        return $blocks;
     }
 
     public static function resolve_url_against_base($url, $base_url = '')

@@ -177,6 +177,14 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 }
             }
 
+            $video_sections_raw = (string) get_post_meta($post_id, '_arc_source_page_video_sections', true);
+            if ($video_sections_raw !== '') {
+                $video_sections = json_decode($video_sections_raw, true);
+                if (is_array($video_sections)) {
+                    $item['source_page_video_sections'] = $video_sections;
+                }
+            }
+
             $outline_block_quantities_raw = (string) get_post_meta($post_id, '_arc_outline_block_quantities', true);
             if ($outline_block_quantities_raw !== '') {
                 $outline_block_quantities = json_decode($outline_block_quantities_raw, true);
@@ -290,6 +298,25 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $use_source_video = !empty($generator['source_video_enabled']);
             $source_video_embed_html = '';
             $source_video_url = '';
+            $source_video_sections = !empty($item['source_page_video_sections']) && is_array($item['source_page_video_sections'])
+                ? $item['source_page_video_sections']
+                : array();
+            if (empty($source_video_sections) && !empty($item['source_page_html'])) {
+                $source_video_sections = Alpha_RSS_AI_Generator_Helper::extract_video_sections_from_raw_source_html(
+                    $item['source_page_html'],
+                    !empty($item['permalink']) ? $item['permalink'] : '',
+                    !empty($generator['content_selector']) ? $generator['content_selector'] : ''
+                );
+            }
+            $has_section_videos = false;
+            if ($use_source_video) {
+                foreach ($source_video_sections as $source_video_section) {
+                    if (is_array($source_video_section) && !empty($source_video_section['videos']) && is_array($source_video_section['videos'])) {
+                        $has_section_videos = true;
+                        break;
+                    }
+                }
+            }
             $content_image_size = !empty($generator['content_image_size'])
                 ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
                 : 'medium';
@@ -298,8 +325,10 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $is_keyword_list_url_reference = Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator);
             $treat_like_rss = !$is_keyword_list || $is_keyword_list_url_reference;
             if ($treat_like_rss && $use_source_video) {
-                $source_video_embed_html = !empty($item['source_video_embed_html']) ? trim((string) $item['source_video_embed_html']) : '';
-                $source_video_url = !empty($item['source_video_url']) ? esc_url_raw(trim((string) $item['source_video_url'])) : '';
+                if (!$has_section_videos) {
+                    $source_video_embed_html = !empty($item['source_video_embed_html']) ? trim((string) $item['source_video_embed_html']) : '';
+                    $source_video_url = !empty($item['source_video_url']) ? esc_url_raw(trim((string) $item['source_video_url'])) : '';
+                }
             }
 
             $content_html = isset($article['content_html']) ? (string) $article['content_html'] : '';
@@ -319,6 +348,13 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $source_video_embed_html,
                 $source_video_url
             );
+
+            if ($has_section_videos) {
+                $article['content_html'] = Alpha_RSS_AI_Generator_Helper::inject_source_video_sections_into_content(
+                    $article['content_html'],
+                    $source_video_sections
+                );
+            }
 
             $article['content_html'] = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html(
                 $article['content_html']

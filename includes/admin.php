@@ -1919,6 +1919,7 @@ class Alpha_RSS_AI_Generator_Admin
         }
 
         $settings = Alpha_RSS_AI_Generator::get_settings();
+        $blacklist_entries = class_exists('Alpha_RSS_AI_Global_Filters') ? Alpha_RSS_AI_Global_Filters::get_entries() : array();
 
         ob_start();
     ?>
@@ -1953,8 +1954,13 @@ class Alpha_RSS_AI_Generator_Admin
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="p-6">
                     <?php wp_nonce_field('arc_save_settings', 'arc_settings_nonce'); ?>
                     <input type="hidden" name="action" value="arc_save_settings" />
+                    <div class="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4" data-settings-tabs>
+                        <button type="button" data-settings-tab-button="general" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Geral</button>
+                        <button type="button" data-settings-tab-button="links" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">Links globais</button>
+                        <button type="button" data-settings-tab-button="blacklist" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">Blacklist</button>
+                    </div>
                     <div class="space-y-4">
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div data-settings-tab-panel="general" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <div>
                                 <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API da OpenAI</label>
                                 <input type="password" name="openai_api_key" value="<?php echo esc_attr($settings['openai_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
@@ -1974,11 +1980,11 @@ class Alpha_RSS_AI_Generator_Admin
                                 </div>
                             </div>
                         </div>
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div data-settings-tab-panel="general" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API do Pexels</label>
                             <input type="password" name="pexels_api_key" value="<?php echo esc_attr($settings['pexels_api_key']); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-0 transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                         </div>
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div data-settings-tab-panel="general" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <div class="mb-3">
                                 <h3 class="text-sm font-semibold text-slate-900">Tavily</h3>
                                 <p class="mt-1 text-xs text-slate-500">Busca externa opcional para enriquecer o planejamento com dados recentes.</p>
@@ -2011,7 +2017,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 </label>
                             </div>
                         </div>
-                        <div id="arc-global-links-section" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div id="arc-global-links-section" data-settings-tab-panel="links" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                     <h3 class="text-sm font-semibold text-slate-900">Links globais</h3>
@@ -2023,6 +2029,19 @@ class Alpha_RSS_AI_Generator_Admin
                             <div class="mt-4 flex justify-end">
                                 <button type="button" data-add-global-internal-link class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar link</button>
                             </div>
+                        </div>
+                        <div data-settings-tab-panel="blacklist" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <?php
+                            $blacklist_lines = array();
+                            foreach ($blacklist_entries as $blacklist_entry) {
+                                if (!empty($blacklist_entry['value'])) {
+                                    $blacklist_lines[] = (string) $blacklist_entry['value'];
+                                }
+                            }
+                            ?>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Termos e fontes bloqueados</label>
+                            <textarea name="blacklist_json" rows="10" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Uma palavra, frase ou dominio por linha"><?php echo esc_textarea(implode("\n", $blacklist_lines)); ?></textarea>
+                            <p class="mt-2 text-xs text-slate-500">Qualquer palavra, frase ou dominio informado aqui sera ignorado pelos geradores. Fontes que retornarem HTTP 402 ou 403 continuam sendo adicionadas automaticamente.</p>
                         </div>
                     </div>
                     <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2188,6 +2207,36 @@ class Alpha_RSS_AI_Generator_Admin
                     renderRows([]);
                 }
             })();
+
+            (function() {
+                var buttons = document.querySelectorAll('[data-settings-tab-button]');
+                var panels = document.querySelectorAll('[data-settings-tab-panel]');
+
+                function setTab(tab) {
+                    panels.forEach(function(panel) {
+                        panel.classList.toggle('hidden', panel.getAttribute('data-settings-tab-panel') !== tab);
+                    });
+                    buttons.forEach(function(button) {
+                        var active = button.getAttribute('data-settings-tab-button') === tab;
+                        button.classList.toggle('bg-slate-900', active);
+                        button.classList.toggle('text-white', active);
+                        button.classList.toggle('font-semibold', active);
+                        button.classList.toggle('border', !active);
+                        button.classList.toggle('border-slate-300', !active);
+                        button.classList.toggle('bg-white', !active);
+                        button.classList.toggle('text-slate-700', !active);
+                        button.classList.toggle('font-medium', !active);
+                    });
+                }
+
+                buttons.forEach(function(button) {
+                    button.addEventListener('click', function() {
+                        setTab(button.getAttribute('data-settings-tab-button') || 'general');
+                    });
+                });
+                setTab('general');
+            })();
+
         </script>
     <?php
 
