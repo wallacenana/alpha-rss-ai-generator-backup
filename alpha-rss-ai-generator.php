@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.24
+Version: 1.9.25
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.24';
+        const VERSION = '1.9.25';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -931,7 +931,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function normalize_prompt_model_definition($model)
         {
             $model = is_array($model) ? $model : array();
-            $key = !empty($model['key']) ? sanitize_key((string) $model['key']) : '';
+            $key = !empty($model['key']) ? self::normalize_prompt_model_key((string) $model['key']) : '';
             if ($key === '') {
                 return array();
             }
@@ -1667,6 +1667,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return 'keywords';
         }
 
+        public static function source_type_uses_keyword_list($source_type)
+        {
+            return in_array(sanitize_key((string) $source_type), array('keyword_list', 'spreadsheet'), true);
+        }
+
         public static function keyword_list_mode_uses_source_url($keyword_list_mode)
         {
             return sanitize_key((string) $keyword_list_mode) === 'url_reference';
@@ -1674,7 +1679,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
         public static function generator_uses_keyword_list_url_reference_mode($generator)
         {
-            if (empty($generator['source_type']) || sanitize_key((string) $generator['source_type']) !== 'keyword_list') {
+            if (empty($generator['source_type']) || sanitize_key((string) $generator['source_type']) !== 'spreadsheet') {
                 return false;
             }
 
@@ -1685,7 +1690,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function generator_uses_source_page_context($generator)
         {
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
-            return $source_type === 'rss' || $source_type === 'keyword_list' || self::generator_uses_keyword_list_url_reference_mode($generator);
+            return $source_type === 'rss' || self::source_type_uses_keyword_list($source_type) || self::generator_uses_keyword_list_url_reference_mode($generator);
         }
 
         public static function generator_uses_source_content_images($generator)
@@ -1864,10 +1869,22 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $settings = self::get_settings();
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+            // Older generators stored every list-backed source as keyword_list.
+            // Resolve the label from the linked list so imported spreadsheets keep
+            // their original behavior and are shown as Planilha in the editor.
+            if ($source_type === 'keyword_list' && !empty($generator['list_id'])) {
+                $linked_list = self::get_keyword_list(intval($generator['list_id']));
+                if ($linked_list && sanitize_key((string) $linked_list['file_type']) !== 'keyword_list') {
+                    $source_type = 'spreadsheet';
+                }
+            }
             $generation_mode = isset($generator['generation_mode']) ? self::normalize_generation_mode((string) $generator['generation_mode']) : self::get_default_generation_mode();
             $keyword_list_mode = isset($generator['keyword_list_mode']) ? sanitize_key((string) $generator['keyword_list_mode']) : self::get_default_keyword_list_mode();
-            if ($source_type !== 'keyword_list') {
+            if (!self::source_type_uses_keyword_list($source_type)) {
                 $keyword_list_mode = self::get_default_keyword_list_mode();
+            }
+            if ($source_type === 'keyword_list') {
+                $keyword_list_mode = 'keywords';
             }
             $legacy_pexels_enabled = isset($generator['pexels_enabled']) ? !empty($generator['pexels_enabled']) : null;
             $image_source_mode = isset($generator['image_source_mode']) ? (string) $generator['image_source_mode'] : '';
@@ -1950,6 +1967,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $generator['source_context_min_rating'] = isset($source_context_filters['min_rating']) ? (string) $source_context_filters['min_rating'] : '0';
             $generator['source_context_keep_unrated'] = !empty($source_context_filters['keep_unrated']) ? 1 : 0;
             $generator['pexels_enabled'] = self::image_source_mode_uses_pexels($image_source_mode) ? 1 : 0;
+            $generator['source_type'] = $source_type;
             $generator['prompt_template'] = $prompt_template;
             $generator['content_prompt_template'] = $content_prompt_template;
 
@@ -2986,10 +3004,19 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $payload['name'] = isset($raw['name']) ? sanitize_text_field(wp_unslash($raw['name'])) : '';
             $payload['source_type'] = isset($raw['source_type']) ? sanitize_key($raw['source_type']) : 'rss';
+            if (!in_array($payload['source_type'], array('rss', 'spreadsheet', 'keyword_list'), true)) {
+                $payload['source_type'] = 'rss';
+            }
             $payload['generation_mode'] = isset($raw['generation_mode']) ? self::normalize_generation_mode(sanitize_key(wp_unslash($raw['generation_mode']))) : self::get_default_generation_mode();
             $payload['source_post_id'] = isset($raw['source_post_id']) ? max(0, intval($raw['source_post_id'])) : 0;
             $payload['feed_url'] = isset($raw['feed_url']) ? esc_url_raw(wp_unslash($raw['feed_url'])) : '';
             $payload['list_id'] = isset($raw['list_id']) ? intval($raw['list_id']) : 0;
+            if ($payload['source_type'] === 'keyword_list' && $payload['list_id'] > 0) {
+                $linked_list = self::get_keyword_list($payload['list_id']);
+                if ($linked_list && sanitize_key((string) $linked_list['file_type']) !== 'keyword_list') {
+                    $payload['source_type'] = 'spreadsheet';
+                }
+            }
             $payload['status'] = isset($raw['status']) ? sanitize_key($raw['status']) : 'active';
             $payload['post_type'] = isset($raw['post_type']) ? sanitize_key($raw['post_type']) : 'post';
             $payload['post_status'] = isset($raw['post_status']) ? sanitize_key($raw['post_status']) : 'draft';
@@ -3020,11 +3047,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $payload['daily_start'] = isset($raw['daily_start']) ? sanitize_text_field(wp_unslash($raw['daily_start'])) : '';
             $payload['daily_end'] = isset($raw['daily_end']) ? sanitize_text_field(wp_unslash($raw['daily_end'])) : '';
             $payload['keyword_list_mode'] = isset($raw['keyword_list_mode']) ? sanitize_key(wp_unslash($raw['keyword_list_mode'])) : self::get_default_keyword_list_mode();
-            if ($payload['source_type'] !== 'keyword_list') {
+            if (!self::source_type_uses_keyword_list($payload['source_type'])) {
                 $payload['keyword_list_mode'] = self::get_default_keyword_list_mode();
             }
             if (!in_array($payload['keyword_list_mode'], array('keywords', 'url_reference'), true)) {
                 $payload['keyword_list_mode'] = self::get_default_keyword_list_mode();
+            }
+            if ($payload['source_type'] === 'keyword_list') {
+                $payload['keyword_list_mode'] = 'keywords';
             }
             if ($payload['generation_mode'] === 'satellite') {
                 $payload['source_post_id'] = 0;
@@ -3098,10 +3128,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($payload['name'] === '') {
                 return new WP_Error('arc_invalid_generator', 'Nome do gerador é obrigatório.');
             }
-            if ($payload['generation_mode'] !== 'satellite' && $payload['source_type'] === 'keyword_list' && $payload['list_id'] <= 0) {
+            if ($payload['generation_mode'] !== 'satellite' && self::source_type_uses_keyword_list($payload['source_type']) && $payload['list_id'] <= 0) {
                 return new WP_Error('arc_invalid_generator', 'Selecione uma lista de palavras-chave.');
             }
-            if ($payload['generation_mode'] !== 'satellite' && $payload['source_type'] !== 'keyword_list' && $payload['feed_url'] === '') {
+            if ($payload['generation_mode'] !== 'satellite' && !self::source_type_uses_keyword_list($payload['source_type']) && $payload['feed_url'] === '') {
                 return new WP_Error('arc_invalid_generator', 'URL do feed é obrigatória para geradores RSS.');
             }
             if (trim($payload['prompt_template']) === '') {
@@ -3308,7 +3338,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $prompt_template = trim((string) $prompt_template);
 
             if ($prompt_template === '') {
-                return ($source_type === 'keyword_list' && $keyword_list_mode !== 'url_reference')
+                return (self::source_type_uses_keyword_list($source_type) && $keyword_list_mode !== 'url_reference')
                     ? self::get_default_keyword_prompt_template()
                     : self::get_default_prompt_template();
             }
@@ -6223,7 +6253,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $limit = max(1, intval($limit));
             $fetch_limit = min(500, max($limit, $limit * 10));
             $rows = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$tables['rows']} WHERE list_id = %d AND row_status = 'pending' ORDER BY `row_number` DESC LIMIT %d",
+                "SELECT * FROM {$tables['rows']} WHERE list_id = %d AND row_status = 'pending' ORDER BY `row_number` ASC LIMIT %d",
                 intval($list_id),
                 $fetch_limit
             ));
@@ -6266,7 +6296,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                        WHERE i.generator_id = %d
                          AND i.item_guid = CONCAT('listrow:', r.id)
                    )
-                 ORDER BY r.`row_number` DESC
+                 ORDER BY r.`row_number` ASC
                  LIMIT %d",
                 intval($list_id),
                 $generator_id,
@@ -6318,6 +6348,45 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             ));
         }
 
+        public static function update_keyword_list_row_status_from_item($list_id, $item_guid, $status, $post_id = 0, $error_message = '')
+        {
+            global $wpdb;
+            $list_id = intval($list_id);
+            $item_guid = trim((string) $item_guid);
+            $status = sanitize_key((string) $status);
+            $post_id = max(0, intval($post_id));
+
+            if ($list_id <= 0 || strpos($item_guid, 'listrow:') !== 0 || !in_array($status, array('processing', 'generated', 'failed'), true)) {
+                return false;
+            }
+
+            $row_id = intval(substr($item_guid, 8));
+            if ($row_id <= 0) {
+                return false;
+            }
+
+            $tables = self::bulk_tables();
+            $data = array(
+                'row_status' => $status,
+                'post_id' => $post_id,
+                'error_message' => sanitize_text_field((string) $error_message),
+                'updated_at' => current_time('mysql'),
+            );
+            $formats = array('%s', '%d', '%s', '%s');
+            if ($status === 'generated') {
+                $data['processed_at'] = current_time('mysql');
+                $formats[] = '%s';
+            }
+
+            return false !== $wpdb->update(
+                $tables['rows'],
+                $data,
+                array('id' => $row_id, 'list_id' => $list_id),
+                $formats,
+                array('%d', '%d')
+            );
+        }
+
 
 
         public function rest_get_generator_items(WP_REST_Request $request)
@@ -6359,7 +6428,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 ));
             }
 
-            if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list') {
+            if (!empty($generator['source_type']) && self::source_type_uses_keyword_list($generator['source_type'])) {
                 if (empty($generator['list_id'])) {
                     return new WP_REST_Response(array(
                         'success' => false,
@@ -6399,7 +6468,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'generator' => array(
                         'id' => intval($generator['id']),
                         'name' => $generator['name'],
-                        'source_type' => 'keyword_list',
+                        'source_type' => !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'keyword_list',
                         'list_id' => intval($generator['list_id']),
                         'keyword_list_mode' => !empty($generator['keyword_list_mode']) ? $generator['keyword_list_mode'] : self::get_default_keyword_list_mode(),
                         'list_name' => $list ? $list['list_name'] : '',
@@ -6613,7 +6682,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $selected_item = null;
-            if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list') {
+            if (!empty($generator['source_type']) && self::source_type_uses_keyword_list($generator['source_type'])) {
                 if (empty($generator['list_id'])) {
                     return new WP_Error('arc_missing_list', 'Este gerador não possui uma lista vinculada.');
                 }
@@ -6688,7 +6757,25 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $result = self::create_post_from_generator_item($generator, $selected_item);
             if (is_wp_error($result)) {
                 self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
+                if (!empty($generator['list_id']) && !empty($selected_item['guid'])) {
+                    self::update_keyword_list_row_status_from_item(
+                        intval($generator['list_id']),
+                        $selected_item['guid'],
+                        'failed',
+                        0,
+                        $result->get_error_message()
+                    );
+                }
                 return $result;
+            }
+
+            if (!empty($generator['list_id']) && !empty($selected_item['guid'])) {
+                self::update_keyword_list_row_status_from_item(
+                    intval($generator['list_id']),
+                    $selected_item['guid'],
+                    'generated',
+                    intval($result)
+                );
             }
 
             self::update_next_run_after_attempt($generator);
@@ -7874,7 +7961,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
             }
 
-            $is_keyword_list = !empty($generator['source_type']) && $generator['source_type'] === 'keyword_list';
+            $is_keyword_list = !empty($generator['source_type']) && self::source_type_uses_keyword_list($generator['source_type']);
             $treat_like_rss = self::generator_uses_source_page_context($generator);
 
             if (!$use_source_page_context) {
@@ -8286,7 +8373,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $message = sprintf('Criados %d post(s), ignorados %d item(s), falharam %d item(s).', $created, $skipped, $failed);
             self::insert_run_log($generator['id'], 'success', $message, array(
-                'request' => array('manual' => $manual, 'source_type' => 'keyword_list', 'list_id' => $list_id, 'filters' => $filters),
+                'request' => array('manual' => $manual, 'source_type' => !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'keyword_list', 'list_id' => $list_id, 'filters' => $filters),
                 'response' => array('created' => $created, 'skipped' => $skipped, 'failed' => $failed),
             ));
 
@@ -8546,7 +8633,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (!empty($generator['generation_mode']) && self::normalize_generation_mode((string) $generator['generation_mode']) === 'satellite') {
                 return self::run_satellite_generator($generator, $manual);
             }
-            if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list') {
+            if (!empty($generator['source_type']) && self::source_type_uses_keyword_list($generator['source_type'])) {
                 return self::run_keyword_list_generator($generator, $manual);
             }
 
@@ -8741,7 +8828,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $duplicated_list_id = !empty($generator['list_id']) ? intval($generator['list_id']) : 0;
-            if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list' && $duplicated_list_id > 0) {
+            if (!empty($generator['source_type']) && self::source_type_uses_keyword_list($generator['source_type']) && $duplicated_list_id > 0) {
                 $duplicated_list_name = !empty($generator['name']) ? $generator['name'] . ' copy' : '';
                 $duplicated_list_id = self::duplicate_keyword_list($duplicated_list_id, $duplicated_list_name);
                 if (is_wp_error($duplicated_list_id)) {

@@ -300,6 +300,27 @@ class Alpha_RSS_AI_Prompt_Settings
             document.addEventListener('DOMContentLoaded', function() {
                 var form = document.querySelector('form.arc-prompt-settings-form');
                 var serializedField = document.querySelector('[data-prompt-models-json]');
+                var hasUnsavedChanges = false;
+                var allowUnload = false;
+
+                function markPromptSettingsDirty() {
+                    hasUnsavedChanges = true;
+                }
+
+                if (form) {
+                    form.addEventListener('input', markPromptSettingsDirty);
+                    form.addEventListener('change', markPromptSettingsDirty);
+                }
+
+                window.addEventListener('beforeunload', function(event) {
+                    if (!hasUnsavedChanges || allowUnload) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.returnValue = '';
+                });
+
                 document.querySelectorAll('[data-outline-block]').forEach(function(block) {
                     var toggleButton = block.querySelector('[data-outline-toggle]');
                     var editButton = block.querySelector('[data-outline-edit]');
@@ -345,6 +366,7 @@ class Alpha_RSS_AI_Prompt_Settings
 
                 if (form && serializedField) {
                     form.addEventListener('submit', function() {
+                        allowUnload = true;
                         var models = [];
                         document.querySelectorAll('details[data-prompt-model-card]').forEach(function(card) {
                             var keyInput = card.getAttribute('data-prompt-model-key') || '';

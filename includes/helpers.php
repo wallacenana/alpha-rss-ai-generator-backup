@@ -4292,7 +4292,7 @@ class Alpha_RSS_AI_Generator_Helper
         $lines = array('## DADOS DA FONTE');
 
         $source_title = '';
-        foreach (array('source_title', 'title', 'item_title', 'feed_title', 'source_page_title') as $candidate_key) {
+        foreach (array('source_title', 'title', 'keyword', 'item_title', 'feed_title', 'source_page_title') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
                 $source_title = self::normalize_plain_text((string) $item[$candidate_key]);
                 break;
@@ -4317,6 +4317,9 @@ class Alpha_RSS_AI_Generator_Helper
         }
         $source_page_content_html = isset($item['source_page_content_html']) ? self::limit_prompt_html_chars(self::normalize_prompt_context_html((string) $item['source_page_content_html']), 6000) : '';
         $source_page_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $row_data = isset($item['row_data']) && is_array($item['row_data'])
+            ? wp_json_encode($item['row_data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            : '';
         $generation_language = !empty($generator['generation_language'])
             ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language'])
             : Alpha_RSS_AI_Generator::get_default_generation_language();
@@ -4337,6 +4340,9 @@ class Alpha_RSS_AI_Generator_Helper
         }
         if ($source_page_content_html !== '') {
             $lines[] = 'Conteudo em HTML limpo da pagina de origem: ' . $source_page_content_html;
+        }
+        if (is_string($row_data) && $row_data !== '') {
+            $lines[] = 'Dados completos da linha de origem: ' . $row_data;
         }
         if ($generation_language !== '') {
             $lines[] = 'Idioma final: ' . $generation_language;
@@ -4527,7 +4533,7 @@ class Alpha_RSS_AI_Generator_Helper
         $content_length = strlen($source_text);
 
         $source_title = '';
-        foreach (array('source_title', 'source_page_title', 'title', 'item_title', 'feed_title') as $candidate_key) {
+        foreach (array('source_title', 'source_page_title', 'title', 'keyword', 'item_title', 'feed_title') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
                 $source_title = self::normalize_prompt_context_text($item[$candidate_key]);
                 break;
@@ -4559,7 +4565,8 @@ class Alpha_RSS_AI_Generator_Helper
         // build_source_outline_titles_for_prompt() adds its own 01., 02. labels,
         // so only count numbering that was actually present in source headings.
         $has_numbered_headings = (bool) preg_match('/<h[2-4]\b[^>]*>\s*\d{1,2}\s*[.)\-:]/i', $source_blob);
-        $has_list_title_marker = (bool) preg_match('/(?:^|\s)(?:top\s+\d+|\d{1,2}\s+(?:filmes?|series?|animes?|livros?|jogos?|personagens?)|lista|ranking|melhores|best\s+\d+|selec(?:ao|cao)|recomendac(?:ao|ao))/ui', $normalized_source_title);
+        $has_list_title_marker = (bool) preg_match('/(?:^|\s)(?:top\s+\d+|\d{1,2}\s+(?:filmes?|series?|animes?|livros?|jogos?|personagens?|itens?|cuidados?|dicas?|maneiras?|formas?|motivos?|opcoes?|classicos?|titulos?|produtos?|lugares?)|lista|ranking|melhores|best\s+\d+|selec(?:ao|cao)|recomendac(?:ao|ao))/ui', $normalized_source_title);
+        $has_explicit_list_quantity = (bool) preg_match('/(?:^|\s)(?:top\s+)?\d{1,2}(?:\s+[\p{L}\d-]+){0,4}\s+(?:filmes?|series?|animes?|livros?|jogos?|personagens?|itens?|cuidados?|dicas?|maneiras?|formas?|motivos?|opcoes?|classicos?|titulos?|produtos?|lugares?|coisas?|ideias?|razoes?|reasons?|ways?|tips?|tricks?|examples?)(?:\b|\s)/ui', $normalized_source_title);
         $source_structure_blob = '';
         foreach (array('source_page_content_html', 'source_page_html', 'source_page_content', 'content_html', 'content') as $structure_key) {
             if (!empty($item[$structure_key])) {
@@ -4576,13 +4583,15 @@ class Alpha_RSS_AI_Generator_Helper
             || ($has_parallel_list_markup && $outline_title_count >= 2)
             || ($has_list_title_marker && $outline_title_count >= 3);
 
+        // An explicit quantity in the title defines a list. The source HTML
+        // may be poorly structured or contain only an introductory paragraph.
+        if ($has_explicit_list_quantity || $has_list_structure) {
+            return 'list_article';
+        }
+
         // Related-content lists inside an article are not enough to override a news headline.
         if ($has_news_markers && !$has_list_title_marker && !$has_numbered_headings) {
             return 'news_short';
-        }
-
-        if ($has_list_structure) {
-            return 'list_article';
         }
 
         if ($has_guide_markers) {
@@ -4684,7 +4693,7 @@ class Alpha_RSS_AI_Generator_Helper
         $outline_context = is_array($outline_context) ? $outline_context : self::build_outline_context_base($generator);
 
         $source_title = '';
-        foreach (array('source_title', 'source_page_title', 'title', 'item_title', 'feed_title') as $candidate_key) {
+        foreach (array('source_title', 'source_page_title', 'title', 'keyword', 'item_title', 'feed_title') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
                 $source_title = self::normalize_prompt_context_text($item[$candidate_key]);
                 break;
@@ -4712,6 +4721,9 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
         $source_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $keyword = !empty($item['keyword'])
+            ? self::normalize_prompt_context_text((string) $item['keyword'])
+            : '';
         $available_prompt_models = Alpha_RSS_AI_Generator::get_prompt_models($generator);
         $available_prompt_model_keys = array();
         $available_prompt_models_text = array();
@@ -4735,11 +4747,19 @@ class Alpha_RSS_AI_Generator_Helper
             'Use content_type somente como uma destas chaves canonicas: lista, artigo, noticia, review, faq, tutorial, comparativo.',
             'REGRA PRINCIPAL: escolha noticia quando o conteudo tratar de um acontecimento, anuncio, confirmacao, estreia, lancamento, atualizacao, declaracao ou mudanca pontual. Uma noticia pode ter varios h2; a existencia de h2 nao a transforma em artigo ou lista.',
             'Escolha artigo somente quando a fonte desenvolver um tema evergreen, explicativo, opinativo ou analitico, com progressao de ideias e contexto, sem relatar principalmente um fato pontual.',
-            'Escolha lista somente quando o corpo realmente apresentar varios itens paralelos e identificaveis, normalmente com uma sequencia de itens. Nao escolha lista apenas porque o titulo tem numero, porque existem bullets auxiliares ou porque a pagina possui varios h2.',
-            'Se houver conflito entre um titulo com numero e o conteudo corrido de uma noticia, classifique como noticia. O conteudo e a estrutura principal prevalecem.',
+            'O titulo da pauta e o principal sinal editorial para definir o formato. Use o conteudo para confirmar os fatos, mas nao deixe uma pagina mal estruturada alterar o formato pedido pelo titulo.',
+            'Escolha lista obrigatoriamente quando o titulo trouxer uma quantidade explicita associada a itens, filmes, series, jogos, cuidados, dicas, motivos, opcoes, maneiras, formas, classicos, produtos ou termos equivalentes. Isso vale mesmo quando o HTML tem apenas uma introducao ou poucos subtitulos.',
+            'Nao transforme uma pauta explicitamente numerada em artigo apenas porque a fonte nao possui headings suficientes. Preserve a quantidade e a intencao de lista no prompt do modelo escolhido.',
+            'Para titulos sem quantidade ou marcador claro de lista, use o conteudo e a intencao da pauta para diferenciar noticia, artigo, review, comparativo e tutorial.',
             'Exemplo de noticia: \"Hana-Kimi ganha versao dublada da 2a temporada na Crunchyroll\" deve ser noticia, mesmo que a pagina tenha varios subtitulos.',
             'Nao escolha artigo como categoria generica quando a pauta for claramente uma noticia.',
             'Seja criterioso entre noticia e artigo, e entre lista e artigo.',
+            'Quando nao houver HTML de referencia, trate a keyword como a pauta principal e escolha o formato pela intencao de busca, sem assumir noticia e sem usar o modelo padrao do gerador.',
+            'Keywords com melhor, vale a pena, qual escolher ou avaliacao de um produto ou servico devem preferir review, salvo se a frase pedir explicitamente uma lista ou comparacao.',
+            'Keywords com versus, vs, comparar ou duas opcoes devem preferir comparativo.',
+            'Keywords com como, passo a passo, tutorial ou instrucoes devem preferir tutorial.',
+            'Keywords que pedem varias recomendacoes, cuidados, dicas, opcoes ou itens podem ser lista quando isso fizer sentido para a intencao da frase.',
+            'Uma keyword ampla e informativa, sem sinal claro de noticia, review, comparacao ou tutorial, deve preferir artigo.',
             'A frase chave deve ser fluida e natural, não crie uma kw parecendo tags e não deve ser longa também',
             'Escolha recommended_prompt_model_key usando somente uma das chaves validas do modelo base abaixo.',
             'Varra o HTML inteiro, do inicio ao fim. Nao pare na introducao e nao transforme os primeiros fatos em um resumo do restante.',
@@ -4752,6 +4772,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Título da fonte: ' . ($source_title !== '' ? $source_title : '[sem título disponível]'),
             $source_item_count > 0 ? 'Quantidade de itens indicada pelo titulo: ' . $source_item_count . '. A resposta deve cobrir todos os itens encontrados.' : '',
             $source_outline_titles !== '' ? 'Titulos e subtitulos extraidos da fonte, preserve os nomes e a ordem:' . "\n" . $source_outline_titles : '',
+            'Keyword da pauta: ' . ($keyword !== '' ? $keyword : '[sem keyword disponivel]'),
             'Lista de modelos:',
             $available_prompt_models_text,
             'Fonte em HTML filtrado:',
@@ -4930,10 +4951,18 @@ class Alpha_RSS_AI_Generator_Helper
         } else {
             $outline_context = self::normalize_outline_analysis_context($outline_response, $outline_context);
 
+            // A clear list signal in the title is deterministic. Do not let
+            // an incomplete source page make the planner switch it to article.
+            if ($outline_model_hint_key === 'list_article') {
+                $outline_context['content_type'] = 'lista';
+                $outline_context['recommended_outline_model_key'] = 'list_article';
+                $outline_context['recommended_prompt_model_key'] = 'lista';
+            }
+
             // Preserve every source item named by a quantified headline. The AI
             // often summarizes the introduction and omits the remaining names.
             $source_title_for_count = '';
-            foreach (array('source_title', 'source_page_title', 'title', 'item_title', 'feed_title') as $candidate_key) {
+            foreach (array('source_title', 'source_page_title', 'title', 'keyword', 'item_title', 'feed_title') as $candidate_key) {
                 if (!empty($item[$candidate_key])) {
                     $source_title_for_count = self::normalize_prompt_context_text($item[$candidate_key]);
                     break;
@@ -4974,12 +5003,6 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
 
-        if (!empty($outline_model_hint_key) && $outline_model_hint_key === 'news_short') {
-            $outline_context['content_type'] = 'news_short';
-            $outline_context['recommended_outline_model_key'] = 'news_short';
-            $outline_context['recommended_prompt_model_key'] = 'noticia';
-        }
-
         $prompt_models = Alpha_RSS_AI_Generator::get_prompt_models($generator);
         $available_prompt_model_keys = array();
         foreach ($prompt_models as $prompt_model) {
@@ -4998,29 +5021,33 @@ class Alpha_RSS_AI_Generator_Helper
                 $outline_context['recommended_outline_model_key'] = (string) $prompt_model['outline_model_key'];
             }
         } else {
-            $candidate_outline_model_key = !empty($outline_context['recommended_outline_model_key']) ? sanitize_key((string) $outline_context['recommended_outline_model_key']) : $outline_model_hint_key;
-            if ($candidate_outline_model_key === '') {
-                $candidate_prompt_model_key = Alpha_RSS_AI_Generator::get_prompt_model_key_for_content_type(
-                    !empty($outline_context['content_type']) ? $outline_context['content_type'] : '',
-                    $outline_context,
-                    $generator
-                );
-                if ($candidate_prompt_model_key !== '') {
-                    $prompt_model = Alpha_RSS_AI_Generator::get_prompt_model($candidate_prompt_model_key, $generator);
-                    if (!empty($prompt_model)) {
-                        $outline_context['recommended_prompt_model_key'] = $candidate_prompt_model_key;
-                        if (!empty($prompt_model['outline_model_key'])) {
-                            $outline_context['recommended_outline_model_key'] = (string) $prompt_model['outline_model_key'];
-                        }
+            // A valid content_type from the planner must win over the
+            // generator's legacy outline default (often list_article).
+            $candidate_prompt_model_key = Alpha_RSS_AI_Generator::get_prompt_model_key_for_content_type(
+                !empty($outline_context['content_type']) ? $outline_context['content_type'] : '',
+                $outline_context,
+                $generator
+            );
+            if ($candidate_prompt_model_key !== '') {
+                $prompt_model = Alpha_RSS_AI_Generator::get_prompt_model($candidate_prompt_model_key, $generator);
+                if (!empty($prompt_model)) {
+                    $outline_context['recommended_prompt_model_key'] = $candidate_prompt_model_key;
+                    if (!empty($prompt_model['outline_model_key'])) {
+                        $outline_context['recommended_outline_model_key'] = (string) $prompt_model['outline_model_key'];
                     }
                 }
-            } else {
+            }
+
+            if (empty($outline_context['recommended_prompt_model_key'])) {
+                $candidate_outline_model_key = !empty($outline_context['recommended_outline_model_key'])
+                    ? sanitize_key((string) $outline_context['recommended_outline_model_key'])
+                    : $outline_model_hint_key;
                 foreach ($prompt_models as $prompt_model) {
                     if (!is_array($prompt_model)) {
                         continue;
                     }
                     if (!empty($prompt_model['outline_model_key']) && $prompt_model['outline_model_key'] === $candidate_outline_model_key && !empty($prompt_model['key'])) {
-                        $outline_context['recommended_prompt_model_key'] = (string) $prompt_model['key'];
+                        $outline_context['recommended_prompt_model_key'] = Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $prompt_model['key']);
                         break;
                     }
                 }
@@ -5048,7 +5075,7 @@ class Alpha_RSS_AI_Generator_Helper
         $row_data = isset($item['row_data']) && is_array($item['row_data']) ? wp_json_encode($item['row_data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '';
         $source_title = '';
         $source_page_html_source = '';
-        foreach (array('source_title', 'title', 'item_title', 'feed_title', 'source_page_title') as $candidate_key) {
+        foreach (array('source_title', 'title', 'keyword', 'item_title', 'feed_title', 'source_page_title') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
                 $source_title = self::normalize_plain_text((string) $item[$candidate_key]);
                 break;
@@ -5154,6 +5181,9 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $source_title = isset($item['source_title']) ? $item['source_title'] : '';
+        if ($source_title === '' && !empty($item['keyword'])) {
+            $source_title = (string) $item['keyword'];
+        }
         $source_url = isset($item['source_url']) ? $item['source_url'] : '';
         if ($source_url === '' && isset($item['permalink'])) {
             $source_url = $item['permalink'];
@@ -5182,6 +5212,9 @@ class Alpha_RSS_AI_Generator_Helper
         $generated_meta_description = isset($seo_article['meta_description']) ? $seo_article['meta_description'] : '';
         $generated_title_outline_count = self::extract_outline_target_h2_count_from_title($generated_title, $source_title);
         $source_page_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $row_data = isset($item['row_data']) && is_array($item['row_data'])
+            ? wp_json_encode($item['row_data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            : '';
         $outline_text = !empty($outline_context['outline_text']) ? (string) $outline_context['outline_text'] : '';
         $outline_model_text = !empty($outline_context['outline_model_text']) ? (string) $outline_context['outline_model_text'] : '';
         $outline_model_name = !empty($outline_context['outline_model_name']) ? (string) $outline_context['outline_model_name'] : '';
@@ -5218,6 +5251,9 @@ class Alpha_RSS_AI_Generator_Helper
             'Idioma final: {{generation_language}}',
             'Conteudo HTML filtrado da fonte: {{source_content}}',
         );
+        if (is_string($row_data) && $row_data !== '') {
+            $hidden_context[] = 'Dados completos da linha de origem: {{row_data}}';
+        }
         if ($key_facts_text !== '') {
             $hidden_context[] = 'Fatos essenciais extraidos no planejamento. Use esses dados factuais de forma absolutam pois já estão interpretados e devem ser usados. Esses dados são parte do conteúdo, são apenas um filtro com os dados mais importantes, para ter noção do tamanho do conteúdo, use apenas o conteudo em html filtrado, não use esses fatos como base para o tamanho do conteúdo, pois ele só repete o que o conteúdo principal já tem:';
             $hidden_context[] = '{{key_facts}}';

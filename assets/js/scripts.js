@@ -128,7 +128,15 @@
     }
 
     function getDefaultImageSourceModeForType(sourceType) {
-        return sourceType === 'keyword_list' ? 'pexels' : 'rss_or_pexels';
+        return isKeywordListSourceType(sourceType) ? 'pexels' : 'rss_or_pexels';
+    }
+
+    function isKeywordListSourceType(sourceType) {
+        return ['keyword_list', 'spreadsheet'].indexOf(String(sourceType || '')) !== -1;
+    }
+
+    function isSpreadsheetSourceType(sourceType) {
+        return String(sourceType || '') === 'spreadsheet';
     }
 
     function normalizeImageSourceModeForType(sourceType, value) {
@@ -137,7 +145,7 @@
         if (allowed.indexOf(mode) === -1) {
             return getDefaultImageSourceModeForType(sourceType);
         }
-        if (sourceType === 'keyword_list') {
+        if (isKeywordListSourceType(sourceType)) {
             if (mode === 'rss' || mode === 'rss_or_pexels') {
                 return 'pexels';
             }
@@ -156,7 +164,7 @@
             }
             return defaults.prompt_template;
         }
-        if (sourceType === 'keyword_list') {
+        if (isKeywordListSourceType(sourceType)) {
             if (String(keywordListMode || 'keywords') === 'url_reference') {
                 if (current === defaults.keyword_prompt_template) {
                     return defaults.prompt_template;
@@ -279,21 +287,53 @@
         var keywordListMode = keywordListModeEl ? keywordListModeEl.value : 'keywords';
         var imageSourceModeEl = byName('image_source_mode');
         var isSatelliteMode = generationMode === 'satellite';
+        var isListSource = isKeywordListSourceType(sourceType);
+        var isSpreadsheetSource = isSpreadsheetSourceType(sourceType);
+        var listSelect = byName('list_id');
+        var listSourceLabel = listIdField ? listIdField.querySelector('[data-list-source-label]') : null;
+        var listModeLabel = keywordListModeField ? keywordListModeField.querySelector('[data-list-mode-label]') : null;
+        var listPlaceholder = listSelect ? listSelect.querySelector('[data-list-placeholder]') : null;
+
+        if (listSourceLabel) {
+            listSourceLabel.textContent = isSpreadsheetSource ? 'Planilha' : 'Keyword list';
+        }
+        if (listModeLabel) {
+            listModeLabel.textContent = isSpreadsheetSource ? 'Modo da planilha' : 'Modo da keyword list';
+        }
+        if (listPlaceholder) {
+            listPlaceholder.textContent = isSpreadsheetSource ? 'Selecione uma planilha' : 'Selecione uma keyword list';
+        }
+        if (listSelect) {
+            Array.prototype.forEach.call(listSelect.options, function (option) {
+                if (!option.value || !isListSource) {
+                    option.hidden = false;
+                    option.disabled = false;
+                    return;
+                }
+                var matchesSource = String(option.getAttribute('data-list-source') || '') === String(sourceType);
+                option.hidden = !matchesSource;
+                option.disabled = !matchesSource;
+            });
+            var selectedOption = listSelect.options[listSelect.selectedIndex];
+            if (selectedOption && selectedOption.hidden) {
+                listSelect.value = '0';
+            }
+        }
 
         if (sourceTypeEl && sourceTypeEl.parentElement) {
             sourceTypeEl.parentElement.classList.toggle('hidden', isSatelliteMode);
         }
 
         if (feedUrlField) {
-            feedUrlField.classList.toggle('hidden', isSatelliteMode || sourceType === 'keyword_list');
+            feedUrlField.classList.toggle('hidden', isSatelliteMode || isListSource);
         }
         if (listIdField) {
-            listIdField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
+            listIdField.classList.toggle('hidden', isSatelliteMode || !isListSource);
         }
         if (keywordListModeField) {
-            keywordListModeField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
+            keywordListModeField.classList.add('hidden');
         }
-        var showSourceMediaControls = !isSatelliteMode && (sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference'));
+        var showSourceMediaControls = !isSatelliteMode && (sourceType === 'rss' || (isSpreadsheetSource && keywordListMode === 'url_reference'));
         var sourceContentImagesEnabledEl = byName('source_content_images_enabled');
         var sourceContentLinksEnabledEl = byName('source_content_links_enabled');
         var useSourceContentImages = !sourceContentImagesEnabledEl || String(sourceContentImagesEnabledEl.value || '1') === '1';
@@ -689,6 +729,7 @@
         setValue('feed_url', defaults.feed_url);
         setValue('source_type', defaults.source_type);
         setValue('list_id', defaults.list_id);
+        setValue('keyword_list_mode', defaults.keyword_list_mode);
         setValue('status', defaults.status);
         setValue('post_type', defaults.post_type);
         setValue('post_status', defaults.post_status);
@@ -748,6 +789,7 @@
         setValue('feed_url', generator.feed_url);
         setValue('source_type', generator.source_type || defaults.source_type);
         setValue('list_id', typeof generator.list_id !== 'undefined' ? String(generator.list_id) : defaults.list_id);
+        setValue('keyword_list_mode', generator.keyword_list_mode || defaults.keyword_list_mode);
         setValue('status', generator.status);
         setValue('post_type', generator.post_type);
         setValue('post_status', generator.post_status);
@@ -800,6 +842,10 @@
     var sourceTypeEl = byName('source_type');
     if (sourceTypeEl) {
         sourceTypeEl.addEventListener('change', syncSourceFields);
+    }
+    var generationModeEl = byName('generation_mode');
+    if (generationModeEl) {
+        generationModeEl.addEventListener('change', syncSourceFields);
     }
     var keywordListModeEl = byName('keyword_list_mode');
     if (keywordListModeEl) {

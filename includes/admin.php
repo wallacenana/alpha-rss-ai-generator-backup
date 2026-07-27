@@ -39,6 +39,15 @@ class Alpha_RSS_AI_Generator_Admin
             'alpha-rss-ai-keyword-lists',
             array($this, 'render_keyword_lists_page')
         );
+        remove_submenu_page('alpha-rss-ai-generator', 'alpha-rss-ai-keyword-lists');
+        add_submenu_page(
+            'alpha-rss-ai-generator',
+            'Keyword lists',
+            'Keyword lists',
+            'manage_options',
+            'alpha-rss-ai-keyword-lists',
+            array($this, 'render_keyword_lists_page')
+        );
     }
 
     public function admin_menu_late()
@@ -173,7 +182,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             <td class="px-6 py-4">
                                                 <div class="font-semibold text-slate-950"><?php echo esc_html($generator['name']); ?></div>
                                                 <div class="mt-1 break-all text-sm text-slate-500">
-                                                    <?php if (!empty($generator['source_type']) && $generator['source_type'] === 'keyword_list'): ?>
+                                                    <?php if (!empty($generator['source_type']) && Alpha_RSS_AI_Generator::source_type_uses_keyword_list($generator['source_type'])): ?>
                                                         <?php
                                                         $linked_list = null;
                                                         foreach ($keyword_lists as $candidate_list) {
@@ -447,25 +456,33 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div <?php echo (!empty($editing_generator['generation_mode']) && Alpha_RSS_AI_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) === 'satellite') ? 'class="hidden"' : ''; ?>>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Fonte do gerador</label>
                                     <select name="source_type" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="keyword_list" <?php selected(isset($editing_generator['source_type']) ? $editing_generator['source_type'] : '', 'keyword_list'); ?>>Palavras-chave importadas</option>
                                         <option value="rss" <?php selected(isset($editing_generator['source_type']) ? $editing_generator['source_type'] : '', 'rss'); ?>>RSS</option>
+                                        <option value="spreadsheet" <?php selected(isset($editing_generator['source_type']) ? $editing_generator['source_type'] : '', 'spreadsheet'); ?>>Planilha</option>
+                                        <option value="keyword_list" <?php selected(isset($editing_generator['source_type']) ? $editing_generator['source_type'] : '', 'keyword_list'); ?>>Keyword list</option>
                                     </select>
                                 </div>
-                                <div data-feed-url-field>
+                                <?php
+                                $editing_source_type = !empty($editing_generator['source_type']) ? sanitize_key((string) $editing_generator['source_type']) : 'keyword_list';
+                                $editing_generation_mode = !empty($editing_generator['generation_mode']) ? Alpha_RSS_AI_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) : 'pillar';
+                                $editing_is_list_source = Alpha_RSS_AI_Generator::source_type_uses_keyword_list($editing_source_type);
+                                $editing_is_spreadsheet = $editing_source_type === 'spreadsheet';
+                                ?>
+                                <div data-feed-url-field class="<?php echo ($editing_generation_mode === 'satellite' || $editing_is_list_source) ? 'hidden' : ''; ?>">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">URL do feed / fonte</label>
                                     <input type="url" name="feed_url" value="<?php echo esc_attr(isset($editing_generator['feed_url']) ? $editing_generator['feed_url'] : ''); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
-                                <div data-list-id-field>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Lista de palavras-chave</label>
+                                <div data-list-id-field class="<?php echo ($editing_generation_mode === 'satellite' || !$editing_is_list_source) ? 'hidden' : ''; ?>">
+                                    <label data-list-source-label class="mb-1 block text-sm font-medium text-slate-700"><?php echo $editing_is_spreadsheet ? 'Planilha' : 'Keyword list'; ?></label>
                                     <select name="list_id" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
-                                        <option value="0" <?php selected(isset($editing_generator['list_id']) ? intval($editing_generator['list_id']) : 0, 0); ?>>Selecione uma lista</option>
+                                        <option value="0" data-list-placeholder <?php selected(isset($editing_generator['list_id']) ? intval($editing_generator['list_id']) : 0, 0); ?>><?php echo $editing_is_spreadsheet ? 'Selecione uma planilha' : 'Selecione uma keyword list'; ?></option>
                                         <?php foreach ($keyword_lists as $keyword_list): ?>
-                                            <option value="<?php echo esc_attr($keyword_list['id']); ?>" <?php selected(isset($editing_generator['list_id']) ? intval($editing_generator['list_id']) : 0, intval($keyword_list['id'])); ?>><?php echo esc_html($keyword_list['list_name']); ?></option>
+                                            <?php $list_source_kind = (isset($keyword_list['file_type']) && $keyword_list['file_type'] === 'keyword_list') ? 'keyword_list' : 'spreadsheet'; ?>
+                                            <option value="<?php echo esc_attr($keyword_list['id']); ?>" data-list-source="<?php echo esc_attr($list_source_kind); ?>" <?php selected(isset($editing_generator['list_id']) ? intval($editing_generator['list_id']) : 0, intval($keyword_list['id'])); ?>><?php echo esc_html($keyword_list['list_name']); ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                <div data-keyword-list-mode-field>
-                                    <label class="mb-1 block text-sm font-medium text-slate-700">Modo da lista</label>
+                                <div data-keyword-list-mode-field class="hidden">
+                                    <label data-list-mode-label class="mb-1 block text-sm font-medium text-slate-700">Modo da planilha</label>
                                     <select name="keyword_list_mode" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                         <option value="keywords" <?php selected(isset($editing_generator['keyword_list_mode']) ? $editing_generator['keyword_list_mode'] : '', 'keywords'); ?>>Só palavras-chave</option>
                                         <option value="url_reference" <?php selected(isset($editing_generator['keyword_list_mode']) ? $editing_generator['keyword_list_mode'] : '', 'url_reference'); ?>>Palavra-chave + URL de referência</option>
@@ -900,8 +917,16 @@ class Alpha_RSS_AI_Generator_Admin
                         return String(text || '').indexOf('Você é um editor de conteúdo especializado em criar artigos originais a partir de planilhas e palavras-chave.') !== -1;
                     }
 
+                    function isKeywordListSourceType(sourceType) {
+                        return ['keyword_list', 'spreadsheet'].indexOf(String(sourceType || '')) !== -1;
+                    }
+
+                    function isSpreadsheetSourceType(sourceType) {
+                        return String(sourceType || '') === 'spreadsheet';
+                    }
+
                     function getDefaultImageSourceModeForType(sourceType, keywordListMode) {
-                        if (sourceType === 'keyword_list') {
+                        if (isKeywordListSourceType(sourceType)) {
                             return String(keywordListMode || 'keywords') === 'url_reference' ? 'rss_or_pexels' : 'pexels';
                         }
                         return 'rss_or_pexels';
@@ -913,7 +938,7 @@ class Alpha_RSS_AI_Generator_Admin
                         if (allowed.indexOf(mode) === -1) {
                             return getDefaultImageSourceModeForType(sourceType, keywordListMode);
                         }
-                        if (sourceType === 'keyword_list' && String(keywordListMode || 'keywords') !== 'url_reference') {
+                        if (isKeywordListSourceType(sourceType) && String(keywordListMode || 'keywords') !== 'url_reference') {
                             if (mode === 'rss' || mode === 'rss_or_pexels') {
                                 return 'pexels';
                             }
@@ -927,12 +952,12 @@ class Alpha_RSS_AI_Generator_Admin
                     function normalizePromptForSourceType(sourceType, keywordListMode, value) {
                         var current = String(value || '').trim();
                         if (!current) {
-                            if (sourceType === 'keyword_list') {
+                            if (isKeywordListSourceType(sourceType)) {
                                 return String(keywordListMode || 'keywords') === 'url_reference' ? defaults.prompt_template : defaults.keyword_prompt_template;
                             }
                             return defaults.prompt_template;
                         }
-                        if (sourceType === 'keyword_list') {
+                        if (isKeywordListSourceType(sourceType)) {
                             if (String(keywordListMode || 'keywords') === 'url_reference') {
                                 if (current === defaults.keyword_prompt_template) {
                                     return defaults.prompt_template;
@@ -1057,21 +1082,52 @@ class Alpha_RSS_AI_Generator_Admin
                         var imageSourceModeEl = byName('image_source_mode');
                         var isSatelliteMode = generationMode === 'satellite';
 
+                        var listSelect = byName('list_id');
+                        var listSourceLabel = listIdField ? listIdField.querySelector('[data-list-source-label]') : null;
+                        var listModeLabel = keywordListModeField ? keywordListModeField.querySelector('[data-list-mode-label]') : null;
+                        var listPlaceholder = listSelect ? listSelect.querySelector('[data-list-placeholder]') : null;
+                        var isSpreadsheetSource = isSpreadsheetSourceType(sourceType);
+                        if (listSourceLabel) {
+                            listSourceLabel.textContent = isSpreadsheetSource ? 'Planilha' : 'Keyword list';
+                        }
+                        if (listModeLabel) {
+                            listModeLabel.textContent = isSpreadsheetSource ? 'Modo da planilha' : 'Modo da keyword list';
+                        }
+                        if (listPlaceholder) {
+                            listPlaceholder.textContent = isSpreadsheetSource ? 'Selecione uma planilha' : 'Selecione uma keyword list';
+                        }
+                        if (listSelect) {
+                            Array.prototype.forEach.call(listSelect.options, function(option) {
+                                if (!option.value || !isKeywordListSourceType(sourceType)) {
+                                    option.hidden = false;
+                                    option.disabled = false;
+                                    return;
+                                }
+                                var isMatchingSource = String(option.getAttribute('data-list-source') || '') === String(sourceType);
+                                option.hidden = !isMatchingSource;
+                                option.disabled = !isMatchingSource;
+                            });
+                            var selectedOption = listSelect.options[listSelect.selectedIndex];
+                            if (selectedOption && selectedOption.hidden) {
+                                listSelect.value = '0';
+                            }
+                        }
+
                         if (sourceTypeEl && sourceTypeEl.parentElement) {
                             sourceTypeEl.parentElement.classList.toggle('hidden', isSatelliteMode);
                         }
 
                         if (feedUrlField) {
-                            feedUrlField.classList.toggle('hidden', isSatelliteMode || sourceType === 'keyword_list');
+                            feedUrlField.classList.toggle('hidden', isSatelliteMode || isKeywordListSourceType(sourceType));
                         }
                         if (listIdField) {
-                            listIdField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
+                            listIdField.classList.toggle('hidden', isSatelliteMode || !isKeywordListSourceType(sourceType));
                         }
                         if (keywordListModeField) {
-                            keywordListModeField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
+                            keywordListModeField.classList.add('hidden');
                         }
                         if (videoSelectorField) {
-                            var showVideoSelector = !isSatelliteMode && (sourceType === 'rss' || (sourceType === 'keyword_list' && keywordListMode === 'url_reference'));
+                            var showVideoSelector = !isSatelliteMode && (sourceType === 'rss' || (isSpreadsheetSource && keywordListMode === 'url_reference'));
                             videoSelectorField.classList.toggle('hidden', !showVideoSelector);
                         }
                         if (imageSourceModeEl) {
@@ -2306,16 +2362,40 @@ class Alpha_RSS_AI_Generator_Admin
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
-                    <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Planilhas e palavras-chave</h1>
+                    <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Keyword lists</h1>
                     <p class="mt-2 max-w-3xl text-sm text-slate-600">Importe CSV, XLS ou XLSX usando uma coluna de palavras-chave. URL, slug, título e demais campos são opcionais.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" data-open-keyword-import-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar / analisar lista</button>
+                    <button type="button" data-open-keyword-import-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar lista</button>
                     <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Ir para geradores</a>
                 </div>
             </div>
 
             <div class="space-y-6">
+                <section class="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+                    <div class="border-b border-slate-200 px-6 py-4">
+                        <h2 class="hidden text-lg font-semibold text-slate-950">Nova keyword list</h2>
+                        <p class="mt-1 text-sm text-slate-500">Informe uma frase-chave ou título por linha. Os itens gerados deixam de ficar pendentes automaticamente.</p>
+                    </div>
+                    <div class="grid gap-4 p-6 md:grid-cols-[280px_1fr_auto] md:items-end">
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
+                            <input id="arc-legacy-manual-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Filmes para gerar" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Keywords ou títulos</label>
+                            <textarea id="arc-legacy-manual-keyword-list-values" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="kw 1&#10;kw 2&#10;kw 3"></textarea>
+                        </div>
+                        <button type="button" id="arc-legacy-create-manual-keyword-list" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Cadastrar lista</button>
+                    </div>
+                    <div id="arc-legacy-manual-keyword-list-status" class="hidden px-6 pb-5 text-sm"></div>
+                </section>
+
+                <style>
+                    #arc-keyword-source-title + p {
+                        display: none !important;
+                    }
+                </style>
                 <div id="arc-keyword-import-modal" class="fixed inset-0 z-50 hidden">
                     <div id="arc-keyword-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                     <div class="relative mx-auto flex min-h-full max-w-7xl items-start px-4 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 lg:px-8">
@@ -2326,10 +2406,10 @@ class Alpha_RSS_AI_Generator_Admin
                             <div class="border-b border-slate-200 px-6 py-4">
                                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                        <h2 class="text-lg font-semibold text-slate-950">Importar planilha</h2>
+                                        <h2 id="arc-keyword-source-title" class="text-lg font-semibold text-slate-950">Adicionar lista</h2>
                                         <p class="mt-1 text-sm text-slate-500">Etapa 1: analise o arquivo e selecione as colunas antes de gravar a lista. Se existir a coluna <strong>Timestamp</strong>, ela será usada como data de publicação no WordPress.</p>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-3 text-sm text-slate-500 sm:grid-cols-4">
+                                    <div class="hidden grid grid-cols-2 gap-3 text-sm text-slate-500 sm:grid-cols-4">
                                         <div class="rounded-xl bg-slate-50 px-3 py-2">
                                             <div class="text-xs uppercase tracking-wide text-slate-400">Listas</div>
                                             <div class="font-semibold text-slate-900"><?php echo esc_html($summary['lists']); ?></div>
@@ -2351,6 +2431,31 @@ class Alpha_RSS_AI_Generator_Admin
                             </div>
 
                             <div class="p-6">
+                                <div class="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
+                                    <button type="button" data-keyword-source-tab="spreadsheet" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Planilha</button>
+                                    <button type="button" data-keyword-source-tab="keyword_list" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Keyword list</button>
+                                </div>
+                                <div id="arc-keyword-manual-panel" class="hidden">
+                                    <div class="max-w-3xl rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                        <h3 class="text-base font-semibold text-slate-950">Keyword list</h3>
+                                        <p class="mt-1 text-sm text-slate-500">Digite uma frase-chave ou título por linha. Cada item gerado deixa de aparecer como pendente.</p>
+                                        <div class="mt-4 space-y-4">
+                                            <div>
+                                                <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
+                                                <input id="arc-manual-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Filmes para gerar" />
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-sm font-medium text-slate-700">Keywords ou títulos</label>
+                                                <textarea id="arc-manual-keyword-list-values" rows="12" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="kw 1&#10;kw 2&#10;kw 3"></textarea>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-3">
+                                                <button type="button" id="arc-create-manual-keyword-list" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Cadastrar lista</button>
+                                                <div id="arc-manual-keyword-list-status" class="text-sm text-slate-500"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="arc-keyword-spreadsheet-panel">
                                 <div class="grid gap-4 md:grid-cols-[1fr_220px]">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
@@ -2415,6 +2520,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <div id="arc-keyword-preview-table" class="overflow-hidden rounded-2xl border border-slate-200 bg-white"></div>
                                     </div>
                                 </div>
+                                </div>
                             </div>
                         </section>
                     </div>
@@ -2423,7 +2529,7 @@ class Alpha_RSS_AI_Generator_Admin
                 <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
                     <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4">
                         <div>
-                            <h2 class="text-lg font-semibold text-slate-950">Listas importadas</h2>
+                            <h2 class="text-lg font-semibold text-slate-950">Keyword lists</h2>
                             <p class="mt-1 text-sm text-slate-500">Abra uma lista para ajustar colunas ou revisar a prévia das linhas.</p>
                         </div>
                         <div class="flex items-center gap-2">
@@ -2436,7 +2542,7 @@ class Alpha_RSS_AI_Generator_Admin
                             <thead class="bg-slate-50">
                                 <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <th class="px-6 py-3">Nome</th>
-                                    <th class="px-6 py-3">Arquivo</th>
+                                    <th class="px-6 py-3">Tipo</th>
                                     <th class="px-6 py-3">Linhas</th>
                                     <th class="px-6 py-3">Pendentes</th>
                                     <th class="px-6 py-3">Geradas</th>
@@ -2463,6 +2569,9 @@ class Alpha_RSS_AI_Generator_Admin
                                             <td class="px-6 py-4 text-sm text-slate-600"><?php echo esc_html($keyword_list['updated_at'] ?: '-'); ?></td>
                                             <td class="px-6 py-4">
                                                 <div class="flex flex-wrap gap-2">
+                                                    <?php if (isset($keyword_list['file_type']) && $keyword_list['file_type'] === 'keyword_list'): ?>
+                                                        <button type="button" data-edit-keyword-list data-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Editar</button>
+                                                    <?php endif; ?>
                                                     <button type="button" data-open-keyword-list-modal data-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Abrir</button>
                                                     <button type="button" data-open-keyword-generate-modal data-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-emerald-500">Gerar</button>
                                                     <button type="button" data-delete-keyword-list-id="<?php echo esc_attr($keyword_list['id']); ?>" class="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir</button>
@@ -2766,6 +2875,15 @@ class Alpha_RSS_AI_Generator_Admin
                     var previewSummary = document.getElementById('arc-keyword-preview-summary');
                     var previewTable = document.getElementById('arc-keyword-preview-table');
                     var importButton = document.getElementById('arc-keyword-import-btn');
+                    var manualListNameInput = document.getElementById('arc-manual-keyword-list-name');
+                    var manualListValuesInput = document.getElementById('arc-manual-keyword-list-values');
+                    var manualListButton = document.getElementById('arc-create-manual-keyword-list');
+                    var manualListStatus = document.getElementById('arc-manual-keyword-list-status');
+                    var sourceTitle = document.getElementById('arc-keyword-source-title');
+                    var manualPanel = document.getElementById('arc-keyword-manual-panel');
+                    var spreadsheetPanel = document.getElementById('arc-keyword-spreadsheet-panel');
+                    var sourceTabButtons = document.querySelectorAll('[data-keyword-source-tab]');
+                    var manualListEditingId = 0;
                     var resetPreviewButton = document.getElementById('arc-keyword-reset-preview');
                     var refreshButton = document.getElementById('arc-keyword-refresh-btn');
 
@@ -2909,6 +3027,148 @@ class Alpha_RSS_AI_Generator_Admin
                                     payload: payload
                                 };
                             });
+                        });
+                    }
+
+                    function setKeywordSourceTab(tab) {
+                        var isManual = String(tab || '') === 'keyword_list';
+                        if (manualPanel) {
+                            manualPanel.classList.toggle('hidden', !isManual);
+                        }
+                        if (spreadsheetPanel) {
+                            spreadsheetPanel.classList.toggle('hidden', isManual);
+                        }
+                        if (sourceTitle) {
+                            sourceTitle.textContent = isManual ? (manualListEditingId ? 'Editar keyword list' : 'Adicionar keyword list') : 'Adicionar planilha';
+                        }
+                        sourceTabButtons.forEach(function(button) {
+                            var active = String(button.getAttribute('data-keyword-source-tab') || '') === String(tab || '');
+                            button.className = active
+                                ? 'rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white'
+                                : 'rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700';
+                        });
+                    }
+
+                    function resetManualKeywordEditor() {
+                        manualListEditingId = 0;
+                        if (manualListNameInput) {
+                            manualListNameInput.value = '';
+                        }
+                        if (manualListValuesInput) {
+                            manualListValuesInput.value = '';
+                        }
+                        if (manualListStatus) {
+                            manualListStatus.textContent = '';
+                            manualListStatus.className = 'text-sm text-slate-500';
+                        }
+                        if (manualListButton) {
+                            manualListButton.disabled = false;
+                            manualListButton.textContent = 'Cadastrar lista';
+                        }
+                    }
+
+                    async function openManualKeywordEditor(listId) {
+                        if (!listId) {
+                            return;
+                        }
+                        resetManualKeywordEditor();
+                        manualListEditingId = parseInt(listId, 10) || 0;
+                        setKeywordSourceTab('keyword_list');
+                        openModal(importModal);
+                        if (manualListStatus) {
+                            manualListStatus.textContent = 'Carregando lista...';
+                            manualListStatus.className = 'text-sm text-slate-500';
+                        }
+
+                        try {
+                            var result = await api('/keyword-lists/' + encodeURIComponent(manualListEditingId), { method: 'GET' });
+                            if (!result.ok || !result.payload || !result.payload.success) {
+                                throw new Error(result.payload && result.payload.message ? result.payload.message : 'Nao foi possivel carregar a keyword list.');
+                            }
+                            var rows = result.payload.rows || [];
+                            var pendingKeywords = rows.filter(function(row) {
+                                return !row || row.row_status !== 'generated';
+                            }).map(function(row) {
+                                return row && row.keyword ? row.keyword : (row && row.row_data && row.row_data.keyword ? row.row_data.keyword : '');
+                            }).filter(function(keyword) {
+                                return String(keyword || '').trim() !== '';
+                            });
+                            if (manualListNameInput) {
+                                manualListNameInput.value = result.payload.list && result.payload.list.list_name ? result.payload.list.list_name : '';
+                            }
+                            if (manualListValuesInput) {
+                                manualListValuesInput.value = pendingKeywords.join('\n');
+                            }
+                            if (manualListButton) {
+                                manualListButton.textContent = 'Salvar alterações';
+                            }
+                            if (manualListStatus) {
+                                manualListStatus.textContent = 'Edite o nome ou as keywords pendentes.';
+                                manualListStatus.className = 'text-sm text-slate-500';
+                            }
+                        } catch (error) {
+                            if (manualListStatus) {
+                                manualListStatus.textContent = error.message || 'Erro ao carregar a keyword list.';
+                                manualListStatus.className = 'text-sm text-rose-600';
+                            }
+                        }
+                    }
+
+                    function createManualKeywordList() {
+                        var listName = manualListNameInput ? manualListNameInput.value.trim() : '';
+                        var keywords = manualListValuesInput ? manualListValuesInput.value.trim() : '';
+                        if (!listName || !keywords) {
+                            if (manualListStatus) {
+                                manualListStatus.textContent = 'Informe o nome da lista e ao menos uma keyword.';
+                                manualListStatus.className = 'text-sm text-rose-600';
+                            }
+                            return;
+                        }
+
+                        if (manualListButton) {
+                            manualListButton.disabled = true;
+                            manualListButton.textContent = manualListEditingId ? 'Salvando...' : 'Cadastrando...';
+                        }
+
+                        var endpoint = manualListEditingId
+                            ? '/keyword-lists/' + encodeURIComponent(manualListEditingId) + '/manual'
+                            : '/keyword-lists/manual';
+                        api(endpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                list_name: listName,
+                                keywords: keywords
+                            })
+                        }).then(function(result) {
+                            if (!result.ok || !result.payload || !result.payload.success) {
+                                throw new Error(result.payload && result.payload.message ? result.payload.message : 'Nao foi possivel cadastrar a lista.');
+                            }
+                            if (manualListStatus) {
+                                manualListStatus.textContent = manualListEditingId ? 'Keyword list atualizada com sucesso.' : 'Keyword list cadastrada com sucesso.';
+                                manualListStatus.className = 'text-sm text-emerald-600';
+                            }
+                            if (manualListNameInput) {
+                                manualListNameInput.value = '';
+                            }
+                            if (manualListValuesInput) {
+                                manualListValuesInput.value = '';
+                            }
+                            window.setTimeout(function() {
+                                window.location.reload();
+                            }, 500);
+                        }).catch(function(error) {
+                            if (manualListStatus) {
+                                manualListStatus.textContent = error.message || 'Erro ao salvar a lista.';
+                                manualListStatus.className = 'text-sm text-rose-600';
+                            }
+                        }).finally(function() {
+                            if (manualListButton) {
+                                manualListButton.disabled = false;
+                                manualListButton.textContent = manualListEditingId ? 'Salvar alterações' : 'Cadastrar lista';
+                            }
                         });
                     }
 
@@ -3731,6 +3991,19 @@ class Alpha_RSS_AI_Generator_Admin
                         analyzeButton.addEventListener('click', analyzeFile);
                     }
 
+                    if (manualListButton) {
+                        manualListButton.addEventListener('click', createManualKeywordList);
+                    }
+
+                    sourceTabButtons.forEach(function(button) {
+                        button.addEventListener('click', function() {
+                            if (String(button.getAttribute('data-keyword-source-tab') || '') === 'spreadsheet') {
+                                resetManualKeywordEditor();
+                            }
+                            setKeywordSourceTab(button.getAttribute('data-keyword-source-tab') || 'spreadsheet');
+                        });
+                    });
+
                     if (importButton) {
                         importButton.addEventListener('click', importList);
                     }
@@ -3762,8 +4035,16 @@ class Alpha_RSS_AI_Generator_Admin
                         });
                     });
 
+                    document.querySelectorAll('[data-edit-keyword-list]').forEach(function(button) {
+                        button.addEventListener('click', function() {
+                            openManualKeywordEditor(button.getAttribute('data-list-id'));
+                        });
+                    });
+
                     openImportButtons.forEach(function(button) {
                         button.addEventListener('click', function() {
+                            resetManualKeywordEditor();
+                            setKeywordSourceTab('spreadsheet');
                             openModal(importModal);
                         });
                     });

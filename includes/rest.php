@@ -34,6 +34,22 @@ class Alpha_RSS_AI_Generator_REST
             ),
         ));
 
+        register_rest_route('alpha-rss-ai-generator/v1', '/keyword-lists/manual', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => array($this, 'rest_create_manual_keyword_list'),
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
+
+        register_rest_route('alpha-rss-ai-generator/v1', '/keyword-lists/(?P<id>\d+)/manual', array(
+            'methods' => WP_REST_Server::EDITABLE,
+            'callback' => array($this, 'rest_update_manual_keyword_list'),
+            'permission_callback' => function () {
+                return current_user_can('manage_options');
+            },
+        ));
+
         register_rest_route('alpha-rss-ai-generator/v1', '/keyword-lists/(?P<id>\d+)', array(
             array(
                 'methods' => WP_REST_Server::READABLE,
@@ -396,6 +412,214 @@ class Alpha_RSS_AI_Generator_REST
                 'duplicate_rows' => $duplicate_rows,
                 'logs' => $import_logs,
             ),
+        ));
+    }
+
+    public function rest_create_manual_keyword_list(WP_REST_Request $request)
+    {
+        global $wpdb;
+
+        $list_name = sanitize_text_field($request->get_param('list_name'));
+        $keywords_raw = $request->get_param('keywords');
+        if (is_array($keywords_raw)) {
+            $keywords_raw = implode("\n", $keywords_raw);
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', (string) wp_unslash($keywords_raw));
+        $keywords = array();
+        $seen = array();
+        foreach ($lines as $line) {
+            $keyword = sanitize_text_field(trim((string) $line));
+            if ($keyword === '') {
+                continue;
+            }
+            $key = function_exists('mb_strtolower') ? mb_strtolower($keyword, 'UTF-8') : strtolower($keyword);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $keywords[] = $keyword;
+        }
+
+        if ($list_name === '') {
+            return new WP_Error('arc_keyword_list_name_missing', 'Informe o nome da lista.', array('status' => 400));
+        }
+        if (empty($keywords)) {
+            return new WP_Error('arc_keyword_list_empty', 'Informe ao menos uma palavra-chave.', array('status' => 400));
+        }
+
+        $now = current_time('mysql');
+        $inserted = $wpdb->insert(
+            Alpha_RSS_AI_Generator::$table_lists,
+            array(
+                'list_name' => $list_name,
+                'original_filename' => 'Cadastro manual',
+                'file_path' => null,
+                'file_type' => 'keyword_list',
+                'headers_json' => wp_json_encode(array('keyword')),
+                'column_map_json' => wp_json_encode(array(
+                    'keyword_column' => 'keyword',
+                    'source_title_column' => '',
+                    'source_url_column' => '',
+                    'slug_column' => '',
+                    'content_column' => '',
+                    'tags_column' => '',
+                )),
+                'total_rows' => 0,
+                'generated_rows' => 0,
+                'pending_rows' => 0,
+                'invalid_rows' => 0,
+                'failed_rows' => 0,
+                'status' => 'active',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ),
+            array('%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s', '%s', '%s')
+        );
+
+        if ($inserted === false || empty($wpdb->insert_id)) {
+            return new WP_Error('arc_keyword_list_insert_failed', 'Nao foi possivel criar a lista.', array('status' => 500));
+        }
+
+        $list_id = intval($wpdb->insert_id);
+        foreach ($keywords as $index => $keyword) {
+            $wpdb->insert(
+                Alpha_RSS_AI_Generator::$table_list_rows,
+                array(
+                    'list_id' => $list_id,
+                    'row_number' => $index + 1,
+                    'row_data' => wp_json_encode(array('keyword' => $keyword)),
+                    'keyword' => $keyword,
+                    'source_title' => '',
+                    'source_url' => '',
+                    'final_slug' => '',
+                    'slug_extension' => '',
+                    'slug_is_valid' => 1,
+                    'row_status' => 'pending',
+                    'post_id' => null,
+                    'error_message' => '',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                    'processed_at' => null,
+                ),
+                array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s')
+            );
+        }
+
+        Alpha_RSS_AI_Generator::bulk_refresh_list_counts($list_id);
+        $list = Alpha_RSS_AI_Generator::get_keyword_list($list_id);
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'Keyword list criada com sucesso.',
+            'list' => $list,
+            'counts' => Alpha_RSS_AI_Generator::bulk_get_list_counts($list_id),
+        ));
+    }
+
+    public function rest_update_manual_keyword_list(WP_REST_Request $request)
+    {
+        global $wpdb;
+
+        $list_id = intval($request->get_param('id'));
+        $list = Alpha_RSS_AI_Generator::get_keyword_list($list_id);
+        if (!$list || sanitize_key((string) $list['file_type']) !== 'keyword_list') {
+            return new WP_Error('arc_manual_keyword_list_missing', 'Keyword list nao encontrada.', array('status' => 404));
+        }
+
+        $list_name = sanitize_text_field($request->get_param('list_name'));
+        $keywords_raw = $request->get_param('keywords');
+        if (is_array($keywords_raw)) {
+            $keywords_raw = implode("\n", $keywords_raw);
+        }
+
+        $keywords = array();
+        $seen = array();
+        foreach (preg_split('/\r\n|\r|\n/', (string) wp_unslash($keywords_raw)) as $line) {
+            $keyword = sanitize_text_field(trim((string) $line));
+            if ($keyword === '') {
+                continue;
+            }
+            $key = function_exists('mb_strtolower') ? mb_strtolower($keyword, 'UTF-8') : strtolower($keyword);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $keywords[] = $keyword;
+        }
+
+        if ($list_name === '') {
+            return new WP_Error('arc_manual_keyword_list_invalid', 'Informe o nome da lista.', array('status' => 400));
+        }
+
+        $tables = Alpha_RSS_AI_Generator::bulk_tables();
+        $generated_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT keyword FROM {$tables['rows']} WHERE list_id = %d AND row_status = 'generated'",
+            $list_id
+        ));
+        $generated_keys = array();
+        foreach ($generated_rows as $generated_row) {
+            $generated_keyword = (string) $generated_row->keyword;
+            $generated_key = function_exists('mb_strtolower') ? mb_strtolower($generated_keyword, 'UTF-8') : strtolower($generated_keyword);
+            $generated_keys[$generated_key] = true;
+        }
+
+        if (empty($keywords) && empty($generated_keys)) {
+            return new WP_Error('arc_manual_keyword_list_empty', 'Informe ao menos uma keyword.', array('status' => 400));
+        }
+
+        $had_keywords = !empty($keywords);
+        $keywords = array_values(array_filter($keywords, function ($keyword) use ($generated_keys) {
+            $key = function_exists('mb_strtolower') ? mb_strtolower($keyword, 'UTF-8') : strtolower($keyword);
+            return !isset($generated_keys[$key]);
+        }));
+        if (empty($keywords) && $had_keywords) {
+            return new WP_Error('arc_manual_keyword_list_empty', 'Todas as keywords informadas ja foram geradas.', array('status' => 400));
+        }
+
+        $now = current_time('mysql');
+        $wpdb->update(
+            Alpha_RSS_AI_Generator::$table_lists,
+            array('list_name' => $list_name, 'updated_at' => $now),
+            array('id' => $list_id),
+            array('%s', '%s'),
+            array('%d')
+        );
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$tables['rows']} WHERE list_id = %d AND row_status <> 'generated'",
+            $list_id
+        ));
+
+        foreach ($keywords as $index => $keyword) {
+            $wpdb->insert(
+                Alpha_RSS_AI_Generator::$table_list_rows,
+                array(
+                    'list_id' => $list_id,
+                    'row_number' => $index + 1,
+                    'row_data' => wp_json_encode(array('keyword' => $keyword)),
+                    'keyword' => $keyword,
+                    'source_title' => '',
+                    'source_url' => '',
+                    'final_slug' => '',
+                    'slug_extension' => '',
+                    'slug_is_valid' => 1,
+                    'row_status' => 'pending',
+                    'post_id' => null,
+                    'error_message' => '',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                    'processed_at' => null,
+                ),
+                array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s')
+            );
+        }
+
+        Alpha_RSS_AI_Generator::bulk_refresh_list_counts($list_id);
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'Keyword list atualizada com sucesso.',
+            'list' => Alpha_RSS_AI_Generator::get_keyword_list($list_id),
+            'counts' => Alpha_RSS_AI_Generator::bulk_get_list_counts($list_id),
         ));
     }
 
