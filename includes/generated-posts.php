@@ -281,9 +281,11 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
 
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
             if (is_wp_error($article)) {
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $article->get_error_message());
                 $this->redirect_with_notice($article->get_error_message(), 'error');
             }
 
+            try {
             if (!empty($article['content_html']) && !empty($generator['random_bolds_enabled'])) {
                 $article['content_html'] = Alpha_RSS_AI_Generator_Helper::apply_humanized_bold_markup_to_content($article['content_html']);
             }
@@ -415,10 +417,15 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $update_result = wp_update_post($post_data, true);
 
             if (is_wp_error($update_result)) {
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $update_result->get_error_message());
                 $this->redirect_with_notice($update_result->get_error_message(), 'error');
             }
 
-            Alpha_RSS_AI_Generator::apply_taxonomies_and_meta($post_id, $generator, $article, $item);
+            $taxonomy_result = Alpha_RSS_AI_Generator::apply_taxonomies_and_meta($post_id, $generator, $article, $item);
+            if (is_wp_error($taxonomy_result)) {
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $taxonomy_result->get_error_message());
+                $this->redirect_with_notice($taxonomy_result->get_error_message(), 'error');
+            }
             $thumbnail_result = Alpha_RSS_AI_Thumbnail_Helper::set_featured_image(
                 $post_id,
                 $generator,
@@ -427,7 +434,14 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 false
             );
             if (is_wp_error($thumbnail_result)) {
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $thumbnail_result->get_error_message());
                 $this->redirect_with_notice($thumbnail_result->get_error_message(), 'error');
+            }
+
+            if (intval(get_post_thumbnail_id($post_id)) <= 0) {
+                $thumbnail_error = 'A regeneração falhou porque não foi possível manter ou definir a imagem destacada.';
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $thumbnail_error);
+                $this->redirect_with_notice($thumbnail_error, 'error');
             }
 
             Alpha_RSS_AI_Generator::insert_run_log($generator['id'], 'success', 'Post regenerado manualmente', array(
@@ -446,6 +460,31 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $this->redirect_with_notice('Post regenerado com sucesso.', 'success', array(
                 'arc_notice_link' => $view_link ? $view_link : $edit_link,
             ));
+            } catch (Throwable $error) {
+                $message = trim((string) $error->getMessage());
+                if ($message === '') {
+                    $message = 'Erro inesperado durante a regeneração do post.';
+                }
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $message);
+                Alpha_RSS_AI_Generator::insert_run_log(
+                    !empty($generator['id']) ? intval($generator['id']) : 0,
+                    'error',
+                    $message,
+                    array(
+                        'request' => array(
+                            'post_id' => $post_id,
+                            'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                        ),
+                        'response' => array(
+                            'post_status' => 'draft',
+                        ),
+                    ),
+                    $post_id,
+                    !empty($item['guid']) ? $item['guid'] : '',
+                    !empty($item['permalink']) ? $item['permalink'] : ''
+                );
+                $this->redirect_with_notice($message, 'error');
+            }
         }
 
         public function handle_delete_post()

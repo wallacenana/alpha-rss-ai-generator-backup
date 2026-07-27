@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.25
+Version: 1.9.26
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.25';
+        const VERSION = '1.9.26';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -7348,6 +7348,32 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return intval($post_id);
         }
 
+        /**
+         * A post that failed after insertion must never remain publishable.
+         */
+        public static function force_generated_post_draft($post_id, $reason = '')
+        {
+            $post_id = intval($post_id);
+            if ($post_id <= 0) {
+                return false;
+            }
+
+            $result = wp_update_post(array(
+                'ID' => $post_id,
+                'post_status' => 'draft',
+            ), true);
+
+            if (!is_wp_error($result) && trim((string) $reason) !== '') {
+                update_post_meta(
+                    $post_id,
+                    '_arc_generation_error',
+                    sanitize_textarea_field((string) $reason)
+                );
+            }
+
+            return !is_wp_error($result);
+        }
+
         public static function apply_taxonomies_and_meta($post_id, $generator, $article, $item)
         {
             $categories = json_decode((string) $generator['category_ids'], true);
@@ -7355,7 +7381,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (is_array($categories) && !empty($categories) && taxonomy_exists('category')) {
                 $category_ids = array_values(array_filter(array_map('intval', $categories)));
                 if (!empty($category_ids)) {
-                    wp_set_object_terms($post_id, $category_ids, 'category', false);
+                    $category_result = wp_set_object_terms($post_id, $category_ids, 'category', false);
+                    if (is_wp_error($category_result)) {
+                        return $category_result;
+                    }
                     if ($default_category_id <= 0 || !in_array($default_category_id, $category_ids, true)) {
                         $default_category_id = intval($category_ids[0]);
                     }
@@ -7379,7 +7408,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $tags = array_slice($tags, 0, 4);
             }
             if (!empty($tags) && taxonomy_exists('post_tag') && is_object_in_taxonomy(get_post_type($post_id), 'post_tag')) {
-                wp_set_post_terms($post_id, $tags, 'post_tag', false);
+                $tag_result = wp_set_post_terms($post_id, $tags, 'post_tag', false);
+                if (is_wp_error($tag_result)) {
+                    return $tag_result;
+                }
             }
 
             $taxonomies = json_decode((string) $generator['custom_taxonomies'], true);
@@ -7391,7 +7423,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     }
                     $terms = self::parse_list_field($terms_csv);
                     if (!empty($terms)) {
-                        wp_set_object_terms($post_id, $terms, $taxonomy, false);
+                        $taxonomy_result = wp_set_object_terms($post_id, $terms, $taxonomy, false);
+                        if (is_wp_error($taxonomy_result)) {
+                            return $taxonomy_result;
+                        }
                     }
                 }
             }
@@ -7524,6 +7559,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             update_post_meta($post_id, '_arc_generator_id', intval($generator['id']));
 
             self::sync_seo_meta($post_id, $generator, $article);
+
+            return true;
         }
 
         public static function sync_seo_meta($post_id, $generator, $article)
@@ -8034,6 +8071,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return $post_id;
             }
 
+            try {
             if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])) {
                 $content_image_size = !empty($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
                 $use_source_content_images = self::generator_uses_source_content_images($generator);
@@ -8075,11 +8113,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                                 'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
                             ),
                         ), $post_id, $item['guid'], $item['permalink']);
+                        self::force_generated_post_draft($post_id, $update_content->get_error_message());
+                        return $update_content;
                     }
                 }
             }
 
-            self::apply_taxonomies_and_meta($post_id, $generator, $article, $item);
+            $taxonomy_result = self::apply_taxonomies_and_meta($post_id, $generator, $article, $item);
+            if (is_wp_error($taxonomy_result)) {
+                self::force_generated_post_draft($post_id, $taxonomy_result->get_error_message());
+                return $taxonomy_result;
+            }
 
             $thumbnail_result = Alpha_RSS_AI_Thumbnail_Helper::set_featured_image(
                 $post_id,
@@ -8089,12 +8133,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 false
             );
             if (is_wp_error($thumbnail_result)) {
-                self::insert_run_log($generator['id'], 'warning', $thumbnail_result->get_error_message(), array(
-                    'request' => array(
-                        'post_id' => $post_id,
-                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                    ),
-                ), $post_id, $item['guid'], $item['permalink']);
+                self::force_generated_post_draft($post_id, $thumbnail_result->get_error_message());
+                return $thumbnail_result;
             }
 
             $featured_image_id = intval(get_post_thumbnail_id($post_id));
@@ -8107,6 +8147,15 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     !empty($item['keyword']) ? $item['keyword'] : '',
                     ''
                 ));
+            }
+
+            if ($featured_image_id <= 0) {
+                $thumbnail_error = new WP_Error(
+                    'arc_generation_thumbnail_missing',
+                    'A geração falhou porque não foi possível definir a imagem destacada.'
+                );
+                self::force_generated_post_draft($post_id, $thumbnail_error->get_error_message());
+                return $thumbnail_error;
             }
 
             if ($treat_like_rss && $use_source_video) {
@@ -8130,6 +8179,23 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             ), $post_id, $item['guid'], $item['permalink']);
 
             return $post_id;
+            } catch (Throwable $error) {
+                $message = trim((string) $error->getMessage());
+                if ($message === '') {
+                    $message = 'Erro inesperado durante o pós-processamento da geração.';
+                }
+                self::force_generated_post_draft($post_id, $message);
+                self::insert_run_log($generator['id'], 'error', $message, array(
+                    'request' => array(
+                        'post_id' => $post_id,
+                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    ),
+                    'response' => array(
+                        'post_status' => 'draft',
+                    ),
+                ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+                return new WP_Error('arc_generation_post_processing_failed', $message);
+            }
         }
 
         public function cron_tick()
