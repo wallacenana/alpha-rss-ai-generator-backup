@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.26
+Version: 1.9.27
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.26';
+        const VERSION = '1.9.27';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -272,6 +272,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             self::maybe_upgrade_items_schema_columns();
+            self::maybe_upgrade_generators_schema_columns();
 
             if ($stored_version !== self::DB_VERSION) {
                 update_option('alpha_rss_ai_db_version', self::DB_VERSION, false);
@@ -306,6 +307,28 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
                 $wpdb->query("ALTER TABLE `" . self::$table_items . "` ADD COLUMN `" . $column_name . "` " . $column_definition);
             }
+        }
+
+        protected static function maybe_upgrade_generators_schema_columns()
+        {
+            global $wpdb;
+
+            if (empty(self::$table_generators)) {
+                return;
+            }
+
+            $column_name = 'tavily_enabled';
+            $found_column = $wpdb->get_var($wpdb->prepare(
+                "SHOW COLUMNS FROM `" . self::$table_generators . "` LIKE %s",
+                $column_name
+            ));
+            if (!empty($found_column)) {
+                return;
+            }
+
+            $wpdb->query(
+                "ALTER TABLE `" . self::$table_generators . "` ADD COLUMN `tavily_enabled` tinyint(1) NOT NULL DEFAULT 0 AFTER `keyword_list_mode`"
+            );
         }
 
         public function ensure_cron_scheduled()
@@ -378,6 +401,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 source_post_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 list_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 keyword_list_mode varchar(20) NOT NULL DEFAULT 'keywords',
+                tavily_enabled tinyint(1) NOT NULL DEFAULT 0,
                 status varchar(20) NOT NULL DEFAULT 'active',
                 post_type varchar(60) NOT NULL DEFAULT 'post',
                 post_status varchar(20) NOT NULL DEFAULT 'draft',
@@ -703,7 +727,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'target_h2_min' => 3,
                     'target_h2_max' => 3,
                     'blocks' => array(
-                        array('type' => 'intro_without_h2', 'label' => 'Introdução sem H2', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                         array('type' => 'h2', 'label' => 'H2 principal', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
                         array('type' => 'paragraph', 'label' => 'Parágrafo', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 2),
                         array('type' => 'conclusion', 'label' => 'Conclusão', 'notes' => '', 'quantity_min' => 1, 'quantity_max' => 1),
@@ -909,7 +932,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "}\n"
                 . "Não inclua title, slug, resumo, meta_descricao, tags, pexels_tags, focus_keyword ou qualquer outra chave.\n"
                 . "Não escreva texto fora do JSON.\n"
-                . "Se não houver conteúdo, ainda assim retorne a chave content_html vazia.";
+                . "Se não houver conteúdo, ainda assim retorne algum erro/formato inválido.";
         }
 
         public static function append_content_prompt_output_suffix($prompt)
@@ -1438,8 +1461,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $map = array(
                 'intro' => 'Introdução',
-                'intro_with_title' => 'Introdução com título',
-                'intro_without_h2' => 'Introdução sem H2',
                 'h2' => 'H2',
                 'h3' => 'H3',
                 'paragraph' => 'Parágrafo',
@@ -1459,7 +1480,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         {
             $block = is_array($block) ? $block : array();
             $type = isset($block['type']) ? sanitize_key((string) $block['type']) : 'paragraph';
-            $allowed_types = array('intro', 'intro_with_title', 'intro_without_h2', 'h2', 'h3', 'paragraph', 'list', 'bullet', 'table', 'image', 'button', 'conclusion');
+            $allowed_types = array('intro', 'h2', 'h3', 'paragraph', 'list', 'bullet', 'table', 'image', 'button', 'conclusion');
             if (!in_array($type, $allowed_types, true)) {
                 $type = 'paragraph';
             }
@@ -1690,7 +1711,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function generator_uses_source_page_context($generator)
         {
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
-            return $source_type === 'rss' || self::source_type_uses_keyword_list($source_type) || self::generator_uses_keyword_list_url_reference_mode($generator);
+            // Keyword lists have no reference page. Only RSS and spreadsheet
+            // rows with an explicit URL may use source-page context.
+            return $source_type === 'rss' || self::generator_uses_keyword_list_url_reference_mode($generator);
         }
 
         public static function generator_uses_source_content_images($generator)
@@ -3056,6 +3079,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($payload['source_type'] === 'keyword_list') {
                 $payload['keyword_list_mode'] = 'keywords';
             }
+            $payload['tavily_enabled'] = ($payload['source_type'] === 'keyword_list' && !empty($raw['tavily_enabled'])) ? 1 : 0;
             if ($payload['generation_mode'] === 'satellite') {
                 $payload['source_post_id'] = 0;
             }
@@ -3583,7 +3607,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $body['prompt_cache_retention'] = $prompt_cache_retention;
             }
 
-            // error_log("prompt: " . $prompt);
+            error_log("prompt: " . $prompt);
             $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -3635,7 +3659,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
 
-            // error_log("response: " . print_r($text, true));
+            error_log("response: " . print_r($text, true));
             return self::parse_ai_json($text, $context);
         }
 
@@ -4072,8 +4096,61 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function parse_ai_json($text, $context = array())
         {
             $text = trim((string) $text);
+            // JSON mode can still return a BOM or raw control characters in text values.
+            $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
             $text = preg_replace('/^```(?:json)?\s*/i', '', $text);
             $text = preg_replace('/\s*```$/', '', $text);
+
+            if (function_exists('wp_check_invalid_utf8')) {
+                $text = wp_check_invalid_utf8($text, true);
+            } elseif (function_exists('iconv')) {
+                $text = (string) @iconv('UTF-8', 'UTF-8//IGNORE', $text);
+            }
+
+            // Escape raw control characters only while inside JSON strings.
+            $normalized_json = '';
+            $inside_string = false;
+            $escaped = false;
+            $text_length = strlen($text);
+            for ($index = 0; $index < $text_length; $index++) {
+                $character = $text[$index];
+                $ord = ord($character);
+
+                if ($inside_string) {
+                    if ($escaped) {
+                        $normalized_json .= $character;
+                        $escaped = false;
+                        continue;
+                    }
+                    if ($character === '\\') {
+                        $normalized_json .= $character;
+                        $escaped = true;
+                        continue;
+                    }
+                    if ($character === '"') {
+                        $normalized_json .= $character;
+                        $inside_string = false;
+                        continue;
+                    }
+                    if ($ord < 32 || $ord === 127) {
+                        if ($ord === 9) {
+                            $normalized_json .= '\\t';
+                        } elseif ($ord === 10) {
+                            $normalized_json .= '\\n';
+                        } elseif ($ord === 13) {
+                            $normalized_json .= '\\r';
+                        } else {
+                            $normalized_json .= sprintf('\\u%04x', $ord);
+                        }
+                        continue;
+                    }
+                } elseif ($character === '"') {
+                    $inside_string = true;
+                }
+
+                $normalized_json .= $character;
+            }
+            $text = $normalized_json;
 
             $data = json_decode($text, true);
             if (!is_array($data)) {
@@ -8064,6 +8141,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $article['content_html'] = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html($article['content_html']);
+            $article['content_html'] = Alpha_RSS_AI_Generator_Helper::remove_unmatched_trailing_quotes_from_html($article['content_html']);
 
             $post_data = self::build_post_data($generator, $article, $item);
             $post_id = wp_insert_post($post_data, true);
@@ -8803,6 +8881,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'source_post_id' => $payload['source_post_id'],
                 'list_id' => $payload['list_id'],
                 'keyword_list_mode' => $payload['keyword_list_mode'],
+                'tavily_enabled' => $payload['tavily_enabled'],
                 'status' => $payload['status'],
                 'post_type' => $payload['post_type'],
                 'post_status' => $payload['post_status'],
@@ -8910,6 +8989,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'source_post_id' => isset($generator['source_post_id']) ? intval($generator['source_post_id']) : 0,
                 'list_id' => $duplicated_list_id,
                 'keyword_list_mode' => isset($generator['keyword_list_mode']) ? $generator['keyword_list_mode'] : self::get_default_keyword_list_mode(),
+                'tavily_enabled' => !empty($generator['tavily_enabled']) ? 1 : 0,
                 'status' => $generator['status'],
                 'post_type' => $generator['post_type'],
                 'post_status' => $generator['post_status'],

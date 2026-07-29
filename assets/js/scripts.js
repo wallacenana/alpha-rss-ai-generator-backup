@@ -10,6 +10,7 @@
         source_type: 'keyword_list',
         list_id: '0',
         keyword_list_mode: 'keywords',
+        tavily_enabled: '0',
         status: 'active',
         post_type: 'post',
         post_status: 'draft',
@@ -79,6 +80,7 @@
     var feedUrlField = form.querySelector('[data-feed-url-field]');
     var listIdField = form.querySelector('[data-list-id-field]');
     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
+    var tavilyField = form.querySelector('[data-tavily-field]');
     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
     var sourceMediaToggleField = form.querySelector('[data-rss-source-media-toggle-field]');
     var sourceSelectorsField = form.querySelector('[data-rss-source-selectors-field]');
@@ -331,7 +333,10 @@
             listIdField.classList.toggle('hidden', isSatelliteMode || !isListSource);
         }
         if (keywordListModeField) {
-            keywordListModeField.classList.add('hidden');
+            keywordListModeField.classList.toggle('hidden', isSatelliteMode || !isSpreadsheetSource);
+        }
+        if (tavilyField) {
+            tavilyField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
         }
         var showSourceMediaControls = !isSatelliteMode && (sourceType === 'rss' || (isSpreadsheetSource && keywordListMode === 'url_reference'));
         var sourceContentImagesEnabledEl = byName('source_content_images_enabled');
@@ -730,6 +735,7 @@
         setValue('source_type', defaults.source_type);
         setValue('list_id', defaults.list_id);
         setValue('keyword_list_mode', defaults.keyword_list_mode);
+        setValue('tavily_enabled', defaults.tavily_enabled);
         setValue('status', defaults.status);
         setValue('post_type', defaults.post_type);
         setValue('post_status', defaults.post_status);

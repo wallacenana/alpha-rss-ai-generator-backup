@@ -569,6 +569,15 @@ class Alpha_RSS_AI_Generator_Helper
         return trim((string) substr($html, 0, $max_chars));
     }
 
+    public static function is_intro_heading_text($text)
+    {
+        $text = self::normalize_plain_text((string) $text);
+        $text = function_exists('remove_accents') ? remove_accents($text) : $text;
+        $text = strtolower(trim((string) $text));
+
+        return $text === 'introducao' || strpos($text, 'introducao:') === 0;
+    }
+
     public static function ensure_content_starts_with_paragraph_html($content)
     {
         $content = trim((string) $content);
@@ -581,6 +590,18 @@ class Alpha_RSS_AI_Generator_Helper
             if (empty($blocks)) {
                 return $content;
             }
+
+            foreach ($blocks as $index => $block) {
+                if (empty($block['blockName']) || $block['blockName'] !== 'core/heading') {
+                    continue;
+                }
+
+                $heading_html = isset($block['innerHTML']) ? (string) $block['innerHTML'] : '';
+                if (self::is_intro_heading_text(wp_strip_all_tags($heading_html))) {
+                    unset($blocks[$index]);
+                }
+            }
+            $blocks = array_values($blocks);
 
             $paragraph_index = -1;
             foreach ($blocks as $index => $block) {
@@ -651,6 +672,13 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         foreach ($child_nodes as $child) {
+            if ($child instanceof DOMElement && in_array(strtolower((string) $child->nodeName), array('h1', 'h2', 'h3', 'h4', 'h5', 'h6'), true)) {
+                if (self::is_intro_heading_text($child->textContent)) {
+                    $root->removeChild($child);
+                    continue;
+                }
+            }
+
             if ($child === $paragraph_node) {
                 break;
             }
@@ -2813,10 +2841,14 @@ class Alpha_RSS_AI_Generator_Helper
         return $candidates;
     }
 
-    public static function fetch_tavily_search_context($query, $max_results = 3, $include_answer = true, $include_images = true)
+    public static function fetch_tavily_search_context($query, $max_results = 3, $include_answer = true, $include_images = true, $enabled_override = null)
     {
         $query = self::normalize_plain_text($query);
         if ($query === '') {
+            return array();
+        }
+
+        if ($enabled_override === false) {
             return array();
         }
 
@@ -2899,6 +2931,59 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         return $context;
+    }
+
+    public static function format_tavily_context_for_prompt($context, $max_chars = 6000)
+    {
+        if (!is_array($context) || empty($context)) {
+            return '';
+        }
+
+        $encoded = wp_json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($encoded) || $encoded === '') {
+            return '';
+        }
+
+        return self::limit_prompt_html_chars($encoded, max(500, intval($max_chars)));
+    }
+
+    public static function get_generator_editorial_context($generator)
+    {
+        $generator = is_array($generator) ? $generator : array();
+        $name = !empty($generator['name'])
+            ? self::normalize_plain_text((string) $generator['name'])
+            : '';
+        $category_ids = isset($generator['category_ids']) ? $generator['category_ids'] : array();
+        if (is_string($category_ids)) {
+            $decoded_category_ids = json_decode($category_ids, true);
+            $category_ids = is_array($decoded_category_ids) ? $decoded_category_ids : array();
+        }
+        if (!is_array($category_ids)) {
+            $category_ids = array();
+        }
+        if (!empty($generator['default_category_id'])) {
+            $category_ids[] = intval($generator['default_category_id']);
+        }
+        $category_ids = array_values(array_unique(array_filter(array_map('intval', $category_ids))));
+
+        $category_names = array();
+        foreach ($category_ids as $category_id) {
+            if (!function_exists('get_term')) {
+                break;
+            }
+            $term = get_term($category_id, 'category');
+            if (is_wp_error($term) || empty($term->name)) {
+                continue;
+            }
+            $category_names[] = self::normalize_plain_text((string) $term->name);
+        }
+        $category_names = array_values(array_unique(array_filter($category_names)));
+
+        return array(
+            'name' => $name,
+            'categories' => $category_names,
+            'category_text' => implode(', ', $category_names),
+        );
     }
 
     protected static function pick_random_text_variant($items, $fallback = '')
@@ -4287,6 +4372,51 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($html);
     }
 
+    public static function remove_unmatched_trailing_quotes_from_html($html)
+    {
+        $html = (string) $html;
+        if ($html === '') {
+            return '';
+        }
+
+        return (string) preg_replace_callback(
+            '~(<(?:p|li|blockquote|h[1-6])\b[^>]*>)(.*?)(</(?:p|li|blockquote|h[1-6])>)~isu',
+            static function ($matches) {
+                $inner_html = isset($matches[2]) ? (string) $matches[2] : '';
+                $plain_text = trim(wp_strip_all_tags(html_entity_decode($inner_html, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'))));
+                if ($plain_text === '') {
+                    return $matches[0];
+                }
+
+                $last_character = function_exists('mb_substr')
+                    ? mb_substr($plain_text, -1, 1, 'UTF-8')
+                    : substr($plain_text, -1);
+                $opening_character = array(
+                    '”' => '“',
+                    '’' => '‘',
+                );
+                $is_unmatched = false;
+
+                if ($last_character === '"') {
+                    $is_unmatched = (substr_count($plain_text, '"') % 2) === 1;
+                } elseif (isset($opening_character[$last_character])) {
+                    $opening_position = function_exists('mb_strpos')
+                        ? mb_strpos($plain_text, $opening_character[$last_character], 0, 'UTF-8')
+                        : strpos($plain_text, $opening_character[$last_character]);
+                    $is_unmatched = $opening_position === false;
+                }
+
+                if (!$is_unmatched) {
+                    return $matches[0];
+                }
+
+                $inner_html = (string) preg_replace('/(["”’])(\s*)$/u', '$2', $inner_html, 1);
+                return $matches[1] . $inner_html . $matches[3];
+            },
+            $html
+        );
+    }
+
     public static function build_source_context_block($generator, $item)
     {
         $lines = array('## DADOS DA FONTE');
@@ -4317,6 +4447,12 @@ class Alpha_RSS_AI_Generator_Helper
         }
         $source_page_content_html = isset($item['source_page_content_html']) ? self::limit_prompt_html_chars(self::normalize_prompt_context_html((string) $item['source_page_content_html']), 6000) : '';
         $source_page_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        $generator_editorial_context = self::get_generator_editorial_context($generator);
+        $tavily_context_text = '';
+        if ($source_type === 'keyword_list' && !empty($item['tavily_context']) && is_array($item['tavily_context'])) {
+            $tavily_context_text = self::format_tavily_context_for_prompt($item['tavily_context']);
+        }
         $row_data = isset($item['row_data']) && is_array($item['row_data'])
             ? wp_json_encode($item['row_data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             : '';
@@ -4326,6 +4462,10 @@ class Alpha_RSS_AI_Generator_Helper
 
         if ($source_title !== '') {
             $lines[] = 'Titulo da fonte: ' . $source_title;
+        }
+        if ($source_type === 'keyword_list') {
+            $lines[] = 'Nome do gerador: ' . (!empty($generator_editorial_context['name']) ? $generator_editorial_context['name'] : '[sem nome definido]');
+            $lines[] = 'Categoria editorial: ' . (!empty($generator_editorial_context['category_text']) ? $generator_editorial_context['category_text'] : '[sem categoria definida]');
         }
         if ($source_site_name !== '') {
             $lines[] = 'Site de referencia: ' . $source_site_name;
@@ -4340,6 +4480,9 @@ class Alpha_RSS_AI_Generator_Helper
         }
         if ($source_page_content_html !== '') {
             $lines[] = 'Conteudo em HTML limpo da pagina de origem: ' . $source_page_content_html;
+        }
+        if ($tavily_context_text !== '') {
+            $lines[] = 'Pesquisa factual auxiliar do Tavily: ' . $tavily_context_text;
         }
         if (is_string($row_data) && $row_data !== '') {
             $lines[] = 'Dados completos da linha de origem: ' . $row_data;
@@ -4649,20 +4792,41 @@ class Alpha_RSS_AI_Generator_Helper
             $lines[] = 'Use estes fatos como base factual e preserve a ordem quando ela ajudar a construir um texto fluido.';
         }
 
+        foreach (
+            array(
+                'semantic_terms' => 'Semanticas prioritarias:',
+                'reader_questions' => 'Perguntas que o conteudo deve responder:',
+            ) as $context_key => $label
+        ) {
+            if (empty($outline_context[$context_key]) || !is_array($outline_context[$context_key])) {
+                continue;
+            }
+            $lines[] = $label;
+            foreach ($outline_context[$context_key] as $entry) {
+                $entry = self::normalize_plain_text((string) $entry);
+                if ($entry !== '') {
+                    $lines[] = '- ' . $entry;
+                }
+            }
+        }
+
         if (!empty($outline_context['outline_sections']) && is_array($outline_context['outline_sections'])) {
-            $lines[] = 'Estrutura sugerida:';
+            $lines[] = 'Esboco editorial:';
             $index = 1;
             foreach ($outline_context['outline_sections'] as $section) {
                 if (!is_array($section)) {
                     continue;
                 }
                 $title = !empty($section['h2']) ? sanitize_text_field((string) $section['h2']) : (!empty($section['title']) ? sanitize_text_field((string) $section['title']) : '');
-                if ($title === '') {
+                $block_type = !empty($section['type']) ? sanitize_key((string) $section['type']) : '';
+                $purpose = !empty($section['purpose']) ? sanitize_text_field((string) $section['purpose']) : '';
+                if ($block_type === 'intro_without_h2') {
+                    $title = 'Introducao';
+                    $purpose = 'Comece diretamente com o lead em paragrafos, sem H2.';
+                } elseif ($title === '') {
                     $title = 'Secao ' . $index;
                 }
-                $purpose = !empty($section['purpose']) ? sanitize_text_field((string) $section['purpose']) : '';
                 $word_budget = isset($section['word_budget']) ? intval($section['word_budget']) : 0;
-                $block_type = !empty($section['type']) ? sanitize_key((string) $section['type']) : '';
                 $line = $index . '. ' . $title;
                 if ($block_type !== '') {
                     $line .= ' [' . $block_type . ']';
@@ -4691,6 +4855,13 @@ class Alpha_RSS_AI_Generator_Helper
         $item = is_array($item) ? $item : array();
         $seo_article = is_array($seo_article) ? $seo_article : array();
         $outline_context = is_array($outline_context) ? $outline_context : self::build_outline_context_base($generator);
+
+        $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        $is_keyword_only = $source_type === 'keyword_list'
+            || ($source_type === 'spreadsheet' && !Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator));
+        if ($is_keyword_only) {
+            return self::build_keyword_outline_analysis_prompt($generator, $item, $outline_context);
+        }
 
         $source_title = '';
         foreach (array('source_title', 'source_page_title', 'title', 'keyword', 'item_title', 'feed_title') as $candidate_key) {
@@ -4743,7 +4914,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Voce e um planejador editorial interno.',
             'Analise principalmente o conteudo html enviado e escolha apenas 1 modelo.',
             'Ignore rodape, sidebar, widgets, navegacao e blocos auxiliares (caso exista).',
-            'Retorne apenas JSON valido com estas chaves: content_type, funnel_level, tone, primary_pain, focus_keyword, recommended_prompt_model_key, key_facts.',
+            'Retorne apenas JSON valido com estas chaves: content_type, funnel_level, tone, primary_pain, focus_keyword, recommended_prompt_model_key, key_facts, semantic_terms, reader_questions.',
             'Use content_type somente como uma destas chaves canonicas: lista, artigo, noticia, review, faq, tutorial, comparativo.',
             'REGRA PRINCIPAL: escolha noticia quando o conteudo tratar de um acontecimento, anuncio, confirmacao, estreia, lancamento, atualizacao, declaracao ou mudanca pontual. Uma noticia pode ter varios h2; a existencia de h2 nao a transforma em artigo ou lista.',
             'Escolha artigo somente quando a fonte desenvolver um tema evergreen, explicativo, opinativo ou analitico, com progressao de ideias e contexto, sem relatar principalmente um fato pontual.',
@@ -4769,6 +4940,8 @@ class Alpha_RSS_AI_Generator_Helper
             'Escreva cada fato como um bullet autocontido e rico, incluindo nomes, acontecimentos, datas, numeros, locais, relacoes e atribuicoes quando existirem.',
             'Nao inclua frases genericas, opinioes inventadas, conselhos, transicoes ou fatos que nao estejam na fonte. Nao repita o mesmo fato.',
             'Organize os fatos em uma ordem editorial fluida, que ajude o redator a construir o conteudo com sentido do inicio ao fim.',
+            'Liste semantic_terms com termos e entidades que o conteudo precisa abordar naturalmente, sem repetir a keyword de forma artificial.',
+            'Liste reader_questions com as principais perguntas que uma pessoa faria sobre esta pauta.',
             'Título da fonte: ' . ($source_title !== '' ? $source_title : '[sem título disponível]'),
             $source_item_count > 0 ? 'Quantidade de itens indicada pelo titulo: ' . $source_item_count . '. A resposta deve cobrir todos os itens encontrados.' : '',
             $source_outline_titles !== '' ? 'Titulos e subtitulos extraidos da fonte, preserve os nomes e a ordem:' . "\n" . $source_outline_titles : '',
@@ -4780,6 +4953,87 @@ class Alpha_RSS_AI_Generator_Helper
         );
 
         return implode("\n", $prompt);
+    }
+
+    private static function build_keyword_outline_analysis_prompt($generator, $item, $outline_context = array())
+    {
+        $generator = is_array($generator) ? $generator : array();
+        $item = is_array($item) ? $item : array();
+        $outline_context = is_array($outline_context) ? $outline_context : array();
+
+        $keyword = '';
+        foreach (array('keyword', 'title', 'source_title', 'item_title') as $candidate_key) {
+            if (!empty($item[$candidate_key])) {
+                $keyword = self::normalize_prompt_context_text((string) $item[$candidate_key]);
+                if ($keyword !== '') {
+                    break;
+                }
+            }
+        }
+
+        $custom_prompt = !empty($generator['prompt_template'])
+            ? self::normalize_prompt_context_text((string) $generator['prompt_template'])
+            : '';
+        if ($custom_prompt !== '') {
+            $custom_prompt = self::limit_prompt_html_chars($custom_prompt, 1600);
+        }
+
+        $available_prompt_models = Alpha_RSS_AI_Generator::get_prompt_models($generator);
+        $available_models_text = array();
+        foreach ($available_prompt_models as $available_prompt_model) {
+            if (!is_array($available_prompt_model) || empty($available_prompt_model['key'])) {
+                continue;
+            }
+            $model_key = sanitize_key((string) $available_prompt_model['key']);
+            $description = !empty($available_prompt_model['description'])
+                ? sanitize_text_field((string) $available_prompt_model['description'])
+                : '';
+            $available_models_text[] = '- key=' . $model_key . ($description !== '' ? ' | ' . $description : '');
+        }
+
+        $reference_html = '';
+        foreach (array('source_page_content_html', 'source_page_html', 'content_html', 'content') as $reference_key) {
+            if (!empty($item[$reference_key])) {
+                $reference_html = self::limit_prompt_html_chars(
+                    self::normalize_prompt_context_html((string) $item[$reference_key]),
+                    12000
+                );
+                break;
+            }
+        }
+        $tavily_text = !empty($item['tavily_context']) && is_array($item['tavily_context'])
+            ? self::format_tavily_context_for_prompt($item['tavily_context'])
+            : '';
+        $generator_editorial_context = self::get_generator_editorial_context($generator);
+        $generator_name = !empty($generator_editorial_context['name']) ? $generator_editorial_context['name'] : '[sem nome]';
+        $generator_category = !empty($generator_editorial_context['category_text']) ? $generator_editorial_context['category_text'] : '[sem categoria]';
+
+        $lines = array(
+            'Voce e um planejador editorial para uma keyword, sem pagina de referencia.',
+            'Analise somente a intencao da keyword e escolha o modelo mais adequado.',
+            'O objetivo principal e criar um conteudo com potencial para Google Discover.',
+            'Evite estruturar o conteudo como um guia generico apenas porque a keyword e ampla.',
+            'Antes de criar o outline, identifique qual e o principal conflito editorial da pauta. Todo o conteudo deve girar em torno desse conflito e evita-lo dispersar em assuntos secundarios.',
+            'Escolha lista ou artigo quando a intencao da keyword for um guia ou conteudo aprofundado.',
+            'Escolha review quando a keyword pedir avaliacao, melhor produto, vale a pena ou qual escolher.',
+            'Escolha comparativo quando houver versus, vs, comparar ou duas opcoes claras.',
+            'Escolha tutorial quando houver como fazer, passo a passo ou instrucoes.',
+            'Escolha noticia somente quando a keyword indicar acontecimento, anuncio, estreia, lancamento ou atualizacao pontual.',
+            'Retorne somente JSON valido com estas chaves: content_type, funnel_level, tone, primary_pain, focus_keyword, recommended_prompt_model_key, semantic_terms.',
+            'Use content_type e recommended_prompt_model_key somente com as chaves validas abaixo.',
+            'Liste semantic_terms com termos e entidades relevantes para a keyword, sem repetir a keyword de forma artificial.',
+            'Keyword da pauta: ' . ($keyword !== '' ? $keyword : '[sem keyword]'),
+            'Nome do gerador: ' . $generator_name,
+            'Categoria editorial: ' . $generator_category,
+            'Use o nome do gerador e a categoria editorial para interpretar o contexto da keyword. Nao imponha um nicho diferente apenas porque a keyword e ampla.',
+            $custom_prompt !== '' ? 'Prompt personalizado do gerador: ' . $custom_prompt : '',
+            $tavily_text !== '' ? 'Pesquisa factual auxiliar do Tavily: ' . $tavily_text : '',
+            $reference_html !== '' ? 'Conteudo HTML de referencia: ' . $reference_html : '',
+            'Modelos disponiveis:',
+            implode("\n", $available_models_text),
+        );
+
+        return implode("\n", array_values(array_filter($lines, 'strlen')));
     }
 
     public static function normalize_outline_analysis_context($analysis, $outline_context = array())
@@ -4803,6 +5057,43 @@ class Alpha_RSS_AI_Generator_Helper
                 ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $outline_context['recommended_prompt_model_key'])
                 : '');
         $outline_context['outline_notes'] = !empty($analysis['outline_notes']) ? sanitize_textarea_field((string) $analysis['outline_notes']) : '';
+        $normalize_context_list = static function ($value) {
+            if (is_string($value)) {
+                $value = preg_split('/\R/u', $value);
+            }
+            if (!is_array($value)) {
+                return array();
+            }
+
+            $normalized = array();
+            foreach ($value as $entry) {
+                if (is_array($entry)) {
+                    foreach (array('term', 'question', 'angle', 'text', 'value') as $entry_key) {
+                        if (isset($entry[$entry_key]) && is_scalar($entry[$entry_key])) {
+                            $entry = $entry[$entry_key];
+                            break;
+                        }
+                    }
+                }
+                if (!is_scalar($entry)) {
+                    continue;
+                }
+                $entry = self::normalize_plain_text((string) $entry);
+                $entry = preg_replace('/^(?:[-*]\s*|\d+[.)]\s*)/u', '', $entry);
+                $entry = trim((string) $entry);
+                if ($entry !== '') {
+                    $normalized[] = $entry;
+                }
+            }
+
+            return array_values(array_unique($normalized));
+        };
+        $outline_context['semantic_terms'] = isset($analysis['semantic_terms'])
+            ? $normalize_context_list($analysis['semantic_terms'])
+            : (!empty($outline_context['semantic_terms']) ? (array) $outline_context['semantic_terms'] : array());
+        $outline_context['reader_questions'] = isset($analysis['reader_questions'])
+            ? $normalize_context_list($analysis['reader_questions'])
+            : (!empty($outline_context['reader_questions']) ? (array) $outline_context['reader_questions'] : array());
         $raw_facts = array();
         if (!empty($analysis['key_facts']) && is_array($analysis['key_facts'])) {
             $raw_facts = $analysis['key_facts'];
@@ -4848,19 +5139,95 @@ class Alpha_RSS_AI_Generator_Helper
             $raw_sections = $analysis['outline_sections'];
         } elseif (!empty($analysis['sections']) && is_array($analysis['sections'])) {
             $raw_sections = $analysis['sections'];
+        } elseif (!empty($analysis['outline']) && is_array($analysis['outline'])) {
+            $raw_sections = $analysis['outline'];
         }
 
-        foreach ($raw_sections as $section) {
+        foreach ($raw_sections as $section_index => $section) {
+            if (is_string($section)) {
+                $section = array('title' => $section);
+            }
             if (!is_array($section)) {
                 continue;
             }
+
+            $section_title = !empty($section['h2'])
+                ? sanitize_text_field((string) $section['h2'])
+                : (!empty($section['title'])
+                    ? sanitize_text_field((string) $section['title'])
+                    : (!empty($section['heading']) ? sanitize_text_field((string) $section['heading']) : ''));
+            $section_semantic = !empty($section['semantic'])
+                ? sanitize_text_field((string) $section['semantic'])
+                : (!empty($section['purpose']) ? sanitize_text_field((string) $section['purpose']) : '');
+            $section_type = !empty($section['type']) ? sanitize_key((string) $section['type']) : '';
+            if ($section_type === '' && !empty($section['level'])) {
+                $section_type = sanitize_key((string) $section['level']);
+            }
+            $section_type_aliases = array(
+                'intro' => 'intro_without_h2',
+                'introduction' => 'intro_without_h2',
+                'introducao' => 'intro_without_h2',
+                'intro_sem_h2' => 'intro_without_h2',
+                'introducao_sem_h2' => 'intro_without_h2',
+                'h2_principal' => 'h2',
+                'heading' => 'h2',
+                'section' => 'h2',
+                'secao' => 'h2',
+                'topic' => 'h2',
+                'h3_principal' => 'h3',
+                'conclusao' => 'conclusion',
+                'final' => 'conclusion',
+                'fechamento' => 'conclusion',
+            );
+            if (isset($section_type_aliases[$section_type])) {
+                $section_type = $section_type_aliases[$section_type];
+            }
+            if ($section_type === '' || $section_type === 'paragraph' || $section_type === 'text') {
+                if ($section_index === 0 && $section_title === '') {
+                    $section_type = 'intro_without_h2';
+                } elseif ($section_title !== '') {
+                    $section_type = !empty($section['level']) && intval($section['level']) >= 3 ? 'h3' : 'h2';
+                } else {
+                    $section_type = 'paragraph';
+                }
+            }
+
             $sections[] = array(
-                'type' => !empty($section['type']) ? sanitize_key((string) $section['type']) : 'paragraph',
-                'h2' => !empty($section['h2']) ? sanitize_text_field((string) $section['h2']) : (!empty($section['title']) ? sanitize_text_field((string) $section['title']) : ''),
-                'purpose' => !empty($section['purpose']) ? sanitize_text_field((string) $section['purpose']) : '',
+                'type' => $section_type,
+                'h2' => $section_title,
+                'purpose' => $section_semantic,
                 'word_budget' => isset($section['word_budget']) ? intval($section['word_budget']) : 0,
                 'notes' => !empty($section['notes']) ? sanitize_text_field((string) $section['notes']) : '',
             );
+        }
+
+        $normalized_sections = array();
+        $intro_seen = false;
+        foreach ($sections as $section) {
+            $section_type = !empty($section['type']) ? sanitize_key((string) $section['type']) : '';
+            $section_title = !empty($section['h2']) ? (string) $section['h2'] : '';
+            if (in_array($section_type, array('intro', 'intro_with_title', 'intro_without_h2'), true)) {
+                if ($intro_seen) {
+                    continue;
+                }
+                $intro_seen = true;
+                $section['type'] = 'intro_without_h2';
+                $section['h2'] = '';
+            } elseif (in_array($section_type, array('h1', 'h2', 'h3'), true) && self::is_intro_heading_text($section_title)) {
+                continue;
+            }
+            $normalized_sections[] = $section;
+        }
+        $sections = $normalized_sections;
+
+        if (!empty($sections) && $sections[0]['type'] !== 'intro_without_h2') {
+            array_unshift($sections, array(
+                'type' => 'intro_without_h2',
+                'h2' => '',
+                'purpose' => 'Comece diretamente com o lead em paragrafos, sem H2.',
+                'word_budget' => 0,
+                'notes' => '',
+            ));
         }
 
         $outline_context['outline_sections'] = $sections;
@@ -5172,6 +5539,262 @@ class Alpha_RSS_AI_Generator_Helper
         return $prompt;
     }
 
+    public static function build_content_outline_prompt($generator, $item, $seo_article, $outline_context = array())
+    {
+        $generator = is_array($generator) ? $generator : array();
+        $item = is_array($item) ? $item : array();
+        $seo_article = is_array($seo_article) ? $seo_article : array();
+        $outline_context = is_array($outline_context) ? $outline_context : array();
+
+        $source_title = '';
+        foreach (array('source_title', 'source_page_title', 'title', 'keyword', 'item_title', 'feed_title') as $candidate_key) {
+            if (!empty($item[$candidate_key])) {
+                $source_title = self::normalize_prompt_context_text((string) $item[$candidate_key]);
+                break;
+            }
+        }
+        $generated_title = !empty($seo_article['title']) ? self::normalize_prompt_context_text((string) $seo_article['title']) : '';
+        $keyword = !empty($seo_article['focus_keyword'])
+            ? self::normalize_prompt_context_text((string) $seo_article['focus_keyword'])
+            : (!empty($item['keyword']) ? self::normalize_prompt_context_text((string) $item['keyword']) : '');
+        $content_type = !empty($outline_context['content_type'])
+            ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $outline_context['content_type'])
+            : '';
+        $funnel_level = !empty($outline_context['funnel_level'])
+            ? sanitize_key((string) $outline_context['funnel_level'])
+            : '';
+        $tone = !empty($outline_context['tone'])
+            ? self::normalize_prompt_context_text((string) $outline_context['tone'])
+            : '';
+        $primary_pain = !empty($outline_context['primary_pain'])
+            ? self::normalize_prompt_context_text((string) $outline_context['primary_pain'])
+            : '';
+        $prompt_model_key = !empty($outline_context['recommended_prompt_model_key'])
+            ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $outline_context['recommended_prompt_model_key'])
+            : '';
+        $outline_model = !empty($outline_context['outline_model']) && is_array($outline_context['outline_model'])
+            ? $outline_context['outline_model']
+            : array();
+        $outline_model_key = !empty($outline_context['outline_model_key'])
+            ? sanitize_key((string) $outline_context['outline_model_key'])
+            : (!empty($outline_model['key']) ? sanitize_key((string) $outline_model['key']) : '');
+        $outline_model_name = !empty($outline_context['outline_model_name'])
+            ? self::normalize_prompt_context_text((string) $outline_context['outline_model_name'])
+            : (!empty($outline_model['name']) ? self::normalize_prompt_context_text((string) $outline_model['name']) : '');
+        $outline_model_description = !empty($outline_model['description'])
+            ? self::normalize_prompt_context_text((string) $outline_model['description'])
+            : '';
+        $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        $is_keyword_only = $source_type === 'keyword_list'
+            || ($source_type === 'spreadsheet' && !Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator));
+
+        $source_html = '';
+        foreach (array('source_page_content_html', 'source_page_html', 'content_html', 'content') as $source_key) {
+            if (!empty($item[$source_key])) {
+                $source_html = self::limit_prompt_html_chars(
+                    self::normalize_prompt_context_html(preg_replace('/<title[^>]*>.*?<\/title>/is', '', (string) $item[$source_key])),
+                    18000
+                );
+                break;
+            }
+        }
+        $source_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $tavily_text = !empty($item['tavily_context']) && is_array($item['tavily_context'])
+            ? self::format_tavily_context_for_prompt($item['tavily_context'])
+            : '';
+        $generator_context = self::get_generator_editorial_context($generator);
+
+        $fact_lines = array();
+        $outline_context_keys = $is_keyword_only
+            ? array('semantic_terms')
+            : array('key_facts', 'semantic_terms', 'reader_questions');
+        foreach ($outline_context_keys as $context_key) {
+            if (empty($outline_context[$context_key]) || !is_array($outline_context[$context_key])) {
+                continue;
+            }
+            $fact_lines[] = ucfirst(str_replace('_', ' ', $context_key)) . ':';
+            foreach ($outline_context[$context_key] as $entry) {
+                $entry = self::normalize_plain_text((string) $entry);
+                if ($entry !== '') {
+                    $fact_lines[] = '- ' . $entry;
+                }
+            }
+        }
+
+        $is_list_outline = in_array($content_type, array('lista', 'list', 'list_article'), true)
+            || in_array($prompt_model_key, array('lista', 'list', 'list_article'), true)
+            || $outline_model_key === 'list_article';
+        $outline_structure_key = $content_type;
+        if ($outline_structure_key === '' && $is_list_outline) {
+            $outline_structure_key = 'lista';
+        }
+        $outline_structure_rules = array(
+            'COMECE DE UMA VEZ COM A INTRODUCAO: use type=intro_without_h2, title vazio e nenhum H2 para a introducao.',
+            'A ultima secao deve ser type=conclusion e funcionar como fechamento do conteudo.',
+        );
+        if ($outline_structure_key === 'lista') {
+            $outline_structure_rules[] = 'ESTRUTURA LISTA: intro_without_h2, um H2 para cada item da lista na ordem solicitada e conclusion.';
+            $outline_structure_rules[] = 'No modelo lista, cada item deve ser type=h2. Nao use H3 para substituir os itens e nao crie secoes de artigo entre eles.';
+            $outline_structure_rules[] = 'O desenvolvimento deve tratar somente dos itens prometidos pelo titulo e pelas informacoes da fonte.';
+        } elseif ($outline_structure_key === 'noticia') {
+            $outline_structure_rules[] = 'ESTRUTURA NOTICIA: lead forte, de 2 a 3 H2 no maximo e conclusion.';
+            $outline_structure_rules[] = 'Priorize o fato principal, seus detalhes confirmados, contexto diretamente relacionado e desdobramentos. Nao transforme a noticia em guia, review ou artigo aprofundado.';
+            $outline_structure_rules[] = 'Nao crie listas de itens, blocos genericos de beneficios ou perguntas artificiais apenas para aumentar o tamanho.';
+        } elseif ($outline_structure_key === 'artigo') {
+            $outline_structure_rules[] = 'ESTRUTURA ARTIGO:  desenvolvimento completo dividido em H2 e H3 especificos e conclusion.';
+            $outline_structure_rules[] = 'Destrinche os assuntos mais relevantes da fonte em uma progressao fluida. Use H3 somente quando ele organizar uma subdivisao real de um H2.';
+        } else {
+            $outline_structure_rules[] = 'ESTRUTURA EDITORIAL: desenvolvimento em H2 e H3 especificos e conclusion, como em um artigo.';
+            $outline_structure_rules[] = 'Para este modelo, prefira titulos claros e informativos; use provocacao somente quando fizer sentido para o tema.';
+        }
+
+        $lines = array(
+            "Você é um estrategista de conteúdo especializado em SEO editorial e Google Discover. Sua tarefa é gerar apenas a estrutura hierárquica (outline) de um conteúdo, sem escrever o texto completo.",
+            "",
+            "Antes de montar o outline, faça uma análise mental de quais são as principais dúvidas, dores e curiosidades que o leitor carrega ao buscar esse tema — ele precisa sair da leitura com todas essas dúvidas respondidas. Use essa análise como base para definir os tópicos.",
+            "",
+            "Regras para a estrutura:",
+            "- Use hierarquia em H2 e H3 (e H4 se necessário).",
+            "- O primeiro H2 deve ser sempre 'Introdução'.",
+            "- Inclua um H2 que explique o conceito central do tema e ao ao título \"$generated_title\", incorporando a keyword principal.",
+            "- Se o título prometer um número de passos, etapas ou itens, qualquer coisa relacionado  quantidade, como \"5 hábitos\", quebre cada um em um H3 dentro do H2 correspondente.",
+            "- Inclua H2s cobrindo: benefícios, erros comuns, prazos/resultados esperados, sinais de que está funcionando e objeções práticas do leitor, ex: 'dá pra fazer isso na correria?', mas tudo isso só deve ser inseido quando fizer sentido, o importante é criar um ou esboço/otline que responda ao título.",
+            "- Todos os H2 devem ser títulos provocativos, com gatilho de curiosidade, emoção ou tensão — nunca use rótulos genéricos como 'Benefícios', 'Erros comuns' ou 'Conclusão' soltos, transforme-os em perguntas ou afirmações intrigantes.",
+            "- Os H3 devem ser específicos e concretos, nunca genéricos como 'Passo 1', 'Erro 1' — cada um deve indicar do que se trata.",
+            "- Feche com um H2 de fechamento que também seja provocativo, sem usar a palavra 'Conclusão', ou seja, essa merda desse h2 provocativo é obviamente a conclusão, não tem 1 h2 de fechamento provocativo + a conclusion.",
+            "",
+            "Deve ter no máximo 8 h2, pois o conteúdo precisa ter no máximo 1000 palavras, eu diria que de 650 a 1000 palavras, no máximo",
+            "Sempre que o título prometer uma lista de itens, hábitos, erros, cuidados ou qualquer coisa que seja quantificável, o outline deve entregar exatamente o que o título promete. Cada item da lista deve ser um H2 ou H3, dependendo do contexto, e deve ser específico e detalhado, sempre, isso é inegociavel.",
+            "Algum ou alguns h2, devem responder diretamente ao título \"$generated_title\", se promete habitos, fale de habitos, se promete cuidados, entregue cuidados, se promete erros, entregue erros e por ai vai, só entregue o que o título pede, é o mais importante e de preferencia, no segundo ou terceiro h2, se promete uma desgraça de passo a passo, entregue a desgraça do passo a passo",
+            "Os títulos h2 e h3 devem ter no máximo 60 caracteres e sempre responderem a uma questão focada em SEO",
+            "Não use dois pontos nos títulos",
+            "Envie apenas o outline, sem comentários, sem explicações, sem markdown, incluindo todos os títulos H2 e H3.",
+            'Retorne somente JSON valido com a chave outline_sections.',
+            'Cada item de outline_sections deve conter exatamente: type, title, semantic, notes.',
+            'Use type=h2 ou type=h3 para o desenvolvimento e type=conclusion para a ultima secao, com titulo H2 forte.',
+            'REGRAS ESPECIFICAS DO MODELO: estas regras prevalecem sobre qualquer regra estrutural generica acima:',
+            implode("\n", $outline_structure_rules),
+            $is_list_outline
+                ? 'Modelo lista: siga o titulo gerado e crie uma secao para cada item mencionado nele. Preserve a ordem dos itens da fonte.'
+                : 'Demais modelos: use as semanticas e perguntas coletadas para construir uma progressao fluida que responda as principais duvidas do leitor.',
+            'Modelo: ' . ($outline_model_name !== '' ? $outline_model_name : ($outline_model_key !== '' ? $outline_model_key : '[nao definido]')),
+            'Descricao do modelo: ' . ($outline_model_description !== '' ? $outline_model_description : '[sem descricao]'),
+            'Categoria editorial: ' . (!empty($generator_context['category_text']) ? $generator_context['category_text'] : '[sem categoria]'),
+            'Tipo de conteudo planejado: ' . ($content_type !== '' ? $content_type : '[nao definido]'),
+            'Nivel de funil planejado: ' . ($funnel_level !== '' ? $funnel_level : '[nao definido]'),
+            'Tom planejado: ' . ($tone !== '' ? $tone : '[nao definido]'),
+            'Dor principal planejada: ' . ($primary_pain !== '' ? $primary_pain : '[nao definida]'),
+            'Titulo da fonte ou keyword: ' . ($source_title !== '' ? $source_title : ($keyword !== '' ? $keyword : '[sem titulo ou keyword]')),
+            'Titulo gerado (esse é o ponto central de tudo, é isso que deve ser respondido no conteúdo): ' . ($generated_title !== '' ? $generated_title : '[sem titulo gerado]'),
+            'Keyword foco: ' . ($keyword !== '' ? $keyword : '[sem keyword]'),
+            !empty($fact_lines) ? "Informacoes coletadas no planejamento:\n" . implode("\n", $fact_lines) : 'Informacoes coletadas no planejamento: [sem dados adicionais]',
+            $source_outline_titles !== '' && $is_list_outline ? 'Itens da fonte, preserve a ordem:' . "\n" . $source_outline_titles : '',
+            $tavily_text !== '' ? 'Informacoes adicionais coletadas pelo Tavily:' . "\n" . $tavily_text : '',
+            !$is_keyword_only && $source_html !== '' ? 'HTML filtrado da pagina de referencia:' . "\n" . $source_html : '',
+        );
+
+        return implode("\n", array_values(array_filter($lines, 'strlen')));
+    }
+
+    public static function generate_content_outline_context($generator, $item, $seo_article, $outline_context = array())
+    {
+        $outline_prompt = self::build_content_outline_prompt($generator, $item, $seo_article, $outline_context);
+        $outline_response = Alpha_RSS_AI_Generator::request_openai_json($generator, $outline_prompt, array(
+            'stage' => 'content_outline',
+            'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+            'item_title' => !empty($seo_article['title']) ? $seo_article['title'] : (!empty($item['source_title']) ? $item['source_title'] : ''),
+            'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
+            'allow_missing_content_html' => 1,
+            'preserve_extra_fields' => 1,
+            'response_schema_name' => 'arc_content_outline',
+            'response_schema' => array(
+                'type' => 'object',
+                'additionalProperties' => false,
+                'properties' => array(
+                    'outline_sections' => array(
+                        'type' => 'array',
+                        'items' => array(
+                            'type' => 'object',
+                            'additionalProperties' => false,
+                            'properties' => array(
+                                'type' => array(
+                                    'type' => 'string',
+                                    'enum' => array('intro', 'h2', 'h3', 'conclusion'),
+                                ),
+                                'title' => array('type' => 'string'),
+                                'semantic' => array('type' => 'string'),
+                                'notes' => array('type' => 'string'),
+                            ),
+                            'required' => array('type', 'title', 'semantic', 'notes'),
+                        ),
+                    ),
+                ),
+                'required' => array('outline_sections'),
+            ),
+        ));
+        if (is_wp_error($outline_response)) {
+            return new WP_Error('arc_content_outline_failed', 'Falha ao gerar o esboco do conteudo: ' . $outline_response->get_error_message());
+        }
+        if (!is_array($outline_response)) {
+            return new WP_Error('arc_content_outline_invalid', 'A IA nao retornou um esboco valido.');
+        }
+        $outline_response_id = !empty(Alpha_RSS_AI_Generator::$last_openai_response_id)
+            ? (string) Alpha_RSS_AI_Generator::$last_openai_response_id
+            : '';
+
+        $outline_source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        $is_keyword_only = $outline_source_type === 'keyword_list'
+            || ($outline_source_type === 'spreadsheet' && !Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator));
+        if ($is_keyword_only) {
+            $outline_context['key_facts'] = array();
+            $outline_context['reader_questions'] = array();
+        }
+        $planning_facts = !$is_keyword_only && !empty($outline_context['key_facts']) && is_array($outline_context['key_facts'])
+            ? $outline_context['key_facts']
+            : array();
+        $result_context = self::normalize_outline_analysis_context($outline_response, $outline_context);
+        if (empty($result_context['key_facts']) && !empty($planning_facts)) {
+            $result_context['key_facts'] = $planning_facts;
+        }
+        if (empty($result_context['outline_sections']) || !is_array($result_context['outline_sections'])) {
+            return new WP_Error('arc_content_outline_empty', 'A IA nao retornou secoes para o esboco do conteudo.');
+        }
+
+        $has_main_section = false;
+        $has_conclusion = false;
+        foreach ($result_context['outline_sections'] as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $type = sanitize_key(isset($section['type']) ? (string) $section['type'] : '');
+            if (in_array($type, array('h2', 'h3'), true)) {
+                $has_main_section = true;
+            }
+            if ($type === 'conclusion') {
+                $has_conclusion = true;
+            }
+        }
+        if (!$has_main_section) {
+            return new WP_Error('arc_content_outline_incomplete', 'A IA retornou um esboco sem desenvolvimento ou conclusao.');
+        }
+        if (!$has_conclusion) {
+            $result_context['outline_sections'][] = array(
+                'type' => 'conclusion',
+                'h2' => 'O que considerar a seguir',
+                'purpose' => 'Retomar a resposta principal e indicar o proximo passo do leitor com base nos fatos apresentados.',
+                'word_budget' => 0,
+                'notes' => 'Conclusao adicionada pelo backend porque a resposta da IA nao trouxe uma secao final.',
+            );
+        }
+
+        $result_context['content_outline_generated'] = 1;
+        if ($outline_response_id !== '') {
+            $result_context['outline_response_id'] = $outline_response_id;
+        }
+        $result_context['outline_text'] = self::format_outline_analysis_for_prompt($result_context);
+        return $result_context;
+    }
+
     public static function build_content_prompt($generator, $item, $seo_article = array(), $outline_context = array())
     {
         $prompt_model = Alpha_RSS_AI_Generator::get_generator_prompt_model($generator, $outline_context);
@@ -5240,6 +5863,11 @@ class Alpha_RSS_AI_Generator_Helper
             }
             $key_facts_text = implode("\n", $fact_lines);
         }
+        $tavily_context_text = '';
+        if (!empty($generator['source_type']) && sanitize_key((string) $generator['source_type']) === 'keyword_list' && !empty($item['tavily_context']) && is_array($item['tavily_context'])) {
+            $tavily_context_text = self::format_tavily_context_for_prompt($item['tavily_context']);
+        }
+        $generator_editorial_context = self::get_generator_editorial_context($generator);
 
         $hidden_context = array(
             'Contexto interno:',
@@ -5254,10 +5882,45 @@ class Alpha_RSS_AI_Generator_Helper
         if (is_string($row_data) && $row_data !== '') {
             $hidden_context[] = 'Dados completos da linha de origem: {{row_data}}';
         }
+        if (!empty($outline_context['content_type'])) {
+            $hidden_context[] = 'Tipo de conteudo definido no planejamento: ' . sanitize_text_field((string) $outline_context['content_type']);
+        }
+        if (!empty($outline_context['funnel_level'])) {
+            $hidden_context[] = 'Nivel de funil definido no planejamento: ' . sanitize_text_field((string) $outline_context['funnel_level']);
+        }
+        if (!empty($outline_context['tone'])) {
+            $hidden_context[] = 'Tom definido no planejamento: ' . sanitize_text_field((string) $outline_context['tone']);
+        }
+        if (!empty($outline_context['primary_pain'])) {
+            $hidden_context[] = 'Dor principal definida no planejamento: ' . sanitize_text_field((string) $outline_context['primary_pain']);
+        }
+        if ($content_type === 'lista') {
+            $hidden_context[] = 'ESTRUTURA OBRIGATORIA DA LISTA: comece com 2 ou 3 paragrafos de introducao sem H2, desenvolva cada item prometido em um H2 na ordem do esboco e termine com a conclusao. Nao use um H2 chamado Introducao e nao transforme os itens em H3.';
+        } elseif ($content_type === 'noticia') {
+            $hidden_context[] = 'ESTRUTURA OBRIGATORIA DA NOTICIA: comece com um lead forte e factual em paragrafos, sem H2 de introducao; use somente 2 ou 3 H2 no maximo para os detalhes diretamente ligados ao fato e finalize com a conclusao. Nao transforme a noticia em guia ou artigo generico.';
+        } elseif ($content_type === 'artigo') {
+            $hidden_context[] = 'ESTRUTURA OBRIGATORIA DO ARTIGO: comece com 2 ou 3 paragrafos de lead e contexto sem H2; desenvolva os assuntos especificos em H2 e H3 conforme o esboco e finalize com a conclusao.';
+        } else {
+            $hidden_context[] = 'ESTRUTURA OBRIGATORIA: a introducao deve ser feita em paragrafos sem H2; desenvolva os topicos do esboco em H2/H3 e finalize com a conclusao.';
+        }
+        $hidden_context[] = 'LEAD OBRIGATORIO: abra com a situacao, duvida, dor ou fato concreto que motivou a busca. Nao use "Bem-vindo", "este guia", "este artigo", "neste conteudo" ou introducoes genericas de marketing.';
         if ($key_facts_text !== '') {
             $hidden_context[] = 'Fatos essenciais extraidos no planejamento. Use esses dados factuais de forma absolutam pois já estão interpretados e devem ser usados. Esses dados são parte do conteúdo, são apenas um filtro com os dados mais importantes, para ter noção do tamanho do conteúdo, use apenas o conteudo em html filtrado, não use esses fatos como base para o tamanho do conteúdo, pois ele só repete o que o conteúdo principal já tem:';
             $hidden_context[] = '{{key_facts}}';
             $hidden_context[] = 'Use o maior numero possivel desses fatos concretos, sem inventar, repetir ou substituir por frases genericas. Mantenha a ordem quando ela der sentido ao texto.';
+        }
+        if ($outline_text !== '') {
+            $hidden_context[] = 'ESBOCO EDITORIAL OBRIGATORIO, GERADO DEPOIS DO TITULO SEO:';
+            $hidden_context[] = '{{outline_text}}';
+            $hidden_context[] = 'Siga este esboco na ordem apresentada. A primeira secao e a introducao sem H2; desenvolva as secoes H2/H3 indicadas; termine pela secao de conclusao. Nao substitua o esboco por uma estrutura generica.';
+        }
+        if ($tavily_context_text !== '') {
+            $hidden_context[] = 'Pesquisa factual auxiliar do Tavily. Use apenas como apoio factual e nao invente informacoes fora dela:';
+            $hidden_context[] = $tavily_context_text;
+        }
+        if (!empty($generator['source_type']) && sanitize_key((string) $generator['source_type']) === 'keyword_list') {
+            $hidden_context[] = 'Nome do gerador: ' . (!empty($generator_editorial_context['name']) ? $generator_editorial_context['name'] : '[sem nome definido]');
+            $hidden_context[] = 'Categoria editorial: ' . (!empty($generator_editorial_context['category_text']) ? $generator_editorial_context['category_text'] : '[sem categoria definida]');
         }
         if ($is_list_content && $source_page_outline_titles !== '') {
             $hidden_context[] = 'Estrutura da pagina de origem, na ordem obrigatoria:';
@@ -5340,6 +6003,37 @@ class Alpha_RSS_AI_Generator_Helper
 
     public static function call_openai($generator, $item)
     {
+        $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        if ($source_type === 'keyword_list' && !empty($generator['tavily_enabled'])) {
+            $generator_editorial_context = self::get_generator_editorial_context($generator);
+            $keyword_query = '';
+            foreach (array('keyword', 'title', 'source_title', 'item_title') as $candidate_key) {
+                if (!empty($item[$candidate_key])) {
+                    $keyword_query = self::normalize_prompt_context_text((string) $item[$candidate_key]);
+                    if ($keyword_query !== '') {
+                        break;
+                    }
+                }
+            }
+
+            if ($keyword_query !== '') {
+                if (!empty($generator_editorial_context['category_text'])) {
+                    $keyword_query .= ' ' . $generator_editorial_context['category_text'];
+                }
+                $settings = Alpha_RSS_AI_Generator::get_settings();
+                $tavily_context = self::fetch_tavily_search_context(
+                    $keyword_query,
+                    !empty($settings['tavily_max_results']) ? intval($settings['tavily_max_results']) : 3,
+                    !empty($settings['tavily_include_answer']),
+                    false,
+                    true
+                );
+                if (!empty($tavily_context) && is_array($tavily_context)) {
+                    $item['tavily_context'] = $tavily_context;
+                }
+            }
+        }
+
         $outline_base_context = self::build_outline_context_base($generator);
         $outline_context = self::build_outline_context_from_source($generator, $item, array(), $outline_base_context);
         $seo_prompt = self::build_prompt($generator, $item, $outline_context);
@@ -5385,6 +6079,11 @@ class Alpha_RSS_AI_Generator_Helper
         if ($seo_response_id !== '') {
             $outline_context['previous_response_id'] = $seo_response_id;
         }
+        $content_outline_context = self::generate_content_outline_context($generator, $item, $seo_article, $outline_context);
+        if (is_wp_error($content_outline_context)) {
+            return $content_outline_context;
+        }
+        $outline_context = $content_outline_context;
         $content_prompt = self::build_content_prompt($generator, $item, $seo_article, $outline_context);
         $content_response_schema = array(
             'type' => 'object',
@@ -5396,6 +6095,9 @@ class Alpha_RSS_AI_Generator_Helper
             'required' => array('content_html'),
             'additionalProperties' => false,
         );
+        $content_previous_response_id = !empty($outline_context['outline_response_id'])
+            ? (string) $outline_context['outline_response_id']
+            : $seo_response_id;
         $content_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $content_prompt, array(
             'stage' => 'content',
             'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
@@ -5404,7 +6106,7 @@ class Alpha_RSS_AI_Generator_Helper
             'excerpt_length' => !empty($item['excerpt']) ? strlen((string) $item['excerpt']) : 0,
             'content_length' => !empty($item['content']) ? strlen((string) $item['content']) : 0,
             'source_context_enriched' => !empty($item['source_context_enriched']) ? 1 : 0,
-            'previous_response_id' => $seo_response_id,
+            'previous_response_id' => $content_previous_response_id,
             'response_schema' => $content_response_schema,
             'response_schema_name' => 'arc_content_html',
             'response_schema_description' => 'Retornar somente o HTML do conteudo gerado.',

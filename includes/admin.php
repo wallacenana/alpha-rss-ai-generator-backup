@@ -488,6 +488,14 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="url_reference" <?php selected(isset($editing_generator['keyword_list_mode']) ? $editing_generator['keyword_list_mode'] : '', 'url_reference'); ?>>Palavra-chave + URL de referência</option>
                                     </select>
                                 </div>
+                                <div data-tavily-field class="hidden">
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Usar Tavily no planejamento</label>
+                                    <select name="tavily_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                        <option value="0" <?php selected(isset($editing_generator['tavily_enabled']) ? intval($editing_generator['tavily_enabled']) : 0, 0); ?>>Não</option>
+                                        <option value="1" <?php selected(isset($editing_generator['tavily_enabled']) ? intval($editing_generator['tavily_enabled']) : 0, 1); ?>>Sim</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-slate-500">Faz uma pesquisa do Tavily para enriquecer o planejamento desta keyword. A integração global também precisa estar ativa.</p>
+                                </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Status do gerador</label>
                                     <select name="status" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
@@ -782,6 +790,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'generation_mode' => 'pillar',
                                         'list_id' => '0',
                                         'keyword_list_mode' => 'keywords',
+                                        'tavily_enabled' => '0',
                                         'status' => 'active',
                                         'post_type' => 'post',
                                         'post_status' => 'draft',
@@ -857,6 +866,7 @@ class Alpha_RSS_AI_Generator_Admin
                     var feedUrlField = form.querySelector('[data-feed-url-field]');
                     var listIdField = form.querySelector('[data-list-id-field]');
                     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
+                    var tavilyField = form.querySelector('[data-tavily-field]');
                     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
                     var apiBase = <?php echo wp_json_encode(rest_url('alpha-rss-ai-generator/v1')); ?>;
                     var restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
@@ -1124,7 +1134,10 @@ class Alpha_RSS_AI_Generator_Admin
                             listIdField.classList.toggle('hidden', isSatelliteMode || !isKeywordListSourceType(sourceType));
                         }
                         if (keywordListModeField) {
-                            keywordListModeField.classList.add('hidden');
+                            keywordListModeField.classList.toggle('hidden', isSatelliteMode || !isSpreadsheetSource);
+                        }
+                        if (tavilyField) {
+                            tavilyField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
                         }
                         if (videoSelectorField) {
                             var showVideoSelector = !isSatelliteMode && (sourceType === 'rss' || (isSpreadsheetSource && keywordListMode === 'url_reference'));
@@ -1577,6 +1590,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('source_type', defaults.source_type);
                         setValue('list_id', defaults.list_id);
                         setValue('keyword_list_mode', defaults.keyword_list_mode);
+                        setValue('tavily_enabled', defaults.tavily_enabled);
                         setValue('status', defaults.status);
                         setValue('post_type', defaults.post_type);
                         setValue('post_status', defaults.post_status);
@@ -1634,6 +1648,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('source_type', generator.source_type || defaults.source_type);
                         setValue('list_id', typeof generator.list_id !== 'undefined' ? String(generator.list_id) : defaults.list_id);
                         setValue('keyword_list_mode', generator.keyword_list_mode || defaults.keyword_list_mode);
+                        setValue('tavily_enabled', typeof generator.tavily_enabled !== 'undefined' ? generator.tavily_enabled : defaults.tavily_enabled);
                         setValue('status', generator.status);
                         setValue('post_type', generator.post_type);
                         setValue('post_status', generator.post_status);

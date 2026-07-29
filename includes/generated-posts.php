@@ -405,6 +405,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             }
 
             $content_html = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html($content_html);
+            $content_html = Alpha_RSS_AI_Generator_Helper::remove_unmatched_trailing_quotes_from_html($content_html);
 
             $article['content_html'] = $content_html;
             $post_data = Alpha_RSS_AI_Generator::build_post_data($generator, $article, $item);
