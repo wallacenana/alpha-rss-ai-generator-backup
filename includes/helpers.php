@@ -3704,6 +3704,127 @@ class Alpha_RSS_AI_Generator_Helper
         return trim(implode("\n", $html_parts));
     }
 
+    /**
+     * Distribute source images through keyword-list and spreadsheet content.
+     * This deliberately uses content position, never heading-title matching.
+     */
+    public static function inject_content_images_by_word_interval($content, $outline_sections, $post_id = 0, $image_size = 'medium', $interval_words = 500, $excluded_image_urls = array())
+    {
+        $content = trim((string) $content);
+        if ($content === '' || !is_array($outline_sections) || empty($outline_sections) || !function_exists('parse_blocks') || !function_exists('serialize_blocks')) {
+            return $content;
+        }
+
+        $interval_words = max(100, min(5000, intval($interval_words)));
+        $blocks = parse_blocks($content);
+        if (empty($blocks) || !is_array($blocks)) {
+            return $content;
+        }
+
+        $candidates = array();
+        foreach ($outline_sections as $section) {
+            if (!is_array($section) || empty($section['images']) || !is_array($section['images'])) {
+                continue;
+            }
+            foreach ($section['images'] as $image) {
+                if (!is_array($image) || empty($image['url'])) {
+                    continue;
+                }
+                $candidate = $section;
+                $candidate['images'] = array($image);
+                $candidates[] = $candidate;
+            }
+        }
+        if (empty($candidates)) {
+            return $content;
+        }
+
+        $excluded_image_urls = is_array($excluded_image_urls) ? $excluded_image_urls : array();
+        $existing_image_count = 0;
+        foreach ($blocks as $block) {
+            $block_html = is_array($block) && isset($block['innerHTML']) ? (string) $block['innerHTML'] : '';
+            if ($block_html !== '') {
+                $existing_image_count += preg_match_all('/<img\b/i', $block_html);
+                if (preg_match_all('/<img[^>]+src=["\']([^"\']+)["\']/i', $block_html, $matches)) {
+                    foreach ($matches[1] as $existing_url) {
+                        $excluded_image_urls[] = html_entity_decode((string) $existing_url, ENT_QUOTES | ENT_HTML5, get_bloginfo('charset'));
+                    }
+                }
+            }
+        }
+
+        $word_count = 0;
+        foreach ($blocks as $block) {
+            $block_html = is_array($block) && isset($block['innerHTML']) ? (string) $block['innerHTML'] : '';
+            $plain_text = trim(wp_strip_all_tags($block_html));
+            if ($plain_text !== '') {
+                $word_count += preg_match_all('/\S+/u', $plain_text);
+            }
+        }
+        $target_image_count = max(1, (int) floor($word_count / $interval_words));
+        $missing_image_count = max(0, $target_image_count - $existing_image_count);
+        if ($missing_image_count <= 0) {
+            return $content;
+        }
+
+        $result_blocks = array();
+        $running_words = 0;
+        $next_threshold = $interval_words;
+        $candidate_index = 0;
+        $inserted_count = 0;
+        $eligible_blocks = array('core/paragraph', 'core/list', 'core/quote', 'core/html', 'core/preformatted', 'core/pullquote', 'core/verse', 'core/table');
+
+        foreach ($blocks as $block) {
+            $result_blocks[] = $block;
+            $block_html = is_array($block) && isset($block['innerHTML']) ? (string) $block['innerHTML'] : '';
+            $plain_text = trim(wp_strip_all_tags($block_html));
+            if ($plain_text !== '') {
+                $running_words += preg_match_all('/\S+/u', $plain_text);
+            }
+
+            $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
+            if ($inserted_count >= $missing_image_count || !in_array($block_name, $eligible_blocks, true) || $running_words < $next_threshold) {
+                continue;
+            }
+
+            while ($candidate_index < count($candidates) && $inserted_count < $missing_image_count) {
+                $candidate = $candidates[$candidate_index];
+                $candidate_index++;
+                $candidate_url = !empty($candidate['images'][0]['url']) ? trim((string) $candidate['images'][0]['url']) : '';
+                $candidate_key = self::normalize_image_url_for_comparison($candidate_url);
+                if ($candidate_key === '') {
+                    continue;
+                }
+
+                $image_html = self::build_outline_section_image_html(
+                    $candidate,
+                    $post_id,
+                    $image_size,
+                    array(),
+                    -1,
+                    array(),
+                    $excluded_image_urls
+                );
+                if ($image_html === '') {
+                    continue;
+                }
+
+                $result_blocks[] = array(
+                    'blockName' => 'core/html',
+                    'attrs' => array(),
+                    'innerBlocks' => array(),
+                    'innerContent' => array($image_html),
+                );
+                $excluded_image_urls[] = $candidate_url;
+                $inserted_count++;
+                $next_threshold += $interval_words;
+                break;
+            }
+        }
+
+        return $inserted_count > 0 ? serialize_blocks($result_blocks) : $content;
+    }
+
     public static function inject_outline_section_media_into_content($content, $outline_sections, $post_id = 0, $image_size = 'medium', $link_phrases = array(), $use_images = true, $use_links = true, $generator = array(), $context = array(), $existing_image_map = array(), $fallback_image_candidates = array(), $excluded_image_urls = array())
     {
         $content = trim((string) $content);
@@ -4417,8 +4538,12 @@ class Alpha_RSS_AI_Generator_Helper
         );
     }
 
-    public static function build_source_context_block($generator, $item)
+    public static function build_source_context_block($generator, $item, $options = array())
     {
+        $options = is_array($options) ? $options : array();
+        $include_html = !array_key_exists('include_html', $options) || !empty($options['include_html']);
+        $include_outline = !array_key_exists('include_outline', $options) || !empty($options['include_outline']);
+
         $lines = array('## DADOS DA FONTE');
 
         $source_title = '';
@@ -4445,8 +4570,10 @@ class Alpha_RSS_AI_Generator_Helper
         } elseif (!empty($item['excerpt'])) {
             $source_excerpt = self::normalize_plain_text((string) $item['excerpt']);
         }
-        $source_page_content_html = isset($item['source_page_content_html']) ? self::limit_prompt_html_chars(self::normalize_prompt_context_html((string) $item['source_page_content_html']), 6000) : '';
-        $source_page_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $source_page_content_html = $include_html && isset($item['source_page_content_html'])
+            ? self::limit_prompt_html_chars(self::normalize_prompt_context_html((string) $item['source_page_content_html']), 6000)
+            : '';
+        $source_page_outline_titles = $include_outline ? self::build_source_outline_titles_for_prompt($item, 10) : '';
         $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
         $generator_editorial_context = self::get_generator_editorial_context($generator);
         $tavily_context_text = '';
@@ -5526,7 +5653,11 @@ class Alpha_RSS_AI_Generator_Helper
             $template = trim((string) $template);
         }
 
-        $source_context_block = self::build_source_context_block($generator, $item);
+        // SEO needs the title and short source context, not the article body.
+        // The planning and content stages still receive the filtered HTML.
+        $source_context_block = self::build_source_context_block($generator, $item, array(
+            'include_html' => false,
+        ));
         $prompt = strtr($template, $replacements);
         $prompt .= "\n\n";
         $prompt .= "\n\n" . Alpha_RSS_AI_Generator::get_prompt_output_suffix();

@@ -612,6 +612,11 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="full">Original</option>
                                     </select>
                                 </div>
+                                <div data-rss-image-interval-field>
+                                    <label class="mb-1 block text-sm font-medium text-slate-700">Intervalo de imagens (palavras)</label>
+                                    <input type="number" name="content_image_interval_words" min="100" max="5000" step="50" value="500" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                    <p class="mt-1 text-xs text-slate-500">Usado em keyword list e planilhas. Insere uma imagem a cada intervalo.</p>
+                                </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Negritos aleatórios no conteúdo</label>
                                     <select name="random_bolds_enabled" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
@@ -811,6 +816,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'link_selector_class' => '',
                                         'content_selector' => '',
                                         'content_image_size' => 'medium',
+                                        'content_image_interval_words' => '500',
                                         'random_bolds_enabled' => '0',
                                         'source_link_phrases' => Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases(),
                                         'source_context_exclude_phrases' => '',
@@ -1607,6 +1613,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('video_selector_class', defaults.video_selector_class);
                         setValue('content_selector', defaults.content_selector);
                         setValue('content_image_size', defaults.content_image_size);
+                        setValue('content_image_interval_words', defaults.content_image_interval_words || '500');
                         setValue('random_bolds_enabled', defaults.random_bolds_enabled);
                         setValue('source_link_phrases', defaults.source_link_phrases);
                         setValue('seo_enabled', defaults.seo_enabled);
@@ -1665,6 +1672,7 @@ class Alpha_RSS_AI_Generator_Admin
                         setValue('video_selector_class', generator.video_selector_class || defaults.video_selector_class);
                         setValue('content_selector', generator.content_selector || defaults.content_selector);
                         setValue('content_image_size', generator.content_image_size || defaults.content_image_size);
+                        setValue('content_image_interval_words', generator.content_image_interval_words || defaults.content_image_interval_words || '500');
                         setValue('random_bolds_enabled', String(typeof generator.random_bolds_enabled !== 'undefined' ? generator.random_bolds_enabled : defaults.random_bolds_enabled));
                         setValue('source_link_phrases', generator.source_link_phrases || defaults.source_link_phrases);
                         setValue('seo_enabled', String(typeof generator.seo_enabled !== 'undefined' ? generator.seo_enabled : defaults.seo_enabled));
@@ -2327,6 +2335,9 @@ class Alpha_RSS_AI_Generator_Admin
             'rows' => 0,
             'pending' => 0,
             'generated' => 0,
+            'failed' => 0,
+            'processing' => 0,
+            'blocked' => 0,
             'invalid' => 0,
         );
 
@@ -2335,6 +2346,9 @@ class Alpha_RSS_AI_Generator_Admin
             $summary['rows'] += intval($keyword_list['counts']['total_rows']);
             $summary['pending'] += intval($keyword_list['counts']['pending_rows']);
             $summary['generated'] += intval($keyword_list['counts']['generated_rows']);
+            $summary['failed'] += intval($keyword_list['counts']['failed_rows']);
+            $summary['processing'] += intval($keyword_list['counts']['processing_rows']);
+            $summary['blocked'] += intval($keyword_list['counts']['blocked_rows']);
             $summary['invalid'] += intval($keyword_list['counts']['invalid_rows']);
         }
         unset($keyword_list);
@@ -2440,6 +2454,14 @@ class Alpha_RSS_AI_Generator_Admin
                                         <div class="rounded-xl bg-slate-50 px-3 py-2">
                                             <div class="text-xs uppercase tracking-wide text-slate-400">Geradas</div>
                                             <div class="font-semibold text-slate-900"><?php echo esc_html($summary['generated']); ?></div>
+                                        </div>
+                                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                                            <div class="text-xs uppercase tracking-wide text-slate-400">Falhas</div>
+                                            <div class="font-semibold text-slate-900"><?php echo esc_html($summary['failed']); ?></div>
+                                        </div>
+                                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                                            <div class="text-xs uppercase tracking-wide text-slate-400">Processando</div>
+                                            <div class="font-semibold text-slate-900"><?php echo esc_html($summary['processing']); ?></div>
                                         </div>
                                     </div>
                                 </div>
@@ -2561,6 +2583,9 @@ class Alpha_RSS_AI_Generator_Admin
                                     <th class="px-6 py-3">Linhas</th>
                                     <th class="px-6 py-3">Pendentes</th>
                                     <th class="px-6 py-3">Geradas</th>
+                                    <th class="px-6 py-3">Falhas</th>
+                                    <th class="px-6 py-3">Processando</th>
+                                    <th class="px-6 py-3">Bloqueadas</th>
                                     <th class="px-6 py-3">Atualizado</th>
                                     <th class="px-6 py-3">Ações</th>
                                 </tr>
@@ -2568,7 +2593,7 @@ class Alpha_RSS_AI_Generator_Admin
                             <tbody class="divide-y divide-slate-100 bg-white">
                                 <?php if (empty($keyword_lists)): ?>
                                     <tr>
-                                        <td colspan="7" class="px-6 py-10 text-center text-sm text-slate-500">Nenhuma lista importada ainda.</td>
+                                        <td colspan="10" class="px-6 py-10 text-center text-sm text-slate-500">Nenhuma lista importada ainda.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($keyword_lists as $keyword_list): ?>
@@ -2581,6 +2606,9 @@ class Alpha_RSS_AI_Generator_Admin
                                             <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html(intval($keyword_list['counts']['total_rows'])); ?></td>
                                             <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html(intval($keyword_list['counts']['pending_rows'])); ?></td>
                                             <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html(intval($keyword_list['counts']['generated_rows'])); ?></td>
+                                            <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html(intval($keyword_list['counts']['failed_rows'])); ?></td>
+                                            <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html(intval($keyword_list['counts']['processing_rows'])); ?></td>
+                                            <td class="px-6 py-4 text-sm text-slate-700"><?php echo esc_html(intval($keyword_list['counts']['blocked_rows'])); ?></td>
                                             <td class="px-6 py-4 text-sm text-slate-600"><?php echo esc_html($keyword_list['updated_at'] ?: '-'); ?></td>
                                             <td class="px-6 py-4">
                                                 <div class="flex flex-wrap gap-2">
@@ -3837,6 +3865,9 @@ class Alpha_RSS_AI_Generator_Admin
                             '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Total</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.total_rows || 0) + '</div></div>',
                             '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Pendentes</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.pending_rows || 0) + '</div></div>',
                             '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Geradas</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.generated_rows || 0) + '</div></div>',
+                            '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Falhas</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.failed_rows || 0) + '</div></div>',
+                            '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Processando</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.processing_rows || 0) + '</div></div>',
+                            '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Bloqueadas</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.blocked_rows || 0) + '</div></div>',
                             '<div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div class="text-xs uppercase tracking-wide text-slate-400">Inválidas</div><div class="mt-1 text-lg font-semibold text-slate-950">' + escapeHtml(counts.invalid_rows || 0) + '</div></div>'
                         ].join('');
                     }

@@ -326,7 +326,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
                 : 'medium';
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
-            $is_keyword_list = $source_type === 'keyword_list';
+            $is_keyword_list = Alpha_RSS_AI_Generator::source_type_uses_keyword_list($source_type);
             $is_keyword_list_url_reference = Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator);
             $treat_like_rss = !$is_keyword_list || $is_keyword_list_url_reference;
             if ($treat_like_rss && $use_source_video) {
@@ -383,25 +383,38 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 if (!empty($existing_thumbnail_url)) {
                     $excluded_content_image_urls[] = (string) $existing_thumbnail_url;
                 }
-                $content_html = Alpha_RSS_AI_Generator_Helper::inject_outline_section_media_into_content(
-                    $content_html,
-                    $item['source_page_outline_sections'],
-                    $post_id,
-                    $content_image_size,
-                    !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
-                    Alpha_RSS_AI_Generator::generator_uses_source_content_images($generator),
-                    false,
-                    $generator,
-                    array(
-                        'post_id' => intval($post_id),
-                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                        'generated_title' => !empty($article['title']) ? (string) $article['title'] : '',
-                        'source_image_url' => !empty($item['source_image_url']) ? trim((string) $item['source_image_url']) : '',
-                    ),
-                    $existing_image_map,
-                    array(),
-                    $excluded_content_image_urls
-                );
+                if ($is_keyword_list) {
+                    $content_html = Alpha_RSS_AI_Generator::generator_uses_source_content_images($generator)
+                        ? Alpha_RSS_AI_Generator_Helper::inject_content_images_by_word_interval(
+                            $content_html,
+                            $item['source_page_outline_sections'],
+                            $post_id,
+                            $content_image_size,
+                            !empty($generator['content_image_interval_words']) ? intval($generator['content_image_interval_words']) : 500,
+                            $excluded_content_image_urls
+                        )
+                        : $content_html;
+                } else {
+                    $content_html = Alpha_RSS_AI_Generator_Helper::inject_outline_section_media_into_content(
+                        $content_html,
+                        $item['source_page_outline_sections'],
+                        $post_id,
+                        $content_image_size,
+                        !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
+                        Alpha_RSS_AI_Generator::generator_uses_source_content_images($generator),
+                        false,
+                        $generator,
+                        array(
+                            'post_id' => intval($post_id),
+                            'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                            'generated_title' => !empty($article['title']) ? (string) $article['title'] : '',
+                            'source_image_url' => !empty($item['source_image_url']) ? trim((string) $item['source_image_url']) : '',
+                        ),
+                        $existing_image_map,
+                        array(),
+                        $excluded_content_image_urls
+                    );
+                }
             }
 
             $content_html = Alpha_RSS_AI_Generator_Helper::ensure_content_starts_with_paragraph_html($content_html);
