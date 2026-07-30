@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.28
+Version: 1.9.29
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.28';
+        const VERSION = '1.9.29';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const OPTION_KEY = 'alpha_rss_ai_settings';
@@ -250,6 +250,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'prompt_models_json',
                     'prompt_model_key',
                     'internal_links_count',
+                    'content_image_interval_words',
                     'random_bolds_enabled',
                 );
                 foreach ($required_generator_columns as $column_name) {
@@ -316,18 +317,30 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return;
             }
 
-            $column_name = 'tavily_enabled';
-            $found_column = $wpdb->get_var($wpdb->prepare(
-                "SHOW COLUMNS FROM `" . self::$table_generators . "` LIKE %s",
-                $column_name
-            ));
-            if (!empty($found_column)) {
-                return;
-            }
-
-            $wpdb->query(
-                "ALTER TABLE `" . self::$table_generators . "` ADD COLUMN `tavily_enabled` tinyint(1) NOT NULL DEFAULT 0 AFTER `keyword_list_mode`"
+            $columns_to_check = array(
+                'tavily_enabled' => array(
+                    'definition' => 'tinyint(1) NOT NULL DEFAULT 0',
+                    'after' => 'keyword_list_mode',
+                ),
+                'content_image_interval_words' => array(
+                    'definition' => 'int(11) NOT NULL DEFAULT 500',
+                    'after' => 'content_image_size',
+                ),
             );
+
+            foreach ($columns_to_check as $column_name => $column_data) {
+                $found_column = $wpdb->get_var($wpdb->prepare(
+                    "SHOW COLUMNS FROM `" . self::$table_generators . "` LIKE %s",
+                    $column_name
+                ));
+                if (!empty($found_column)) {
+                    continue;
+                }
+
+                $wpdb->query(
+                    "ALTER TABLE `" . self::$table_generators . "` ADD COLUMN `" . $column_name . "` " . $column_data['definition'] . " AFTER `" . $column_data['after'] . "`"
+                );
+            }
         }
 
         public function ensure_cron_scheduled()
