@@ -2412,6 +2412,165 @@ class Alpha_RSS_AI_Generator_Helper
         return $outline;
     }
 
+    /**
+     * Build an image-only source context for interval-based content media.
+     * This intentionally ignores headings and image title matching.
+     */
+    public static function extract_source_content_image_sections_from_html($html, $base_url = '', $content_selector = '', $max_images = 50)
+    {
+        $html = trim((string) $html);
+        if ($html === '' || !class_exists('DOMDocument') || !class_exists('DOMXPath')) {
+            return array();
+        }
+
+        $content_selector = trim((string) $content_selector);
+        if ($content_selector !== '') {
+            $selected_html = self::extract_html_from_html_with_fallbacks($html, $content_selector);
+        } else {
+            $selected_html = self::extract_html_from_html_with_fallbacks($html, '');
+        }
+        if ($selected_html === '') {
+            $selected_html = self::strip_source_page_noise_from_html($html);
+        }
+        if ($selected_html === '') {
+            return array();
+        }
+
+        $max_images = max(1, min(100, intval($max_images)));
+        $previous_libxml_state = libxml_use_internal_errors(true);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = @$dom->loadHTML('<?xml encoding="UTF-8">' . $selected_html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous_libxml_state);
+        if (!$loaded) {
+            return array();
+        }
+
+        $xpath = new DOMXPath($dom);
+        $nodes = $xpath->query('//*');
+        if (!$nodes) {
+            return array();
+        }
+
+        $images = array();
+        $seen_images = array();
+        foreach ($nodes as $node) {
+            if (!($node instanceof DOMElement)) {
+                continue;
+            }
+
+            $links = array();
+            $node_images = array();
+            $seen_links = array();
+            self::collect_page_outline_media_from_node(
+                $node,
+                $base_url,
+                $links,
+                $node_images,
+                $seen_links,
+                $seen_images,
+                0,
+                $max_images,
+                '',
+                ''
+            );
+            foreach ($node_images as $image) {
+                if (!is_array($image) || empty($image['url'])) {
+                    continue;
+                }
+                $images[] = $image;
+                if (count($images) >= $max_images) {
+                    break 2;
+                }
+            }
+        }
+
+        if (empty($images)) {
+            return array();
+        }
+
+        return array(
+            array(
+                'h2' => '',
+                'heading_level' => 2,
+                'images' => $images,
+            ),
+        );
+    }
+
+    /**
+     * Return source images for keyword-list and spreadsheet content.
+     * Stored outline data is preferred; raw source HTML is the fallback.
+     */
+    public static function resolve_content_image_sections_for_item($item, $generator = array())
+    {
+        $item = is_array($item) ? $item : array();
+        $generator = is_array($generator) ? $generator : array();
+        $sections = !empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])
+            ? $item['source_page_outline_sections']
+            : array();
+
+        $content_selector = !empty($generator['content_selector'])
+            ? sanitize_text_field((string) $generator['content_selector'])
+            : '';
+        $base_url = !empty($item['permalink'])
+            ? trim((string) $item['permalink'])
+            : (!empty($item['source_url']) ? trim((string) $item['source_url']) : '');
+
+        $resolved_sections = $sections;
+        $seen_image_urls = array();
+        foreach ($resolved_sections as $section) {
+            if (empty($section['images']) || !is_array($section['images'])) {
+                continue;
+            }
+            foreach ($section['images'] as $image) {
+                if (!empty($image['url'])) {
+                    $image_key = self::normalize_image_url_for_comparison($image['url']);
+                    if ($image_key !== '') {
+                        $seen_image_urls[$image_key] = true;
+                    }
+                }
+            }
+        }
+
+        foreach (array('source_page_content_html', 'source_page_html') as $source_key) {
+            if (empty($item[$source_key])) {
+                continue;
+            }
+
+            $fallback_sections = self::extract_source_content_image_sections_from_html(
+                (string) $item[$source_key],
+                $base_url,
+                $source_key === 'source_page_content_html' ? '' : $content_selector,
+                50
+            );
+            if (!empty($fallback_sections)) {
+                foreach ($fallback_sections as $fallback_section) {
+                    if (empty($fallback_section['images']) || !is_array($fallback_section['images'])) {
+                        continue;
+                    }
+                    foreach ($fallback_section['images'] as $image) {
+                        if (empty($image['url'])) {
+                            continue;
+                        }
+                        $image_key = self::normalize_image_url_for_comparison($image['url']);
+                        if ($image_key === '' || isset($seen_image_urls[$image_key])) {
+                            continue;
+                        }
+                        $seen_image_urls[$image_key] = true;
+                        $resolved_sections[] = array(
+                            'h2' => '',
+                            'heading_level' => 2,
+                            'images' => array($image),
+                        );
+                    }
+                }
+            }
+        }
+
+        return $resolved_sections;
+    }
+
     public static function collect_page_outline_media_from_node($node, $base_url, array &$links, array &$images, array &$seen_links, array &$seen_images, $max_links = 5, $max_images = 3, $image_selector_class = '', $link_selector_class = '', $image_scope_active = false, $link_scope_active = false)
     {
         if (!($node instanceof DOMElement)) {
@@ -3924,6 +4083,7 @@ class Alpha_RSS_AI_Generator_Helper
         $next_threshold = $interval_words;
         $candidate_index = 0;
         $inserted_count = 0;
+        $last_eligible_result_index = -1;
         $eligible_blocks = array('core/paragraph', 'core/list', 'core/quote', 'core/html', 'core/preformatted', 'core/pullquote', 'core/verse', 'core/table');
 
         foreach ($blocks as $block) {
@@ -3935,7 +4095,11 @@ class Alpha_RSS_AI_Generator_Helper
             }
 
             $block_name = is_array($block) && !empty($block['blockName']) ? (string) $block['blockName'] : '';
-            if ($inserted_count >= $missing_image_count || !in_array($block_name, $eligible_blocks, true) || $running_words < $next_threshold) {
+            if (!in_array($block_name, $eligible_blocks, true)) {
+                continue;
+            }
+            $last_eligible_result_index = count($result_blocks) - 1;
+            if ($inserted_count >= $missing_image_count || $running_words < $next_threshold) {
                 continue;
             }
 
@@ -3972,6 +4136,41 @@ class Alpha_RSS_AI_Generator_Helper
                 $next_threshold += $interval_words;
                 break;
             }
+        }
+
+        // Short articles may need one image before reaching the first interval.
+        // Place the pending image after the last text block instead of returning
+        // the article without media.
+        while ($inserted_count < $missing_image_count && $last_eligible_result_index >= 0 && $candidate_index < count($candidates)) {
+            $candidate = $candidates[$candidate_index];
+            $candidate_index++;
+            $candidate_url = !empty($candidate['images'][0]['url']) ? trim((string) $candidate['images'][0]['url']) : '';
+            if (self::normalize_image_url_for_comparison($candidate_url) === '') {
+                continue;
+            }
+
+            $image_html = self::build_outline_section_image_html(
+                $candidate,
+                $post_id,
+                $image_size,
+                array(),
+                -1,
+                array(),
+                $excluded_image_urls
+            );
+            if ($image_html === '') {
+                continue;
+            }
+
+            array_splice($result_blocks, $last_eligible_result_index + 1, 0, array(array(
+                'blockName' => 'core/html',
+                'attrs' => array(),
+                'innerBlocks' => array(),
+                'innerContent' => array($image_html),
+            )));
+            $last_eligible_result_index++;
+            $excluded_image_urls[] = $candidate_url;
+            $inserted_count++;
         }
 
         return $inserted_count > 0 ? serialize_blocks($result_blocks) : $content;

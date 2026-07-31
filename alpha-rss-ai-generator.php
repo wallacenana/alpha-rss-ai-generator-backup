@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.32
+Version: 1.9.33
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.32';
+        const VERSION = '1.9.33';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -1907,6 +1907,146 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static function image_source_mode_uses_dalle($image_source_mode)
         {
             return in_array(sanitize_key((string) $image_source_mode), array('rss_or_dalle', 'dalle'), true);
+        }
+
+        /**
+         * Fetch a reusable Pexels pool for interval-based content images.
+         * This is used only by keyword-list and spreadsheet content when the
+         * configured image mode allows Pexels.
+         */
+        public static function fetch_content_image_sections_from_pexels($generator, $item, $article, $max_images = 20)
+        {
+            $settings = self::get_settings();
+            $api_key = !empty($settings['pexels_api_key']) ? trim((string) $settings['pexels_api_key']) : '';
+            if ($api_key === '') {
+                return array();
+            }
+
+            $query = self::build_pexels_query($generator, $item, $article);
+            if ($query === '') {
+                return array();
+            }
+
+            $response = wp_remote_get(add_query_arg(array(
+                'query' => $query,
+                'per_page' => max(5, min(80, intval($max_images))),
+                'orientation' => 'landscape',
+            ), 'https://api.pexels.com/v1/search'), array(
+                'timeout' => 45,
+                'headers' => array(
+                    'Authorization' => $api_key,
+                ),
+            ));
+            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+                return array();
+            }
+
+            $data = json_decode((string) wp_remote_retrieve_body($response), true);
+            if (empty($data['photos']) || !is_array($data['photos'])) {
+                return array();
+            }
+
+            $images = array();
+            $seen = array();
+            foreach ($data['photos'] as $photo) {
+                if (!is_array($photo) || empty($photo['src']) || !is_array($photo['src'])) {
+                    continue;
+                }
+
+                $image_url = '';
+                foreach (array('large', 'large2x', 'original') as $source_key) {
+                    if (!empty($photo['src'][$source_key])) {
+                        $image_url = esc_url_raw((string) $photo['src'][$source_key]);
+                        break;
+                    }
+                }
+                if ($image_url === '' || self::is_probably_bad_featured_image_url($image_url, $query)) {
+                    continue;
+                }
+
+                $image_key = strtolower(rtrim($image_url, '#'));
+                if (isset($seen[$image_key])) {
+                    continue;
+                }
+                $seen[$image_key] = true;
+                $images[] = array(
+                    'url' => $image_url,
+                    'source' => 'pexels',
+                    'credit' => !empty($photo['photographer']) ? sanitize_text_field((string) $photo['photographer']) : '',
+                );
+                if (count($images) >= max(1, min(80, intval($max_images)))) {
+                    break;
+                }
+            }
+
+            return empty($images) ? array() : array(
+                array(
+                    'h2' => '',
+                    'heading_level' => 2,
+                    'images' => $images,
+                ),
+            );
+        }
+
+        public static function resolve_content_image_sections_for_generation($item, $generator, $article = array())
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $article = is_array($article) ? $article : array();
+            $content_html = !empty($article['content_html']) ? (string) $article['content_html'] : '';
+            if ($content_html !== '') {
+                $interval_words = !empty($generator['content_image_interval_words'])
+                    ? max(100, min(5000, intval($generator['content_image_interval_words'])))
+                    : 500;
+                $word_count = preg_match_all('/\S+/u', trim(wp_strip_all_tags($content_html)));
+                $target_image_count = max(1, (int) floor($word_count / $interval_words));
+                $existing_image_count = preg_match_all('/<img\b/i', $content_html);
+                if ($existing_image_count >= $target_image_count) {
+                    return array();
+                }
+            }
+            $image_source_mode = !empty($generator['image_source_mode'])
+                ? self::normalize_image_source_mode(
+                    !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
+                    $generator['image_source_mode'],
+                    isset($generator['pexels_enabled']) ? !empty($generator['pexels_enabled']) : null,
+                    !empty($generator['keyword_list_mode']) ? $generator['keyword_list_mode'] : self::get_default_keyword_list_mode()
+                )
+                : self::get_default_image_source_mode();
+
+            $sections = array();
+            if (self::image_source_mode_uses_source_image($image_source_mode) && self::generator_uses_source_content_images($generator)) {
+                $sections = Alpha_RSS_AI_Generator_Helper::resolve_content_image_sections_for_item($item, $generator);
+            }
+
+            if (!empty($sections)) {
+                return $sections;
+            }
+
+            if (self::image_source_mode_uses_pexels($image_source_mode)) {
+                return self::fetch_content_image_sections_from_pexels($generator, $item, $article, 20);
+            }
+
+            return array();
+        }
+
+        public static function generator_uses_interval_content_images($generator)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+            if (self::source_type_uses_keyword_list($source_type)) {
+                return true;
+            }
+
+            $image_source_mode = !empty($generator['image_source_mode'])
+                ? self::normalize_image_source_mode(
+                    $source_type,
+                    $generator['image_source_mode'],
+                    isset($generator['pexels_enabled']) ? !empty($generator['pexels_enabled']) : null,
+                    !empty($generator['keyword_list_mode']) ? $generator['keyword_list_mode'] : self::get_default_keyword_list_mode()
+                )
+                : self::get_default_image_source_mode($source_type);
+
+            return $image_source_mode === 'pexels';
         }
 
         public static function prepare_generator_record($generator)
@@ -5964,15 +6104,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $size = self::normalize_image_display_size($size);
-            $image_url = wp_get_attachment_image_url($attachment_id, $size);
-            if ($image_url === false || $image_url === '') {
-                $image_url = wp_get_attachment_url($attachment_id);
-                $size = 'full';
-            }
-            if ($image_url === false || $image_url === '') {
-                return '';
-            }
-
             $alt_text = trim((string) $alt_text);
             if ($alt_text === '') {
                 $alt_text = trim((string) get_the_title($attachment_id));
@@ -5990,7 +6121,15 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'wp-image-' . $attachment_id,
             );
 
-            return '<figure class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($figure_class_names))))) . '"><img src="' . esc_url($image_url) . '" alt="' . esc_attr($alt_text) . '" class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($img_class_names))))) . '" /></figure>';
+            $image_html = wp_get_attachment_image($attachment_id, $size, false, array(
+                'alt' => $alt_text,
+                'class' => implode(' ', array_values(array_filter(array_unique($img_class_names)))),
+            ));
+            if ($image_html === '') {
+                return '';
+            }
+
+            return '<figure class="' . esc_attr(implode(' ', array_values(array_filter(array_unique($figure_class_names))))) . '">' . $image_html . '</figure>';
         }
 
         public static function download_and_set_featured_image_from_url($post_id, $image_url, $title, $source_label = 'source', $query = '', $credit = '')
@@ -8964,7 +9103,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             try {
-            if (!empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])) {
+            $content_media_sections = !empty($item['source_page_outline_sections']) && is_array($item['source_page_outline_sections'])
+                ? $item['source_page_outline_sections']
+                : array();
+            $use_interval_content_images = self::generator_uses_interval_content_images($generator);
+            if ($use_interval_content_images) {
+                $content_media_sections = self::resolve_content_image_sections_for_generation($item, $generator, $article);
+            }
+            if (!empty($content_media_sections) && is_array($content_media_sections)) {
                 $content_image_size = !empty($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
                 $use_source_content_images = self::generator_uses_source_content_images($generator);
                 $use_source_content_links = self::generator_uses_source_content_links($generator);
@@ -8972,21 +9118,19 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 if (!empty($article['content_html'])) {
                     $existing_image_map = Alpha_RSS_AI_Generator_Helper::extract_outline_section_image_map_from_content($article['content_html']);
                 }
-                if ($is_keyword_list) {
-                    $article['content_html'] = $use_source_content_images
-                        ? Alpha_RSS_AI_Generator_Helper::inject_content_images_by_word_interval(
+                if ($use_interval_content_images) {
+                    $article['content_html'] = Alpha_RSS_AI_Generator_Helper::inject_content_images_by_word_interval(
                             $article['content_html'],
-                            $item['source_page_outline_sections'],
+                            $content_media_sections,
                             $post_id,
                             $content_image_size,
                             !empty($generator['content_image_interval_words']) ? intval($generator['content_image_interval_words']) : 500,
                             array(!empty($item['source_image_url']) ? trim((string) $item['source_image_url']) : '')
-                        )
-                        : $article['content_html'];
+                        );
                 } else {
                     $article['content_html'] = Alpha_RSS_AI_Generator_Helper::inject_outline_section_media_into_content(
                         $article['content_html'],
-                        $item['source_page_outline_sections'],
+                        $content_media_sections,
                         $post_id,
                         $content_image_size,
                         !empty($generator['source_link_phrases']) ? $generator['source_link_phrases'] : '',
