@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.31
+Version: 1.9.32
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.31';
+        const VERSION = '1.9.32';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -8853,6 +8853,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     return $article;
                 }
             }
+
+            $generated_content_type = !empty($article['outline_context']['content_type'])
+                ? (string) $article['outline_context']['content_type']
+                : (!empty($item['content_type']) ? (string) $item['content_type'] : '');
+            $article['content_html'] = Alpha_RSS_AI_Generator_Helper::normalize_generated_list_markup(
+                isset($article['content_html']) ? $article['content_html'] : '',
+                $generated_content_type
+            );
 
             if (!empty($article['content_html']) && !empty($generator['random_bolds_enabled'])) {
                 $article['content_html'] = Alpha_RSS_AI_Generator_Helper::apply_humanized_bold_markup_to_content($article['content_html']);

@@ -696,9 +696,126 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($output);
     }
 
+    /**
+     * Converts a numbered run written inside one paragraph into semantic HTML.
+     * This is intentionally limited to the list model; prose in news and
+     * articles must not be rewritten based on incidental numbers.
+     */
+    public static function normalize_generated_list_markup($content, $content_type = '')
+    {
+        $content = trim((string) $content);
+        $content_type = sanitize_key((string) $content_type);
+        if ($content === '' || !in_array($content_type, array('lista', 'list', 'list_article'), true)) {
+            return $content;
+        }
+
+        if (!class_exists('DOMDocument') || !class_exists('DOMXPath')) {
+            return $content;
+        }
+
+        $previous_state = libxml_use_internal_errors(true);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = @$dom->loadHTML('<?xml encoding="UTF-8"><div id="arc-list-root">' . $content . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous_state);
+        if (!$loaded) {
+            return $content;
+        }
+
+        $root = $dom->getElementById('arc-list-root');
+        if (!$root) {
+            return $content;
+        }
+
+        $xpath = new DOMXPath($dom);
+        $paragraphs = $xpath->query('.//p[not(ancestor::ol) and not(ancestor::ul)]', $root);
+        if (!$paragraphs || $paragraphs->length === 0) {
+            return $content;
+        }
+
+        $paragraph_nodes = array();
+        for ($index = 0; $index < $paragraphs->length; $index++) {
+            $paragraph_nodes[] = $paragraphs->item($index);
+        }
+
+        foreach ($paragraph_nodes as $paragraph) {
+            if (!$paragraph) {
+                continue;
+            }
+
+            $text = trim((string) $paragraph->textContent);
+            if ($text === '' || preg_match('/<\s*(?:img|a|code)\b/i', $dom->saveHTML($paragraph))) {
+                continue;
+            }
+
+            preg_match_all('/(?<![\p{L}\d])(\d{1,2})\s*[.)]\s+/u', $text, $matches, PREG_OFFSET_CAPTURE);
+            if (empty($matches[1]) || count($matches[1]) < 2) {
+                continue;
+            }
+
+            $numbers = array_map(static function ($match) {
+                return isset($match[0]) ? intval($match[0]) : 0;
+            }, $matches[1]);
+            if (empty($numbers) || intval($numbers[0]) !== 1) {
+                continue;
+            }
+
+            $is_sequential = true;
+            foreach ($numbers as $number_index => $number) {
+                if ($number !== ($number_index + 1)) {
+                    $is_sequential = false;
+                    break;
+                }
+            }
+            if (!$is_sequential) {
+                continue;
+            }
+
+            $first_offset = intval($matches[1][0][1]);
+            $prefix = trim(substr($text, 0, $first_offset));
+            $items = array();
+            foreach ($matches[1] as $marker_index => $marker) {
+                $marker_offset = intval($marker[1]);
+                $marker_length = strlen((string) $matches[0][$marker_index][0]);
+                $item_start = $marker_offset + $marker_length;
+                $next_offset = isset($matches[1][$marker_index + 1][1])
+                    ? intval($matches[1][$marker_index + 1][1])
+                    : strlen($text);
+                $item_text = trim(substr($text, $item_start, $next_offset - $item_start));
+                if ($item_text !== '') {
+                    $items[] = $item_text;
+                }
+            }
+
+            if (count($items) < 2) {
+                continue;
+            }
+
+            $replacement_html = $prefix !== '' ? '<p>' . esc_html($prefix) . '</p>' : '';
+            $replacement_html .= '<ol>';
+            foreach ($items as $item_text) {
+                $replacement_html .= '<li>' . esc_html($item_text) . '</li>';
+            }
+            $replacement_html .= '</ol>';
+
+            $fragment = $dom->createDocumentFragment();
+            if (!$fragment->appendXML($replacement_html) || !$paragraph->parentNode) {
+                continue;
+            }
+            $paragraph->parentNode->replaceChild($fragment, $paragraph);
+        }
+
+        $output = '';
+        foreach ($root->childNodes as $child) {
+            $output .= $dom->saveHTML($child);
+        }
+
+        return trim($output) !== '' ? trim($output) : $content;
+    }
+
     public static function apply_humanized_bold_markup_to_content($content, $min_bolds = 2, $max_bolds = 4)
     {
-        return self::apply_humanized_bold_markup_per_paragraph($content);
+        return self::apply_humanized_bold_markup_per_paragraph($content, $min_bolds, $max_bolds);
 
         $content = trim((string) $content);
         if ($content === '') {
@@ -812,7 +929,7 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($output);
     }
 
-    protected static function apply_humanized_bold_markup_per_paragraph($content)
+    protected static function apply_humanized_bold_markup_per_paragraph($content, $min_bolds = 2, $max_bolds = 4)
     {
         $content = trim((string) $content);
         if ($content === '' || !class_exists('DOMDocument') || !class_exists('DOMXPath')) {
@@ -834,61 +951,90 @@ class Alpha_RSS_AI_Generator_Helper
         }
 
         $xpath = new DOMXPath($dom);
-        $paragraphs = $xpath->query('.//p', $root);
-        if (!$paragraphs || $paragraphs->length === 0) {
+        $blocks = $xpath->query('.//p | .//li | .//blockquote | .//td | .//th | .//figcaption | .//summary', $root);
+        if (!$blocks || $blocks->length === 0) {
             return $content;
         }
 
         $text_query = './/text()[normalize-space(.) != "" and not(ancestor::a) and not(ancestor::strong) and not(ancestor::em) and not(ancestor::script) and not(ancestor::style) and not(ancestor::pre) and not(ancestor::code)]';
-        for ($paragraph_index = 0; $paragraph_index < $paragraphs->length; $paragraph_index++) {
-            $paragraph = $paragraphs->item($paragraph_index);
-            if (!$paragraph || $xpath->query('.//strong', $paragraph)->length > 0) {
+        $candidate_blocks = array();
+        for ($block_index = 0; $block_index < $blocks->length; $block_index++) {
+            $block = $blocks->item($block_index);
+            if (!$block || $xpath->query('.//strong', $block)->length > 0) {
                 continue;
             }
 
-            $text_nodes = $xpath->query($text_query, $paragraph);
+            $text_nodes = $xpath->query($text_query, $block);
             if (!$text_nodes || $text_nodes->length === 0) {
                 continue;
             }
 
-            $target_bolds = function_exists('wp_rand') ? wp_rand(1, 3) : rand(1, 3);
-            for ($bold_index = 0; $bold_index < $target_bolds; $bold_index++) {
-                $text_nodes = $xpath->query($text_query, $paragraph);
-                if (!$text_nodes || $text_nodes->length === 0) {
+            $has_usable_text = false;
+            for ($node_index = 0; $node_index < $text_nodes->length; $node_index++) {
+                $node = $text_nodes->item($node_index);
+                if ($node && str_word_count(wp_strip_all_tags((string) $node->nodeValue), 0, '0123456789') >= 5) {
+                    $has_usable_text = true;
                     break;
                 }
+            }
+            if ($has_usable_text) {
+                $candidate_blocks[] = $block;
+            }
+        }
 
-                $candidate_nodes = array();
-                for ($node_index = 0; $node_index < $text_nodes->length; $node_index++) {
-                    $node = $text_nodes->item($node_index);
-                    if ($node && trim((string) $node->nodeValue) !== '') {
-                        $candidate_nodes[] = $node;
-                    }
+        if (empty($candidate_blocks)) {
+            return $content;
+        }
+
+        $min_bolds = max(1, intval($min_bolds));
+        $max_bolds = max($min_bolds, intval($max_bolds));
+        $block_count = count($candidate_blocks);
+        $target_bolds = (int) ceil($block_count / 4);
+        $target_bolds = max($min_bolds, min($max_bolds, $target_bolds));
+        $target_bolds = min($target_bolds, $block_count);
+
+        shuffle($candidate_blocks);
+        $applied = 0;
+        foreach ($candidate_blocks as $block) {
+            if ($applied >= $target_bolds) {
+                break;
+            }
+
+            $text_nodes = $xpath->query($text_query, $block);
+            if (!$text_nodes || $text_nodes->length === 0) {
+                continue;
+            }
+
+            $candidate_nodes = array();
+            for ($node_index = 0; $node_index < $text_nodes->length; $node_index++) {
+                $node = $text_nodes->item($node_index);
+                if ($node && trim((string) $node->nodeValue) !== '') {
+                    $candidate_nodes[] = $node;
                 }
-                shuffle($candidate_nodes);
+            }
+            shuffle($candidate_nodes);
 
-                $applied = false;
-                foreach ($candidate_nodes as $node) {
-                    $replacement = self::build_humanized_bold_markup_for_text_v2((string) $node->nodeValue);
-                    if (empty($replacement['html'])) {
-                        continue;
-                    }
-
-                    $fragment = $dom->createDocumentFragment();
-                    if (!$fragment->appendXML($replacement['html'])) {
-                        continue;
-                    }
-
-                    if ($node->parentNode) {
-                        $node->parentNode->replaceChild($fragment, $node);
-                        $applied = true;
-                        break;
-                    }
+            $applied_in_block = false;
+            foreach ($candidate_nodes as $node) {
+                $replacement = self::build_humanized_bold_markup_for_text_v2((string) $node->nodeValue);
+                if (empty($replacement['html'])) {
+                    continue;
                 }
 
-                if (!$applied) {
+                $fragment = $dom->createDocumentFragment();
+                if (!$fragment->appendXML($replacement['html'])) {
+                    continue;
+                }
+
+                if ($node->parentNode) {
+                    $node->parentNode->replaceChild($fragment, $node);
+                    $applied_in_block = true;
                     break;
                 }
+            }
+
+            if ($applied_in_block) {
+                $applied++;
             }
         }
 
@@ -1031,7 +1177,8 @@ class Alpha_RSS_AI_Generator_Helper
             'from',
             'by',
         );
-        $sizes = array(1, 2, 3);
+        // A bold should communicate a complete concept, not a clipped word.
+        $sizes = array(4, 3, 2);
         shuffle($sizes);
 
         foreach ($sizes as $size) {
@@ -1047,11 +1194,16 @@ class Alpha_RSS_AI_Generator_Helper
                 }
 
                 $slice = array_slice($words, $start, $size);
+                $first_word = $slice[0];
                 $last_word = $slice[count($slice) - 1];
+                $first_normalized = (string) $first_word['normalized'];
                 $last_normalized = (string) $last_word['normalized'];
                 $last_length = function_exists('mb_strlen') ? mb_strlen($last_normalized, 'UTF-8') : strlen($last_normalized);
 
-                // Never finish the bold with a two-letter word or a stopword.
+                // Never start or finish the bold with a filler word.
+                if (in_array($first_normalized, $stopwords, true) || strlen($first_normalized) < 3) {
+                    continue;
+                }
                 if ($last_length < 3 || in_array($last_normalized, $stopwords, true)) {
                     continue;
                 }
@@ -6197,8 +6349,9 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
         $hidden_context[] = 'NARRATIVA OBRIGATORIA: cada bloco deve avancar o conflito editorial, responder a pergunta da secao anterior ou preparar a proxima. Nao crie secoes apenas para preencher estrutura.';
-        if ($content_type === 'lista') {
+        if ($is_list_content) {
             $hidden_context[] = 'ESTRUTURA OBRIGATORIA DA LISTA: comece com 2 ou 3 paragrafos de introducao sem H2, desenvolva cada item prometido em um H2 na ordem do esboco e termine com a conclusao. Nao use um H2 chamado Introducao e nao transforme os itens em H3.';
+            $hidden_context[] = 'LISTAS EM HTML: quando houver dois ou mais itens paralelos dentro de uma secao, use <ol><li>...</li></ol> para itens ordenados ou <ul><li>...</li></ul> quando a ordem nao importar. Nunca escreva varios itens numerados (1), 2), 3)...) dentro de um unico paragrafo.';
         } elseif ($content_type === 'noticia') {
             $hidden_context[] = 'ESTRUTURA OBRIGATORIA DA NOTICIA: comece com um lead forte e factual em paragrafos, sem H2 de introducao; use somente 2 ou 3 H2 no maximo para os detalhes diretamente ligados ao fato e finalize com a conclusao. Nao transforme a noticia em guia ou artigo generico.';
         } elseif ($content_type === 'artigo') {
