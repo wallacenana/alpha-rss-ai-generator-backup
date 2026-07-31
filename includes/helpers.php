@@ -5761,7 +5761,7 @@ class Alpha_RSS_AI_Generator_Helper
         }
         $outline_structure_rules = array(
             'COMECE DE UMA VEZ COM A INTRODUCAO: use type=intro_without_h2, title vazio e nenhum H2 para a introducao.',
-            'A ultima secao deve ser type=conclusion e funcionar como fechamento do conteudo.',
+            'A ultima secao deve ser a conclusao do conteudo e usar type=conclusion.',
         );
         if ($outline_structure_key === 'lista') {
             $outline_structure_rules[] = 'ESTRUTURA LISTA: intro_without_h2, um H2 para cada item da lista na ordem solicitada e conclusion.';
@@ -5790,9 +5790,9 @@ class Alpha_RSS_AI_Generator_Helper
             "- Inclua um H2 que explique o conceito central do tema e ao ao título \"$generated_title\", incorporando a keyword principal.",
             "- Se o título prometer um número de passos, etapas ou itens, qualquer coisa relacionado  quantidade, como \"5 hábitos\", quebre cada um em um H3 dentro do H2 correspondente.",
             "- Inclua H2s cobrindo: benefícios, erros comuns, prazos/resultados esperados, sinais de que está funcionando e objeções práticas do leitor, ex: 'dá pra fazer isso na correria?', mas tudo isso só deve ser inseido quando fizer sentido, o importante é criar um ou esboço/otline que responda ao título.",
-            "- Todos os H2 devem ser títulos provocativos, com gatilho de curiosidade, emoção ou tensão — nunca use rótulos genéricos como 'Benefícios', 'Erros comuns' ou 'Conclusão' soltos, transforme-os em perguntas ou afirmações intrigantes.",
+            "- Todos os H2 devem ser claros, específicos e informativos sobre o assunto que desenvolvem. Use curiosidade ou tensão somente quando forem naturais e sustentadas pelos fatos; nunca force um tom provocativo.",
             "- Os H3 devem ser específicos e concretos, nunca genéricos como 'Passo 1', 'Erro 1' — cada um deve indicar do que se trata.",
-            "- Feche com um H2 de fechamento que também seja provocativo, sem usar a palavra 'Conclusão', ou seja, essa merda desse h2 provocativo é obviamente a conclusão, não tem 1 h2 de fechamento provocativo + a conclusion.",
+            "- A ultima secao e a conclusao: use type=conclusion e um unico H2 com titulo provocativo, especifico e diretamente ligado ao tema. Nao crie uma secao de fechamento separada nem outra conclusao depois dela. O titulo pode gerar curiosidade, mas nao pode usar desafios genericos como 'voce esta pronto', 'aceite o desafio', 'o proximo passo' ou 'agora e com voce'.",
             "",
             "Deve ter no máximo 8 h2, pois o conteúdo precisa ter no máximo 1000 palavras, eu diria que de 650 a 1000 palavras, no máximo",
             "Sempre que o título prometer uma lista de itens, hábitos, erros, cuidados ou qualquer coisa que seja quantificável, o outline deve entregar exatamente o que o título promete. Cada item da lista deve ser um H2 ou H3, dependendo do contexto, e deve ser específico e detalhado, sempre, isso é inegociavel.",
@@ -5802,7 +5802,8 @@ class Alpha_RSS_AI_Generator_Helper
             "Envie apenas o outline, sem comentários, sem explicações, sem markdown, incluindo todos os títulos H2 e H3.",
             'Retorne somente JSON valido com a chave outline_sections.',
             'Cada item de outline_sections deve conter exatamente: type, title, semantic, notes.',
-            'Use type=h2 ou type=h3 para o desenvolvimento e type=conclusion para a ultima secao, com titulo H2 forte.',
+            'Use type=h2 ou type=h3 para o desenvolvimento e type=conclusion somente para a ultima secao, com titulo H2 especifico.',
+            'Nao crie duas secoes finais. A conclusao provocativa e o unico fechamento e deve ser o ultimo item de outline_sections.',
             'REGRAS ESPECIFICAS DO MODELO: estas regras prevalecem sobre qualquer regra estrutural generica acima:',
             implode("\n", $outline_structure_rules),
             $is_list_outline
@@ -5837,6 +5838,7 @@ class Alpha_RSS_AI_Generator_Helper
             'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
             'allow_missing_content_html' => 1,
             'preserve_extra_fields' => 1,
+            'previous_response_id' => !empty($outline_context['previous_response_id']) ? (string) $outline_context['previous_response_id'] : '',
             'response_schema_name' => 'arc_content_outline',
             'response_schema' => array(
                 'type' => 'object',
@@ -5890,6 +5892,41 @@ class Alpha_RSS_AI_Generator_Helper
         if (empty($result_context['outline_sections']) || !is_array($result_context['outline_sections'])) {
             return new WP_Error('arc_content_outline_empty', 'A IA nao retornou secoes para o esboco do conteudo.');
         }
+
+        // A IA pode interpretar "fecho provocativo" como uma seção própria e
+        // ainda criar outra conclusão depois. O fechamento deve existir uma só vez.
+        $outline_sections = array();
+        $closing_sections = array();
+        foreach ($result_context['outline_sections'] as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+
+            $section_type = sanitize_key(isset($section['type']) ? (string) $section['type'] : '');
+            $section_title = '';
+            if (!empty($section['title'])) {
+                $section_title = (string) $section['title'];
+            } elseif (!empty($section['h2'])) {
+                $section_title = (string) $section['h2'];
+            }
+            $section_slug = sanitize_title($section_title);
+            $is_closing_section = $section_type === 'conclusion'
+                || (bool) preg_match('/(^|-)(fecho|fechamento|encerramento|conclusao|consideracoes-finais|proximo-passo)(-|$)/', $section_slug);
+
+            if ($is_closing_section) {
+                $closing_sections[] = $section;
+                continue;
+            }
+
+            $outline_sections[] = $section;
+        }
+
+        if (!empty($closing_sections)) {
+            $conclusion_section = end($closing_sections);
+            $conclusion_section['type'] = 'conclusion';
+            $outline_sections[] = $conclusion_section;
+        }
+        $result_context['outline_sections'] = $outline_sections;
 
         $has_main_section = false;
         $has_conclusion = false;
@@ -6132,7 +6169,7 @@ class Alpha_RSS_AI_Generator_Helper
         return count($matches[0]);
     }
 
-    public static function call_openai($generator, $item)
+    public static function prepare_generation_planning($generator, $item)
     {
         $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
         if ($source_type === 'keyword_list' && !empty($generator['tavily_enabled'])) {
@@ -6167,6 +6204,20 @@ class Alpha_RSS_AI_Generator_Helper
 
         $outline_base_context = self::build_outline_context_base($generator);
         $outline_context = self::build_outline_context_from_source($generator, $item, array(), $outline_base_context);
+        if (is_wp_error($outline_context)) {
+            return $outline_context;
+        }
+
+        return array(
+            'item' => $item,
+            'outline_context' => is_array($outline_context) ? $outline_context : array(),
+        );
+    }
+
+    public static function generate_seo_article_stage($generator, $item, $outline_context = array())
+    {
+        $item = is_array($item) ? $item : array();
+        $outline_context = is_array($outline_context) ? $outline_context : array();
         $seo_prompt = self::build_prompt($generator, $item, $outline_context);
         $seo_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $seo_prompt, array(
             'stage' => 'seo',
@@ -6210,11 +6261,17 @@ class Alpha_RSS_AI_Generator_Helper
         if ($seo_response_id !== '') {
             $outline_context['previous_response_id'] = $seo_response_id;
         }
-        $content_outline_context = self::generate_content_outline_context($generator, $item, $seo_article, $outline_context);
-        if (is_wp_error($content_outline_context)) {
-            return $content_outline_context;
-        }
-        $outline_context = $content_outline_context;
+        return array(
+            'seo_article' => $seo_article,
+            'outline_context' => $outline_context,
+        );
+    }
+
+    public static function generate_content_article_stage($generator, $item, $seo_article, $outline_context = array())
+    {
+        $item = is_array($item) ? $item : array();
+        $seo_article = is_array($seo_article) ? $seo_article : array();
+        $outline_context = is_array($outline_context) ? $outline_context : array();
         $content_prompt = self::build_content_prompt($generator, $item, $seo_article, $outline_context);
         $content_response_schema = array(
             'type' => 'object',
@@ -6228,7 +6285,7 @@ class Alpha_RSS_AI_Generator_Helper
         );
         $content_previous_response_id = !empty($outline_context['outline_response_id'])
             ? (string) $outline_context['outline_response_id']
-            : $seo_response_id;
+            : (!empty($outline_context['previous_response_id']) ? (string) $outline_context['previous_response_id'] : '');
         $content_article = Alpha_RSS_AI_Generator::request_openai_json($generator, $content_prompt, array(
             'stage' => 'content',
             'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
@@ -6245,6 +6302,36 @@ class Alpha_RSS_AI_Generator_Helper
         if (is_wp_error($content_article)) {
             return $content_article;
         }
+
+        return $content_article;
+    }
+
+    public static function call_openai($generator, $item)
+    {
+        $planning = self::prepare_generation_planning($generator, $item);
+        if (is_wp_error($planning)) {
+            return $planning;
+        }
+
+        $item = !empty($planning['item']) && is_array($planning['item']) ? $planning['item'] : (is_array($item) ? $item : array());
+        $outline_context = !empty($planning['outline_context']) && is_array($planning['outline_context']) ? $planning['outline_context'] : array();
+        $seo_stage = self::generate_seo_article_stage($generator, $item, $outline_context);
+        if (is_wp_error($seo_stage)) {
+            return $seo_stage;
+        }
+
+        $seo_article = !empty($seo_stage['seo_article']) && is_array($seo_stage['seo_article']) ? $seo_stage['seo_article'] : array();
+        $outline_context = !empty($seo_stage['outline_context']) && is_array($seo_stage['outline_context']) ? $seo_stage['outline_context'] : $outline_context;
+        $content_outline_context = self::generate_content_outline_context($generator, $item, $seo_article, $outline_context);
+        if (is_wp_error($content_outline_context)) {
+            return $content_outline_context;
+        }
+        $outline_context = $content_outline_context;
+        $content_article = self::generate_content_article_stage($generator, $item, $seo_article, $outline_context);
+        if (is_wp_error($content_article)) {
+            return $content_article;
+        }
+
         $seo_article['content_html'] = !empty($content_article['content_html']) ? $content_article['content_html'] : (isset($seo_article['content_html']) ? $seo_article['content_html'] : '');
         if (!empty($seo_article['content_html'])) {
             $seo_article['content_html'] = self::strip_generated_image_markup_from_html($seo_article['content_html']);

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.29
+Version: 1.9.30
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,9 +58,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.29';
+        const VERSION = '1.9.30';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
+        const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
+        const GENERATION_PIPELINE_META = '_arc_generation_pipeline';
         const OPTION_KEY = 'alpha_rss_ai_settings';
         const OPTION_KEY_PROMPT_MODELS = 'alpha_rss_ai_prompt_models';
         const OPTION_KEY_OUTLINE_MODELS = 'alpha_rss_ai_outline_models';
@@ -79,6 +81,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
         public static $table_list_rows;
         public static $table_import_logs;
         public static $last_openai_response_id = '';
+        private static $staged_generation_request_processed = false;
 
         public static function instance()
         {
@@ -196,6 +199,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             add_action('trashed_post', array($this, 'handle_generated_post_deleted'), 10, 1);
             add_action('before_delete_post', array($this, 'handle_generated_post_deleted'), 10, 1);
             add_action(self::CRON_HOOK, array($this, 'cron_tick'));
+            add_action(self::STAGED_GENERATION_HOOK, array($this, 'process_staged_generation'), 10, 1);
             add_filter('cron_schedules', array($this, 'add_cron_schedule'));
             add_action('rest_api_init', array($this, 'register_rest_routes'));
             add_action('init', array($this, 'ensure_cron_scheduled'));
@@ -3345,7 +3349,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "- Se houver seções, mantenha a ordem definida pelo esboço interno; não reordene, não agrupe e não pule itens.\n"
                 . "- Depois de cada bloco principal, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
                 . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
-                . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
+                . "- A conclusão deve usar um único H2 específico e informativo, sem a palavra conclusão, diretamente ligado ao tema. Não use desafios ao leitor, chamadas genéricas ou frases como 'você está pronto' e 'o próximo passo'.\n"
                 . "- Mantenha o foco no título já definido e desenvolva o texto ao redor dele.\n"
                 . "- Use HTML simples apenas no content_html.\n"
                 . "- Não repita os mesmos argumentos e não invente informações.\n"
@@ -3378,7 +3382,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "- Se houver seções, mantenha a ordem definida pelo esboço interno; não reordene, não agrupe e não pule itens.\n"
                 . "- Depois de cada bloco principal, escreva 2 a 3 parágrafos curtos, com enredo factual e motivo real para o leitor se interessar.\n"
                 . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
-                . "- A conclusão deve usar um H2 criativo, sem a palavra conclusão, e apontar para o próximo passo.\n"
+                . "- A conclusão deve usar um único H2 específico e informativo, sem a palavra conclusão, diretamente ligado ao tema. Não use desafios ao leitor, chamadas genéricas ou frases como 'você está pronto' e 'o próximo passo'.\n"
                 . "- Escreva com tom humano, sem soar mecânico.\n"
                 . "- O texto deve ter no minimo 500 palavras.\n"
                 . "- Use parágrafos curtos e ajuste a estrutura conforme a densidade do tema e o outline interno.\n"
@@ -3659,7 +3663,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $body['prompt_cache_retention'] = $prompt_cache_retention;
             }
 
-            error_log("prompt: " . $prompt);
+            // error_log("prompt: " . $prompt);
             $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -3711,7 +3715,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
 
-            error_log("response: " . print_r($text, true));
+            // error_log("response: " . print_r($text, true));
             return self::parse_ai_json($text, $context);
         }
 
@@ -4221,12 +4225,110 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return self::normalize_generated_article($data, $context);
             }
 
+            // Some content responses contain unescaped quotes inside HTML
+            // attributes. Recover only the required content field instead of
+            // accepting malformed metadata or planning responses.
+            if (!empty($context['stage']) && $context['stage'] === 'content') {
+                $content_html = self::extract_malformed_content_html($text);
+                if ($content_html !== '') {
+                    return self::normalize_generated_article(array(
+                        'content_html' => $content_html,
+                    ), $context);
+                }
+
+                if (preg_match('/^\s*(?:<p\b|<article\b|<h[1-6]\b)/i', $text)) {
+                    return self::normalize_generated_article(array(
+                        'content_html' => $text,
+                    ), $context);
+                }
+            }
+
             $json_error_message = function_exists('json_last_error_msg') ? json_last_error_msg() : 'erro desconhecido';
 
             return new WP_Error(
                 'arc_invalid_ai_json',
                 'A resposta da OpenAI nao veio em JSON valido: ' . $json_error_message
             );
+        }
+
+        protected static function extract_malformed_content_html($text)
+        {
+            $text = trim((string) $text);
+            $key_position = stripos($text, '"content_html"');
+            if ($key_position === false) {
+                return '';
+            }
+
+            $colon_position = strpos($text, ':', $key_position);
+            if ($colon_position === false) {
+                return '';
+            }
+
+            $value_start = strpos($text, '"', $colon_position + 1);
+            if ($value_start === false) {
+                return '';
+            }
+
+            $value_end = false;
+            $text_length = strlen($text);
+            for ($index = $value_start + 1; $index < $text_length; $index++) {
+                if ($text[$index] !== '"' || ($index > 0 && $text[$index - 1] === '\\')) {
+                    continue;
+                }
+
+                $next_index = $index + 1;
+                while ($next_index < $text_length && ctype_space($text[$next_index])) {
+                    $next_index++;
+                }
+                if ($next_index < $text_length && $text[$next_index] === '}') {
+                    $value_end = $index;
+                    break;
+                }
+            }
+
+            if ($value_end === false || $value_end <= $value_start) {
+                return '';
+            }
+
+            $raw_value = substr($text, $value_start + 1, $value_end - $value_start - 1);
+            $normalized_value = '';
+            $escaped = false;
+            $raw_length = strlen($raw_value);
+            for ($index = 0; $index < $raw_length; $index++) {
+                $character = $raw_value[$index];
+                $ord = ord($character);
+
+                if ($escaped) {
+                    $normalized_value .= $character;
+                    $escaped = false;
+                    continue;
+                }
+                if ($character === '\\') {
+                    $normalized_value .= $character;
+                    $escaped = true;
+                    continue;
+                }
+                if ($character === '"') {
+                    $normalized_value .= '\\"';
+                    continue;
+                }
+                if ($ord < 32 || $ord === 127) {
+                    if ($ord === 9) {
+                        $normalized_value .= '\\t';
+                    } elseif ($ord === 10) {
+                        $normalized_value .= '\\n';
+                    } elseif ($ord === 13) {
+                        $normalized_value .= '\\r';
+                    } else {
+                        $normalized_value .= sprintf('\\u%04x', $ord);
+                    }
+                    continue;
+                }
+                $normalized_value .= $character;
+            }
+
+            $decoded_value = json_decode('"' . $normalized_value . '"', true);
+            return is_string($decoded_value) ? trim($decoded_value) : '';
         }
 
         public static function normalize_generated_article($data, $context = array())
@@ -6883,7 +6985,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return new WP_Error('arc_item_locked', 'Esse item j? est? em processamento.');
             }
 
-            $result = self::create_post_from_generator_item($generator, $selected_item);
+            $result = self::queue_staged_generation($generator, $selected_item);
             if (is_wp_error($result)) {
                 self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
                 if (!empty($generator['list_id']) && !empty($selected_item['guid'])) {
@@ -6895,6 +6997,14 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         $result->get_error_message()
                     );
                 }
+                return $result;
+            }
+
+            if (is_array($result) && !empty($result['queued'])) {
+                $result['view_link'] = self::get_post_view_link(intval($result['post_id']));
+                $result['edit_link'] = self::get_post_edit_link(intval($result['post_id']));
+                $result['permalink'] = !empty($result['view_link']) ? $result['view_link'] : '';
+                self::update_next_run_after_attempt($generator);
                 return $result;
             }
 
@@ -7870,7 +7980,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $url = add_query_arg(array(
                 'query' => $query,
-                'per_page' => 1,
+                // Receive a pool of photos so repeated searches do not always use the first result.
+                'per_page' => 20,
                 'orientation' => 'landscape',
             ), 'https://api.pexels.com/v1/search');
 
@@ -7901,7 +8012,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $data = json_decode(wp_remote_retrieve_body($response), true);
-            if (empty($data['photos'][0]['src'])) {
+            if (empty($data['photos']) || !is_array($data['photos'])) {
                 self::log_image_debug('pexels_no_photos', array(
                     'post_id' => intval($post_id),
                     'query' => $query,
@@ -7909,7 +8020,30 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return false;
             }
 
-            $photo = $data['photos'][0];
+            $photos = array_values(array_filter($data['photos'], static function ($photo) {
+                if (!is_array($photo) || empty($photo['src']) || !is_array($photo['src'])) {
+                    return false;
+                }
+
+                return !empty($photo['src']['large']) || !empty($photo['src']['original']);
+            }));
+
+            if (empty($photos)) {
+                self::log_image_debug('pexels_no_valid_photos', array(
+                    'post_id' => intval($post_id),
+                    'query' => $query,
+                    'photo_count' => count($data['photos']),
+                ));
+                return false;
+            }
+
+            $photo_index = 0;
+            if (count($photos) > 1) {
+                $photo_index = function_exists('wp_rand')
+                    ? wp_rand(0, count($photos) - 1)
+                    : random_int(0, count($photos) - 1);
+            }
+            $photo = $photos[$photo_index];
             $image_url = '';
             if (!empty($photo['src']['large'])) {
                 $image_url = $photo['src']['large'];
@@ -7929,6 +8063,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 'post_id' => intval($post_id),
                 'query' => $query,
                 'image_url' => $image_url,
+                'photo_index' => $photo_index,
+                'photo_count' => count($photos),
                 'photographer' => !empty($photo['photographer']) ? $photo['photographer'] : '',
             ));
 
@@ -8074,8 +8210,32 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
         }
 
-        public static function create_post_from_generator_item($generator, $item)
+        public static function schedule_staged_generation_stage($post_id, $delay = 10)
         {
+            $post_id = intval($post_id);
+            if ($post_id <= 0) {
+                return false;
+            }
+
+            $delay = max(5, intval($delay));
+            if (!wp_next_scheduled(self::STAGED_GENERATION_HOOK, array($post_id))) {
+                wp_schedule_single_event(time() + $delay, self::STAGED_GENERATION_HOOK, array($post_id));
+            }
+
+            if (function_exists('spawn_cron')) {
+                spawn_cron(time());
+            }
+
+            return true;
+        }
+
+        public static function queue_staged_generation($generator, $item, $existing_post_id = 0)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $existing_post_id = intval($existing_post_id);
+            if ($existing_post_id > 0 && !get_post($existing_post_id)) {
+                return new WP_Error('arc_generation_post_missing', 'Post da regeneracao nao encontrado.');
+            }
             $original_item = is_array($item) ? $item : array();
             $item = self::maybe_enrich_rss_item_context($generator, $item);
             if (is_wp_error($item)) {
@@ -8084,8 +8244,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
                 return $item;
             }
-            $use_source_page_context = self::generator_uses_source_page_context($generator);
-            if ($use_source_page_context) {
+
+            if (self::generator_uses_source_page_context($generator)) {
                 $item = self::resolve_item_media_for_generation($generator, $item);
                 if (is_wp_error($item)) {
                     if ($item->get_error_code() === 'arc_source_forbidden') {
@@ -8095,45 +8255,283 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
             }
 
-            $semantic_title = '';
-            if (!empty($item['source_title'])) {
-                $semantic_title = trim((string) $item['source_title']);
-            } elseif (!empty($item['title'])) {
-                $semantic_title = trim((string) $item['title']);
+            if ($existing_post_id <= 0) {
+                $semantic_title = !empty($item['source_title'])
+                    ? trim((string) $item['source_title'])
+                    : (!empty($item['title']) ? trim((string) $item['title']) : '');
+                $semantic_duplicate = self::find_semantic_duplicate_for_title($semantic_title, $generator, array(
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : '',
+                ));
+                if (is_array($semantic_duplicate) && !empty($semantic_duplicate['post_id'])) {
+                    $duplicate_post_id = intval($semantic_duplicate['post_id']);
+                    self::mark_item_processed($generator['id'], $item, $duplicate_post_id);
+                    return $duplicate_post_id;
+                }
             }
 
-            $semantic_duplicate = self::find_semantic_duplicate_for_title($semantic_title, $generator, array(
-                'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : '',
+            $placeholder_title = !empty($item['source_title'])
+                ? trim((string) $item['source_title'])
+                : (!empty($item['keyword']) ? sanitize_text_field((string) $item['keyword']) : 'Geracao em andamento');
+            if ($existing_post_id > 0) {
+                $post_id = $existing_post_id;
+            } else {
+                $post_type = !empty($generator['post_type']) && post_type_exists($generator['post_type']) ? $generator['post_type'] : 'post';
+                $author_id = self::normalize_content_author_id(!empty($generator['author_id']) ? intval($generator['author_id']) : 0);
+                if ($author_id <= 0) {
+                    $author_id = get_current_user_id();
+                }
+                $post_id = wp_insert_post(array(
+                    'post_type' => $post_type,
+                    'post_status' => 'draft',
+                    'post_author' => $author_id,
+                    'post_title' => Alpha_RSS_AI_Generator_Helper::normalize_generated_title($placeholder_title, $placeholder_title),
+                    'post_name' => !empty($item['final_slug']) ? sanitize_title((string) $item['final_slug']) : sanitize_title($placeholder_title),
+                    'post_content' => '',
+                ), true);
+                if (is_wp_error($post_id)) {
+                    return $post_id;
+                }
+
+                $article_placeholder = array(
+                    'title' => $placeholder_title,
+                    'content_html' => '',
+                    'excerpt' => '',
+                    'tags' => array(),
+                );
+                $metadata_result = self::apply_taxonomies_and_meta($post_id, $generator, $article_placeholder, $item);
+                if (is_wp_error($metadata_result)) {
+                    self::force_generated_post_draft($post_id, $metadata_result->get_error_message());
+                    return $metadata_result;
+                }
+            }
+
+            update_post_meta($post_id, self::GENERATION_PIPELINE_META, array(
+                'stage' => 'planning',
+                'generator_id' => intval($generator['id']),
+                'item' => $item,
+                'outline_context' => array(),
+                'seo_article' => array(),
+                'post_id' => intval($post_id),
+                'existing_post_id' => $existing_post_id,
+                'started_at' => current_time('mysql'),
             ));
-            if (is_array($semantic_duplicate) && !empty($semantic_duplicate['post_id'])) {
-                $duplicate_post_id = intval($semantic_duplicate['post_id']);
-                $duplicate_score = isset($semantic_duplicate['score']) ? floatval($semantic_duplicate['score']) : 0.0;
-                $duplicate_method = !empty($semantic_duplicate['method']) ? (string) $semantic_duplicate['method'] : 'text';
-                $item['semantic_duplicate_post_id'] = $duplicate_post_id;
-                $item['semantic_duplicate_score'] = $duplicate_score;
-                $item['semantic_duplicate_method'] = $duplicate_method;
+            update_post_meta($post_id, '_arc_generation_pipeline_status', 'planning');
+            self::insert_run_log($generator['id'], 'info', 'Pipeline de geracao enfileirada', array(
+                'request' => array(
+                    'post_id' => intval($post_id),
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'stage' => 'planning',
+                ),
+            ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+            self::schedule_staged_generation_stage($post_id, 5);
 
-                self::insert_run_log($generator['id'], 'info', 'Item semantico reaproveitado', array(
-                    'request' => array(
-                        'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
-                        'semantic_title' => $semantic_title,
-                    ),
-                    'response' => array(
-                        'post_id' => $duplicate_post_id,
-                        'matched_title' => !empty($semantic_duplicate['matched_title']) ? $semantic_duplicate['matched_title'] : '',
-                        'score' => $duplicate_score,
-                        'method' => $duplicate_method,
-                    ),
-                ), $duplicate_post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+            return array(
+                'queued' => 1,
+                'post_id' => intval($post_id),
+                'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                'item_title' => !empty($item['title']) ? $item['title'] : $placeholder_title,
+            );
+        }
 
-                self::mark_item_processed($generator['id'], $item, $duplicate_post_id);
-                return $duplicate_post_id;
+        public function process_staged_generation($post_id)
+        {
+            $post_id = intval($post_id);
+            if ($post_id <= 0 || self::$staged_generation_request_processed) {
+                if ($post_id > 0 && self::$staged_generation_request_processed) {
+                    self::schedule_staged_generation_stage($post_id, 60);
+                }
+                return;
+            }
+            self::$staged_generation_request_processed = true;
+
+            $state = get_post_meta($post_id, self::GENERATION_PIPELINE_META, true);
+            if (!is_array($state) || empty($state['stage']) || empty($state['generator_id'])) {
+                return;
             }
 
-            $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
-            if (is_wp_error($article)) {
-                return $article;
+            $generator = self::get_generator(intval($state['generator_id']));
+            $item = !empty($state['item']) && is_array($state['item']) ? $state['item'] : array();
+            if (!$generator || empty($item)) {
+                self::fail_staged_generation($post_id, $state, new WP_Error('arc_generation_pipeline_state_invalid', 'Estado da geracao nao encontrado.'));
+                return;
+            }
+
+            try {
+                $stage = sanitize_key((string) $state['stage']);
+                if ($stage === 'planning') {
+                    $result = Alpha_RSS_AI_Generator_Helper::prepare_generation_planning($generator, $item);
+                    if (is_wp_error($result)) {
+                        throw new RuntimeException($result->get_error_message());
+                    }
+                    $state['item'] = !empty($result['item']) && is_array($result['item']) ? $result['item'] : $item;
+                    $state['outline_context'] = !empty($result['outline_context']) && is_array($result['outline_context']) ? $result['outline_context'] : array();
+                    $state['stage'] = 'seo';
+                } elseif ($stage === 'seo') {
+                    $result = Alpha_RSS_AI_Generator_Helper::generate_seo_article_stage(
+                        $generator,
+                        $item,
+                        !empty($state['outline_context']) && is_array($state['outline_context']) ? $state['outline_context'] : array()
+                    );
+                    if (is_wp_error($result)) {
+                        throw new RuntimeException($result->get_error_message());
+                    }
+                    $state['seo_article'] = !empty($result['seo_article']) && is_array($result['seo_article']) ? $result['seo_article'] : array();
+                    $state['outline_context'] = !empty($result['outline_context']) && is_array($result['outline_context']) ? $result['outline_context'] : array();
+                    $state['stage'] = 'content_outline';
+                } elseif ($stage === 'content_outline') {
+                    $result = Alpha_RSS_AI_Generator_Helper::generate_content_outline_context(
+                        $generator,
+                        $item,
+                        !empty($state['seo_article']) && is_array($state['seo_article']) ? $state['seo_article'] : array(),
+                        !empty($state['outline_context']) && is_array($state['outline_context']) ? $state['outline_context'] : array()
+                    );
+                    if (is_wp_error($result)) {
+                        throw new RuntimeException($result->get_error_message());
+                    }
+                    $state['outline_context'] = $result;
+                    $state['stage'] = 'content';
+                } elseif ($stage === 'content') {
+                    $seo_article = !empty($state['seo_article']) && is_array($state['seo_article']) ? $state['seo_article'] : array();
+                    $outline_context = !empty($state['outline_context']) && is_array($state['outline_context']) ? $state['outline_context'] : array();
+                    $content_article = Alpha_RSS_AI_Generator_Helper::generate_content_article_stage($generator, $item, $seo_article, $outline_context);
+                    if (is_wp_error($content_article)) {
+                        throw new RuntimeException($content_article->get_error_message());
+                    }
+                    $seo_article['content_html'] = !empty($content_article['content_html']) ? $content_article['content_html'] : '';
+                    if (!empty($outline_context)) {
+                        $seo_article['outline_context'] = $outline_context;
+                        $seo_article['outline_text'] = !empty($outline_context['outline_text']) ? $outline_context['outline_text'] : '';
+                        $seo_article['outline_sections'] = !empty($outline_context['outline_sections']) ? $outline_context['outline_sections'] : array();
+                        $seo_article['outline_target_h2_min'] = !empty($outline_context['outline_target_h2_min']) ? intval($outline_context['outline_target_h2_min']) : 0;
+                        $seo_article['outline_target_h2_max'] = !empty($outline_context['outline_target_h2_max']) ? intval($outline_context['outline_target_h2_max']) : 0;
+                        $seo_article['outline_target_h2_count'] = !empty($outline_context['outline_target_h2_count']) ? intval($outline_context['outline_target_h2_count']) : 0;
+                        $seo_article['outline_block_quantities'] = !empty($outline_context['outline_block_quantities']) ? $outline_context['outline_block_quantities'] : array();
+                    }
+
+                    $result = self::create_post_from_generator_item($generator, $item, $seo_article, $post_id);
+                    if (is_wp_error($result)) {
+                        throw new RuntimeException($result->get_error_message());
+                    }
+
+                    if (!empty($generator['list_id']) && !empty($item['guid'])) {
+                        self::update_keyword_list_row_status_from_item(intval($generator['list_id']), $item['guid'], 'generated', intval($post_id));
+                    }
+                    delete_post_meta($post_id, self::GENERATION_PIPELINE_META);
+                    update_post_meta($post_id, '_arc_generation_pipeline_status', 'completed');
+                    self::insert_run_log($generator['id'], 'success', 'Pipeline de geracao concluida', array(
+                        'request' => array('post_id' => $post_id, 'stage' => 'content'),
+                        'response' => array('post_id' => $post_id),
+                    ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+                    return;
+                } else {
+                    throw new RuntimeException('Etapa de geracao desconhecida.');
+                }
+
+                update_post_meta($post_id, self::GENERATION_PIPELINE_META, $state);
+                update_post_meta($post_id, '_arc_generation_pipeline_status', sanitize_key((string) $state['stage']));
+                self::insert_run_log($generator['id'], 'info', 'Etapa da pipeline concluida', array(
+                    'request' => array('post_id' => $post_id, 'stage' => $stage),
+                    'response' => array('next_stage' => $state['stage']),
+                ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+                self::schedule_staged_generation_stage($post_id, 10);
+            } catch (Throwable $error) {
+                self::fail_staged_generation($post_id, $state, $error);
+            }
+        }
+
+        public static function fail_staged_generation($post_id, $state, $error)
+        {
+            $post_id = intval($post_id);
+            $state = is_array($state) ? $state : array();
+            $message = $error instanceof Throwable ? trim((string) $error->getMessage()) : trim((string) $error);
+            if ($message === '') {
+                $message = 'Falha durante a geracao do conteudo.';
+            }
+            $generator_id = !empty($state['generator_id']) ? intval($state['generator_id']) : 0;
+            $item = !empty($state['item']) && is_array($state['item']) ? $state['item'] : array();
+            self::force_generated_post_draft($post_id, $message);
+            if ($generator_id > 0 && !empty($item)) {
+                self::mark_item_failed($generator_id, $item, 'arc_generation_pipeline_failed', $message);
+                $generator = self::get_generator($generator_id);
+                if (!empty($generator['list_id']) && !empty($item['guid'])) {
+                    self::update_keyword_list_row_status_from_item(intval($generator['list_id']), $item['guid'], 'failed', 0, $message);
+                }
+                self::insert_run_log($generator_id, 'error', $message, array(
+                    'request' => array('post_id' => $post_id, 'stage' => !empty($state['stage']) ? $state['stage'] : ''),
+                    'response' => array('post_status' => 'draft'),
+                ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+            }
+            delete_post_meta($post_id, self::GENERATION_PIPELINE_META);
+            update_post_meta($post_id, '_arc_generation_pipeline_status', 'failed');
+        }
+
+        public static function create_post_from_generator_item($generator, $item, $prepared_article = null, $existing_post_id = 0)
+        {
+            $has_prepared_article = is_array($prepared_article);
+            $existing_post_id = intval($existing_post_id);
+            $original_item = is_array($item) ? $item : array();
+            $item = self::maybe_enrich_rss_item_context($generator, $item);
+            if (is_wp_error($item)) {
+                if ($item->get_error_code() === 'arc_source_forbidden') {
+                    return self::create_source_access_denied_draft($generator, $original_item, $item->get_error_message());
+                }
+                return $item;
+            }
+            $use_source_page_context = self::generator_uses_source_page_context($generator);
+            if ($use_source_page_context && !$has_prepared_article) {
+                $item = self::resolve_item_media_for_generation($generator, $item);
+                if (is_wp_error($item)) {
+                    if ($item->get_error_code() === 'arc_source_forbidden') {
+                        return self::create_source_access_denied_draft($generator, $original_item, $item->get_error_message());
+                    }
+                    return $item;
+                }
+            }
+
+            if ($has_prepared_article) {
+                $article = $prepared_article;
+            } else {
+                $semantic_title = '';
+                if (!empty($item['source_title'])) {
+                    $semantic_title = trim((string) $item['source_title']);
+                } elseif (!empty($item['title'])) {
+                    $semantic_title = trim((string) $item['title']);
+                }
+
+                $semantic_duplicate = self::find_semantic_duplicate_for_title($semantic_title, $generator, array(
+                    'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                    'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : '',
+                ));
+                if (is_array($semantic_duplicate) && !empty($semantic_duplicate['post_id'])) {
+                    $duplicate_post_id = intval($semantic_duplicate['post_id']);
+                    $duplicate_score = isset($semantic_duplicate['score']) ? floatval($semantic_duplicate['score']) : 0.0;
+                    $duplicate_method = !empty($semantic_duplicate['method']) ? (string) $semantic_duplicate['method'] : 'text';
+                    $item['semantic_duplicate_post_id'] = $duplicate_post_id;
+                    $item['semantic_duplicate_score'] = $duplicate_score;
+                    $item['semantic_duplicate_method'] = $duplicate_method;
+
+                    self::insert_run_log($generator['id'], 'info', 'Item semantico reaproveitado', array(
+                        'request' => array(
+                            'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
+                            'semantic_title' => $semantic_title,
+                        ),
+                        'response' => array(
+                            'post_id' => $duplicate_post_id,
+                            'matched_title' => !empty($semantic_duplicate['matched_title']) ? $semantic_duplicate['matched_title'] : '',
+                            'score' => $duplicate_score,
+                            'method' => $duplicate_method,
+                        ),
+                    ), $duplicate_post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
+
+                    self::mark_item_processed($generator['id'], $item, $duplicate_post_id);
+                    return $duplicate_post_id;
+                }
+
+                $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
+                if (is_wp_error($article)) {
+                    return $article;
+                }
             }
 
             if (!empty($article['content_html']) && !empty($generator['random_bolds_enabled'])) {
@@ -8227,7 +8625,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $article['content_html'] = Alpha_RSS_AI_Generator_Helper::remove_unmatched_trailing_quotes_from_html($article['content_html']);
 
             $post_data = self::build_post_data($generator, $article, $item);
-            $post_id = wp_insert_post($post_data, true);
+            if ($existing_post_id > 0) {
+                $post_data['ID'] = $existing_post_id;
+                $post_id = wp_update_post($post_data, true);
+            } else {
+                $post_id = wp_insert_post($post_data, true);
+            }
             if (is_wp_error($post_id)) {
                 return $post_id;
             }
@@ -8572,7 +8975,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         continue;
                     }
 
-                $result = self::create_post_from_generator_item($generator, $selected_item);
+                $result = self::queue_staged_generation($generator, $selected_item);
                 if (is_wp_error($result)) {
                     self::mark_item_failed($generator['id'], $selected_item, $result->get_error_code(), $result->get_error_message());
                     $failed++;
@@ -8590,6 +8993,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         self::insert_run_log($generator['id'], 'error', $result->get_error_message(), array(
                             'request' => array('row_id' => intval($row->id), 'list_id' => $list_id),
                         ), null, $selected_item['guid'], $selected_item['permalink']);
+                        continue;
+                    }
+
+                    if (is_array($result) && !empty($result['queued'])) {
+                        $created++;
                         continue;
                     }
 
@@ -8860,7 +9268,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
-                $result = self::create_post_from_generator_item($generator, $item);
+                $result = self::queue_staged_generation($generator, $item);
                 if (is_wp_error($result)) {
                     self::mark_item_failed($generator['id'], $item, $result->get_error_code(), $result->get_error_message());
                     $failed++;
@@ -8870,6 +9278,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                             'generation_mode' => 'satellite',
                         ),
                     ), null, $item['guid'], $item['permalink']);
+                    continue;
+                }
+
+                if (is_array($result) && !empty($result['queued'])) {
+                    $created++;
                     continue;
                 }
 
@@ -8942,13 +9355,18 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     continue;
                 }
 
-                $result = self::create_post_from_generator_item($generator, $item);
+                $result = self::queue_staged_generation($generator, $item);
                 if (is_wp_error($result)) {
                     self::mark_item_failed($generator['id'], $item, $result->get_error_code(), $result->get_error_message());
                     $failed++;
                     self::insert_run_log($generator['id'], 'error', $result->get_error_message(), array(
                         'request' => array('guid' => $item['guid']),
                     ), null, $item['guid'], $item['permalink']);
+                    continue;
+                }
+
+                if (is_array($result) && !empty($result['queued'])) {
+                    $created++;
                     continue;
                 }
 

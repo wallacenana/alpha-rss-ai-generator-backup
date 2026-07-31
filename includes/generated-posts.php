@@ -279,6 +279,15 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 ? (string) $post->post_name
                 : '';
 
+            $queued_pipeline = Alpha_RSS_AI_Generator::queue_staged_generation($generator, $item, $post_id);
+            if (is_wp_error($queued_pipeline)) {
+                Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $queued_pipeline->get_error_message());
+                $this->redirect_with_notice($queued_pipeline->get_error_message(), 'error');
+            }
+            $this->redirect_with_notice('Regeneracao enfileirada. O mesmo post sera atualizado quando as etapas terminarem.', 'success', array(
+                'arc_notice_link' => Alpha_RSS_AI_Generator::get_post_edit_link($post_id),
+            ));
+
             $article = Alpha_RSS_AI_Generator_Helper::call_openai($generator, $item);
             if (is_wp_error($article)) {
                 Alpha_RSS_AI_Generator::force_generated_post_draft($post_id, $article->get_error_message());
