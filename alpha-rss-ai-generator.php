@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.30
+Version: 1.9.31
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.30';
+        const VERSION = '1.9.31';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -8264,6 +8264,22 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             check_ajax_referer('arc_staged_generation_status', 'nonce');
             $post_ids = isset($_POST['post_ids']) && is_array($_POST['post_ids']) ? array_map('absint', wp_unslash($_POST['post_ids'])) : array();
             $post_ids = array_values(array_filter(array_unique($post_ids)));
+            if (empty($post_ids)) {
+                $post_ids = get_posts(array(
+                    'post_type' => 'any',
+                    'post_status' => 'any',
+                    'posts_per_page' => 5,
+                    'fields' => 'ids',
+                    'orderby' => 'modified',
+                    'order' => 'DESC',
+                    'meta_query' => array(
+                        array(
+                            'key' => self::GENERATION_PIPELINE_META,
+                            'compare' => 'EXISTS',
+                        ),
+                    ),
+                ));
+            }
             $items = array();
             $stage_labels = array(
                 'planning' => 'Planejamento',
@@ -8309,10 +8325,6 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     ),
                 ),
             ));
-            if (empty($pending_posts)) {
-                return;
-            }
-
             $initial_items = array();
             foreach ($pending_posts as $post_id) {
                 $state = get_post_meta($post_id, self::GENERATION_PIPELINE_META, true);
@@ -8330,7 +8342,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $status_url = admin_url('admin-ajax.php');
             $nonce = wp_create_nonce('arc_staged_generation_status');
             ?>
-            <div id="arc-staged-generation-toast" class="arc-staged-generation-toast" role="status" aria-live="polite">
+            <div id="arc-staged-generation-toast" class="arc-staged-generation-toast" role="status" aria-live="polite" style="<?php echo empty($initial_items) ? 'display:none;' : ''; ?>">
                 <button type="button" class="arc-staged-generation-toast__close" aria-label="Fechar">&times;</button>
                 <div class="arc-staged-generation-toast__eyebrow">Alpha RSS AI</div>
                 <strong class="arc-staged-generation-toast__title">Geração em andamento</strong>
@@ -8359,6 +8371,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 .arc-staged-generation-toast__link{display:inline-block;margin-top:12px;color:#4338ca;text-decoration:none}
                 .arc-staged-generation-toast.is-success{border-color:#86efac;background:#f0fdf4}
                 .arc-staged-generation-toast.is-error{border-color:#fca5a5;background:#fef2f2}
+                .arc-staged-generation-toast.is-success .arc-staged-generation-toast__track span{width:100%!important;transform:none!important;animation:none!important}
                 @keyframes arc-staged-generation-loading{0%,100%{transform:translateX(-110%)}50%{transform:translateX(300%)}}
             </style>
             <script>
@@ -8398,8 +8411,44 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         item = item || {};
                         item.status = status;
                         render(item);
-                        window.setTimeout(function () { toast.remove(); }, status === 'completed' ? 5000 : 9000);
                     }
+
+                    function showGenerationToast(nextPostIds, fallbackTitle) {
+                        nextPostIds = Array.isArray(nextPostIds) ? nextPostIds.map(function (id) { return String(id); }).filter(Boolean) : [];
+                        if (nextPostIds.length) {
+                            postIds = nextPostIds;
+                            items = postIds.map(function (postId) {
+                                return {
+                                    post_id: parseInt(postId, 10) || 0,
+                                    title: fallbackTitle || 'Geração iniciada',
+                                    stage: 'planning',
+                                    stage_label: 'Planejamento',
+                                    status: 'processing',
+                                    error_message: '',
+                                    edit_url: ''
+                                };
+                            });
+                        } else if (!items.length) {
+                            items = [{
+                                post_id: 0,
+                                title: fallbackTitle || 'Geração iniciada',
+                                stage: 'planning',
+                                stage_label: 'Planejamento',
+                                status: 'processing',
+                                error_message: '',
+                                edit_url: ''
+                            }];
+                        }
+                        toast.style.display = 'block';
+                        render(items[0]);
+                        poll();
+                        if (!timer) {
+                            timer = window.setInterval(poll, 4000);
+                        }
+                    }
+
+                    window.AlphaRssAiGenerationToast = window.AlphaRssAiGenerationToast || {};
+                    window.AlphaRssAiGenerationToast.start = showGenerationToast;
 
                     function poll() {
                         var body = new URLSearchParams();
@@ -8410,20 +8459,27 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                             .then(function (response) { return response.json(); })
                             .then(function (payload) {
                                 if (!payload || !payload.success || !payload.data || !Array.isArray(payload.data.items)) return;
-                                var current = payload.data.items.find(function (item) { return item.status === 'processing'; });
+                                if (!payload.data.items.length) return;
+                                items = payload.data.items;
+                                postIds = items.map(function (item) { return String(item.post_id); });
+                                toast.style.display = 'block';
+                                var current = items.find(function (item) { return item.status === 'processing'; });
                                 if (current) {
                                     render(current);
                                     return;
                                 }
-                                var failed = payload.data.items.find(function (item) { return item.status === 'failed'; });
-                                finish(failed || payload.data.items[0], failed ? 'failed' : 'completed');
+                                var failed = items.find(function (item) { return item.status === 'failed'; });
+                                finish(failed || items[0], failed ? 'failed' : 'completed');
                                 window.clearInterval(timer);
+                                timer = null;
                             })
                             .catch(function () {});
                     }
 
-                    closeButton.addEventListener('click', function () { window.clearInterval(timer); toast.remove(); });
-                    render(items[0]);
+                    closeButton.addEventListener('click', function () { window.clearInterval(timer); timer = null; toast.style.display = 'none'; });
+                    if (items.length) {
+                        render(items[0]);
+                    }
                     poll();
                     timer = window.setInterval(poll, 4000);
                 }());

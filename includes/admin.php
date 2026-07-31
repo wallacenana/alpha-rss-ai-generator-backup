@@ -1524,6 +1524,9 @@ class Alpha_RSS_AI_Generator_Admin
                         if (itemGuidField) {
                             itemGuidField.value = itemGuid || '';
                         }
+                        if (window.AlphaRssAiGenerationToast && typeof window.AlphaRssAiGenerationToast.start === 'function') {
+                            window.AlphaRssAiGenerationToast.start([], 'Gerando item selecionado...');
+                        }
                         window.AlphaRssAiGeneratorManualRunInFlight = true;
                         manualRunForm.submit();
                     }

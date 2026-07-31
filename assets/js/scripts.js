@@ -579,6 +579,9 @@
         manualRunGenerating = true;
         window.AlphaRssAiGeneratorManualRunInFlight = true;
         setManualRunStatus('Gerando item selecionado...', 'warning');
+        if (window.AlphaRssAiGenerationToast && typeof window.AlphaRssAiGenerationToast.start === 'function') {
+            window.AlphaRssAiGenerationToast.start([], 'Gerando item selecionado...');
+        }
         showSwalLoading('Gerando item...', 'Aguarde enquanto o post e criado.');
 
         if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
@@ -616,6 +619,9 @@
             var viewLink = String(payload.view_link || payload.permalink || '');
             var editLink = String(payload.edit_link || '');
             var itemTitle = String(payload.item_title || '');
+            if (window.AlphaRssAiGenerationToast && typeof window.AlphaRssAiGenerationToast.start === 'function') {
+                window.AlphaRssAiGenerationToast.start(payload.post_id ? [payload.post_id] : [], itemTitle || 'Geração iniciada');
+            }
             var htmlParts = [];
             if (itemTitle) {
                 htmlParts.push('<p class="mb-3 text-sm text-slate-600">' + escapeHtml(itemTitle) + '</p>');
