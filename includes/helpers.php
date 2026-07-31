@@ -5768,12 +5768,13 @@ class Alpha_RSS_AI_Generator_Helper
             $outline_structure_rules[] = 'No modelo lista, cada item deve ser type=h2. Nao use H3 para substituir os itens e nao crie secoes de artigo entre eles.';
             $outline_structure_rules[] = 'O desenvolvimento deve tratar somente dos itens prometidos pelo titulo e pelas informacoes da fonte.';
         } elseif ($outline_structure_key === 'noticia') {
-            $outline_structure_rules[] = 'ESTRUTURA NOTICIA: lead forte, de 2 a 3 H2 no maximo e conclusion.';
+            $outline_structure_rules[] = 'ESTRUTURA NOTICIA: intro_without_h2, no maximo 2 H2 de desenvolvimento e conclusion.';
             $outline_structure_rules[] = 'Priorize o fato principal, seus detalhes confirmados, contexto diretamente relacionado e desdobramentos. Nao transforme a noticia em guia, review ou artigo aprofundado.';
-            $outline_structure_rules[] = 'Nao crie listas de itens, blocos genericos de beneficios ou perguntas artificiais apenas para aumentar o tamanho.';
+            $outline_structure_rules[] = 'Nao use H3 e nao crie listas de beneficios, erros, prazos ou sinais apenas para aumentar o tamanho.';
         } elseif ($outline_structure_key === 'artigo') {
-            $outline_structure_rules[] = 'ESTRUTURA ARTIGO:  desenvolvimento completo dividido em H2 e H3 especificos e conclusion.';
-            $outline_structure_rules[] = 'Destrinche os assuntos mais relevantes da fonte em uma progressao fluida. Use H3 somente quando ele organizar uma subdivisao real de um H2.';
+            $outline_structure_rules[] = 'ESTRUTURA ARTIGO: intro_without_h2, ate 3 H2 de desenvolvimento e conclusion.';
+            $outline_structure_rules[] = 'Use no maximo 1 H3 e somente se ele for indispensavel para explicar um ponto que nao cabe no H2. Nao crie H3 para cada habito, beneficio, erro, prazo ou sinal.';
+            $outline_structure_rules[] = 'Construa um fio condutor a partir de uma duvida, conflito ou expectativa principal do leitor. Cada secao deve aproximar a resposta e trazer informacao nova.';
         } else {
             $outline_structure_rules[] = 'ESTRUTURA EDITORIAL: desenvolvimento em H2 e H3 especificos e conclusion, como em um artigo.';
             $outline_structure_rules[] = 'Para este modelo, prefira titulos claros e informativos; use provocacao somente quando fizer sentido para o tema.';
@@ -5782,20 +5783,18 @@ class Alpha_RSS_AI_Generator_Helper
         $lines = array(
             "Você é um estrategista de conteúdo especializado em SEO editorial e Google Discover. Sua tarefa é gerar apenas a estrutura hierárquica (outline) de um conteúdo, sem escrever o texto completo.",
             "",
-            "Antes de montar o outline, faça uma análise mental de quais são as principais dúvidas, dores e curiosidades que o leitor carrega ao buscar esse tema — ele precisa sair da leitura com todas essas dúvidas respondidas. Use essa análise como base para definir os tópicos.",
+            "Antes de montar o outline, identifique a principal duvida, conflito ou expectativa do leitor. Crie um fio condutor para que cada secao aproxime o leitor da resposta. Nao tente cobrir o assunto inteiro como uma enciclopedia.",
             "",
             "Regras para a estrutura:",
-            "- Use hierarquia em H2 e H3 (e H4 se necessário).",
-            "- O primeiro H2 deve ser sempre 'Introdução'.",
-            "- Inclua um H2 que explique o conceito central do tema e ao ao título \"$generated_title\", incorporando a keyword principal.",
-            "- Se o título prometer um número de passos, etapas ou itens, qualquer coisa relacionado  quantidade, como \"5 hábitos\", quebre cada um em um H3 dentro do H2 correspondente.",
-            "- Inclua H2s cobrindo: benefícios, erros comuns, prazos/resultados esperados, sinais de que está funcionando e objeções práticas do leitor, ex: 'dá pra fazer isso na correria?', mas tudo isso só deve ser inseido quando fizer sentido, o importante é criar um ou esboço/otline que responda ao título.",
+            "- Use intro_without_h2 para a introducao. Nao crie um H2 chamado Introducao.",
+            "- Crie somente os H2 necessarios para responder ao titulo gerado \"$generated_title\". Cada secao deve avancar a resposta com fatos novos.",
+            "- Nao crie secoes para cobrir beneficios, erros, prazos, sinais, ferramentas ou objecoes por obrigacao. Inclua esses assuntos somente se forem essenciais para o conflito central e estiverem apoiados pela fonte.",
             "- Todos os H2 devem ser claros, específicos e informativos sobre o assunto que desenvolvem. Use curiosidade ou tensão somente quando forem naturais e sustentadas pelos fatos; nunca force um tom provocativo.",
             "- Os H3 devem ser específicos e concretos, nunca genéricos como 'Passo 1', 'Erro 1' — cada um deve indicar do que se trata.",
             "- A ultima secao e a conclusao: use type=conclusion e um unico H2 com titulo provocativo, especifico e diretamente ligado ao tema. Nao crie uma secao de fechamento separada nem outra conclusao depois dela. O titulo pode gerar curiosidade, mas nao pode usar desafios genericos como 'voce esta pronto', 'aceite o desafio', 'o proximo passo' ou 'agora e com voce'.",
             "",
-            "Deve ter no máximo 8 h2, pois o conteúdo precisa ter no máximo 1000 palavras, eu diria que de 650 a 1000 palavras, no máximo",
-            "Sempre que o título prometer uma lista de itens, hábitos, erros, cuidados ou qualquer coisa que seja quantificável, o outline deve entregar exatamente o que o título promete. Cada item da lista deve ser um H2 ou H3, dependendo do contexto, e deve ser específico e detalhado, sempre, isso é inegociavel.",
+            "O conteúdo final deve ter no máximo 1200 palavras. O outline deve ser enxuto e não criar seções apenas para aumentar o tamanho.",
+            "Somente no modelo lista, entregue todos os itens prometidos pelo titulo. Nos demais modelos, nao transforme numeros ou detalhes secundarios em uma lista de secoes.",
             "Algum ou alguns h2, devem responder diretamente ao título \"$generated_title\", se promete habitos, fale de habitos, se promete cuidados, entregue cuidados, se promete erros, entregue erros e por ai vai, só entregue o que o título pede, é o mais importante e de preferencia, no segundo ou terceiro h2, se promete uma desgraça de passo a passo, entregue a desgraça do passo a passo",
             "Os títulos h2 e h3 devem ter no máximo 60 caracteres e sempre responderem a uma questão focada em SEO",
             "Não use dois pontos nos títulos",
@@ -5926,6 +5925,42 @@ class Alpha_RSS_AI_Generator_Helper
             $conclusion_section['type'] = 'conclusion';
             $outline_sections[] = $conclusion_section;
         }
+
+        // Article and news outlines must stay compact. Do not let a model turn
+        // every supporting detail into another heading and inflate the article.
+        $normalized_outline_type = !empty($result_context['content_type'])
+            ? Alpha_RSS_AI_Generator::normalize_prompt_model_key((string) $result_context['content_type'])
+            : '';
+        $max_development_sections = $normalized_outline_type === 'artigo'
+            ? 3
+            : ($normalized_outline_type === 'noticia' ? 2 : 0);
+        if ($max_development_sections > 0) {
+            $compact_sections = array();
+            $compact_conclusion = array();
+            $development_count = 0;
+            foreach ($outline_sections as $section) {
+                if (!is_array($section)) {
+                    continue;
+                }
+                $section_type = sanitize_key(isset($section['type']) ? (string) $section['type'] : '');
+                if ($section_type === 'conclusion') {
+                    $compact_conclusion = $section;
+                    continue;
+                }
+                if ($section_type === 'intro' || $section_type === 'intro_without_h2') {
+                    $compact_sections[] = $section;
+                    continue;
+                }
+                if ($development_count < $max_development_sections) {
+                    $compact_sections[] = $section;
+                    $development_count++;
+                }
+            }
+            if (!empty($compact_conclusion)) {
+                $compact_sections[] = $compact_conclusion;
+            }
+            $outline_sections = $compact_sections;
+        }
         $result_context['outline_sections'] = $outline_sections;
 
         $has_main_section = false;
@@ -6046,6 +6081,7 @@ class Alpha_RSS_AI_Generator_Helper
             'Modelo de prompt: {{prompt_model_name}}',
             'Idioma final: {{generation_language}}',
             'Conteudo HTML filtrado da fonte: {{source_content}}',
+            'LIMITE ABSOLUTO: o content_html final deve ter no maximo 1200 palavras. Se faltar espaco, corte detalhes secundarios; nunca ultrapasse esse limite.',
         );
         if (is_string($row_data) && $row_data !== '') {
             $hidden_context[] = 'Dados completos da linha de origem: {{row_data}}';

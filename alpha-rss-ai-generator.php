@@ -188,6 +188,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             add_action('admin_menu', array($this, 'admin_menu'));
             add_action('admin_menu', array(new Alpha_RSS_AI_Generator_Admin(), 'admin_menu_late'), 999);
+            add_action('admin_init', array($this, 'resume_pending_staged_generations'));
+            add_action('admin_footer', array($this, 'render_staged_generation_toast'));
             add_action('admin_post_arc_save_settings', array($this, 'handle_save_settings'));
             add_action('admin_post_arc_save_generator', array($this, 'handle_save_generator'));
             add_action('admin_post_arc_delete_generator', array($this, 'handle_delete_generator'));
@@ -200,6 +202,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             add_action('before_delete_post', array($this, 'handle_generated_post_deleted'), 10, 1);
             add_action(self::CRON_HOOK, array($this, 'cron_tick'));
             add_action(self::STAGED_GENERATION_HOOK, array($this, 'process_staged_generation'), 10, 1);
+            add_action('wp_ajax_arc_process_staged_generation', array($this, 'handle_async_staged_generation'));
+            add_action('wp_ajax_nopriv_arc_process_staged_generation', array($this, 'handle_async_staged_generation'));
+            add_action('wp_ajax_arc_get_staged_generation_status', array($this, 'handle_staged_generation_status'));
             add_filter('cron_schedules', array($this, 'add_cron_schedule'));
             add_action('rest_api_init', array($this, 'register_rest_routes'));
             add_action('init', array($this, 'ensure_cron_scheduled'));
@@ -3384,7 +3389,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 . "- Não insira imagens, links ou chamadas externas no HTML; o backend faz essa etapa depois.\n"
                 . "- A conclusão deve usar um único H2 específico e informativo, sem a palavra conclusão, diretamente ligado ao tema. Não use desafios ao leitor, chamadas genéricas ou frases como 'você está pronto' e 'o próximo passo'.\n"
                 . "- Escreva com tom humano, sem soar mecânico.\n"
-                . "- O texto deve ter no minimo 500 palavras.\n"
+                . "- O texto deve ter no mínimo 500 e no máximo 1200 palavras. Nunca ultrapasse 1200 palavras.\n"
                 . "- Use parágrafos curtos e ajuste a estrutura conforme a densidade do tema e o outline interno.\n"
                 . "- Avance com fatos novos em cada bloco e evite repetição de ideias.\n"
                 . "- Não use Markdown.\n"
@@ -3663,7 +3668,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $body['prompt_cache_retention'] = $prompt_cache_retention;
             }
 
-            // error_log("prompt: " . $prompt);
+            error_log("prompt: " . $prompt);
             $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -3715,7 +3720,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
 
-            // error_log("response: " . print_r($text, true));
+            error_log("response: " . print_r($text, true));
             return self::parse_ai_json($text, $context);
         }
 
@@ -8210,6 +8215,250 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
         }
 
+        public function handle_async_staged_generation()
+        {
+            $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
+            $token = isset($_POST['token']) ? sanitize_text_field(wp_unslash($_POST['token'])) : '';
+            $stored_token = $post_id > 0 ? get_transient('arc_staged_generation_token_' . $post_id) : false;
+
+            if ($post_id <= 0 || !$stored_token || $token === '' || !hash_equals((string) $stored_token, $token)) {
+                status_header(403);
+                wp_die('Invalid staged generation token.');
+            }
+
+            delete_transient('arc_staged_generation_token_' . $post_id);
+            self::process_staged_generation($post_id);
+            wp_die('ok');
+        }
+
+        public function resume_pending_staged_generations()
+        {
+            if (!current_user_can('manage_options')) {
+                return;
+            }
+
+            $pending_posts = get_posts(array(
+                'post_type' => 'any',
+                'post_status' => 'any',
+                'posts_per_page' => 3,
+                'fields' => 'ids',
+                'meta_query' => array(
+                    array(
+                        'key' => self::GENERATION_PIPELINE_META,
+                        'compare' => 'EXISTS',
+                    ),
+                ),
+            ));
+
+            foreach ($pending_posts as $post_id) {
+                self::dispatch_staged_generation_async($post_id);
+            }
+        }
+
+        public function handle_staged_generation_status()
+        {
+            if (!current_user_can('manage_options')) {
+                wp_send_json_error(array('message' => 'Acesso negado.'), 403);
+            }
+
+            check_ajax_referer('arc_staged_generation_status', 'nonce');
+            $post_ids = isset($_POST['post_ids']) && is_array($_POST['post_ids']) ? array_map('absint', wp_unslash($_POST['post_ids'])) : array();
+            $post_ids = array_values(array_filter(array_unique($post_ids)));
+            $items = array();
+            $stage_labels = array(
+                'planning' => 'Planejamento',
+                'seo' => 'SEO',
+                'content_outline' => 'Esboço',
+                'content' => 'Conteúdo',
+            );
+
+            foreach ($post_ids as $post_id) {
+                $state = get_post_meta($post_id, self::GENERATION_PIPELINE_META, true);
+                $status = (string) get_post_meta($post_id, '_arc_generation_pipeline_status', true);
+                $error_message = (string) get_post_meta($post_id, '_arc_generation_pipeline_error', true);
+                $stage = is_array($state) && !empty($state['stage']) ? sanitize_key((string) $state['stage']) : '';
+                $items[] = array(
+                    'post_id' => $post_id,
+                    'title' => get_the_title($post_id),
+                    'stage' => $stage,
+                    'stage_label' => isset($stage_labels[$stage]) ? $stage_labels[$stage] : '',
+                    'status' => $stage !== '' ? 'processing' : ($status === 'failed' ? 'failed' : ($status === 'completed' ? 'completed' : 'idle')),
+                    'error_message' => $error_message,
+                    'edit_url' => self::get_post_edit_link($post_id),
+                );
+            }
+
+            wp_send_json_success(array('items' => $items));
+        }
+
+        public function render_staged_generation_toast()
+        {
+            if (!current_user_can('manage_options')) {
+                return;
+            }
+
+            $pending_posts = get_posts(array(
+                'post_type' => 'any',
+                'post_status' => 'any',
+                'posts_per_page' => 5,
+                'fields' => 'ids',
+                'meta_query' => array(
+                    array(
+                        'key' => self::GENERATION_PIPELINE_META,
+                        'compare' => 'EXISTS',
+                    ),
+                ),
+            ));
+            if (empty($pending_posts)) {
+                return;
+            }
+
+            $initial_items = array();
+            foreach ($pending_posts as $post_id) {
+                $state = get_post_meta($post_id, self::GENERATION_PIPELINE_META, true);
+                $stage = is_array($state) && !empty($state['stage']) ? sanitize_key((string) $state['stage']) : 'planning';
+                $initial_items[] = array(
+                    'post_id' => intval($post_id),
+                    'title' => get_the_title($post_id),
+                    'stage' => $stage,
+                    'status' => 'processing',
+                    'error_message' => '',
+                    'edit_url' => self::get_post_edit_link($post_id),
+                );
+            }
+
+            $status_url = admin_url('admin-ajax.php');
+            $nonce = wp_create_nonce('arc_staged_generation_status');
+            ?>
+            <div id="arc-staged-generation-toast" class="arc-staged-generation-toast" role="status" aria-live="polite">
+                <button type="button" class="arc-staged-generation-toast__close" aria-label="Fechar">&times;</button>
+                <div class="arc-staged-generation-toast__eyebrow">Alpha RSS AI</div>
+                <strong class="arc-staged-generation-toast__title">Geração em andamento</strong>
+                <div class="arc-staged-generation-toast__post"></div>
+                <div class="arc-staged-generation-toast__stage"></div>
+                <div class="arc-staged-generation-toast__track"><span></span></div>
+                <div class="arc-staged-generation-toast__steps">
+                    <span data-stage="planning">Planejamento</span>
+                    <span data-stage="seo">SEO</span>
+                    <span data-stage="content_outline">Esboço</span>
+                    <span data-stage="content">Conteúdo</span>
+                </div>
+                <a class="arc-staged-generation-toast__link" href="#" target="_blank" rel="noopener">Abrir post</a>
+            </div>
+            <style>
+                .arc-staged-generation-toast{position:fixed;z-index:100000;right:24px;bottom:24px;width:min(360px,calc(100vw - 32px));padding:18px 20px;border:1px solid #dbe3f0;border-radius:16px;background:#fff;color:#17213a;box-shadow:0 16px 45px rgba(15,23,42,.2);font-size:13px;line-height:1.45}
+                .arc-staged-generation-toast__close{position:absolute;top:8px;right:10px;border:0;background:transparent;color:#64748b;font-size:22px;line-height:1;cursor:pointer}
+                .arc-staged-generation-toast__eyebrow{margin-bottom:4px;color:#4f46e5;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+                .arc-staged-generation-toast__title{display:block;padding-right:18px;font-size:15px}
+                .arc-staged-generation-toast__post{margin-top:6px;overflow:hidden;color:#475569;text-overflow:ellipsis;white-space:nowrap}
+                .arc-staged-generation-toast__stage{margin-top:12px;color:#4f46e5;font-weight:600}
+                .arc-staged-generation-toast__track{height:6px;margin-top:10px;overflow:hidden;border-radius:999px;background:#e2e8f0}
+                .arc-staged-generation-toast__track span{display:block;width:35%;height:100%;border-radius:999px;background:#4f46e5;animation:arc-staged-generation-loading 1.25s ease-in-out infinite}
+                .arc-staged-generation-toast__steps{display:flex;justify-content:space-between;gap:5px;margin-top:8px;color:#94a3b8;font-size:10px}
+                .arc-staged-generation-toast__steps span.is-active{color:#4f46e5;font-weight:700}
+                .arc-staged-generation-toast__link{display:inline-block;margin-top:12px;color:#4338ca;text-decoration:none}
+                .arc-staged-generation-toast.is-success{border-color:#86efac;background:#f0fdf4}
+                .arc-staged-generation-toast.is-error{border-color:#fca5a5;background:#fef2f2}
+                @keyframes arc-staged-generation-loading{0%,100%{transform:translateX(-110%)}50%{transform:translateX(300%)}}
+            </style>
+            <script>
+                (function () {
+                    var toast = document.getElementById('arc-staged-generation-toast');
+                    if (!toast) return;
+                    var items = <?php echo wp_json_encode($initial_items); ?>;
+                    var postIds = items.map(function (item) { return String(item.post_id); });
+                    var stageOrder = ['planning', 'seo', 'content_outline', 'content'];
+                    var stageNames = { planning: 'Planejamento', seo: 'SEO', content_outline: 'Esboço', content: 'Conteúdo' };
+                    var timer;
+                    var closeButton = toast.querySelector('.arc-staged-generation-toast__close');
+                    var titleNode = toast.querySelector('.arc-staged-generation-toast__title');
+                    var postNode = toast.querySelector('.arc-staged-generation-toast__post');
+                    var stageNode = toast.querySelector('.arc-staged-generation-toast__stage');
+                    var trackNode = toast.querySelector('.arc-staged-generation-toast__track span');
+                    var linkNode = toast.querySelector('.arc-staged-generation-toast__link');
+
+                    function render(item) {
+                        var stageIndex = stageOrder.indexOf(item.stage);
+                        var status = item.status || 'processing';
+                        toast.classList.toggle('is-success', status === 'completed');
+                        toast.classList.toggle('is-error', status === 'failed');
+                        titleNode.textContent = status === 'completed' ? 'Geração concluída' : (status === 'failed' ? 'Geração interrompida' : 'Geração em andamento');
+                        postNode.textContent = item.title || ('Post #' + item.post_id);
+                        stageNode.textContent = status === 'completed' ? 'Todas as etapas foram concluídas.' : (status === 'failed' ? ('Erro: ' + (item.error_message || 'A geração falhou.')) : ('Etapa atual: ' + (item.stage_label || stageNames[item.stage] || 'Processando')));
+                        trackNode.style.width = status === 'processing' ? '35%' : '100%';
+                        trackNode.style.animationPlayState = status === 'processing' ? 'running' : 'paused';
+                        toast.querySelectorAll('[data-stage]').forEach(function (node, index) {
+                            node.classList.toggle('is-active', status === 'completed' || index <= stageIndex);
+                        });
+                        linkNode.href = item.edit_url || '#';
+                        linkNode.style.display = status === 'completed' && item.edit_url ? 'inline-block' : 'none';
+                    }
+
+                    function finish(item, status) {
+                        item = item || {};
+                        item.status = status;
+                        render(item);
+                        window.setTimeout(function () { toast.remove(); }, status === 'completed' ? 5000 : 9000);
+                    }
+
+                    function poll() {
+                        var body = new URLSearchParams();
+                        body.append('action', 'arc_get_staged_generation_status');
+                        body.append('nonce', <?php echo wp_json_encode($nonce); ?>);
+                        postIds.forEach(function (id) { body.append('post_ids[]', id); });
+                        fetch(<?php echo wp_json_encode($status_url); ?>, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body.toString() })
+                            .then(function (response) { return response.json(); })
+                            .then(function (payload) {
+                                if (!payload || !payload.success || !payload.data || !Array.isArray(payload.data.items)) return;
+                                var current = payload.data.items.find(function (item) { return item.status === 'processing'; });
+                                if (current) {
+                                    render(current);
+                                    return;
+                                }
+                                var failed = payload.data.items.find(function (item) { return item.status === 'failed'; });
+                                finish(failed || payload.data.items[0], failed ? 'failed' : 'completed');
+                                window.clearInterval(timer);
+                            })
+                            .catch(function () {});
+                    }
+
+                    closeButton.addEventListener('click', function () { window.clearInterval(timer); toast.remove(); });
+                    render(items[0]);
+                    poll();
+                    timer = window.setInterval(poll, 4000);
+                }());
+            </script>
+            <?php
+        }
+
+        public static function dispatch_staged_generation_async($post_id)
+        {
+            $post_id = absint($post_id);
+            if ($post_id <= 0) {
+                return false;
+            }
+
+            $token = wp_generate_password(40, false, false);
+            set_transient('arc_staged_generation_token_' . $post_id, $token, 10 * MINUTE_IN_SECONDS);
+            $response = wp_remote_post(admin_url('admin-ajax.php'), array(
+                'timeout' => 0.01,
+                'blocking' => false,
+                'redirection' => 0,
+                'body' => array(
+                    'action' => 'arc_process_staged_generation',
+                    'post_id' => $post_id,
+                    'token' => $token,
+                ),
+            ));
+
+            if (is_wp_error($response)) {
+                error_log('[alpha-rss-ai-generator] staged generation async dispatch failed: ' . $response->get_error_message());
+                return false;
+            }
+
+            return true;
+        }
+
         public static function schedule_staged_generation_stage($post_id, $delay = 10)
         {
             $post_id = intval($post_id);
@@ -8225,6 +8474,10 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if (function_exists('spawn_cron')) {
                 spawn_cron(time());
             }
+
+            // Keep the cron event as a fallback, but do not depend on WP-Cron
+            // being enabled for staged generation to advance.
+            self::dispatch_staged_generation_async($post_id);
 
             return true;
         }
@@ -8306,6 +8559,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
             }
 
+            delete_post_meta($post_id, '_arc_generation_pipeline_error');
             update_post_meta($post_id, self::GENERATION_PIPELINE_META, array(
                 'stage' => 'planning',
                 'generator_id' => intval($generator['id']),
@@ -8356,6 +8610,12 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 self::fail_staged_generation($post_id, $state, new WP_Error('arc_generation_pipeline_state_invalid', 'Estado da geracao nao encontrado.'));
                 return;
             }
+
+            $lock_key = 'arc_staged_generation_lock_' . $post_id;
+            if (get_transient($lock_key)) {
+                return;
+            }
+            set_transient($lock_key, 1, 10 * MINUTE_IN_SECONDS);
 
             try {
                 $stage = sanitize_key((string) $state['stage']);
@@ -8418,6 +8678,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         self::update_keyword_list_row_status_from_item(intval($generator['list_id']), $item['guid'], 'generated', intval($post_id));
                     }
                     delete_post_meta($post_id, self::GENERATION_PIPELINE_META);
+                    delete_post_meta($post_id, '_arc_generation_pipeline_error');
                     update_post_meta($post_id, '_arc_generation_pipeline_status', 'completed');
                     self::insert_run_log($generator['id'], 'success', 'Pipeline de geracao concluida', array(
                         'request' => array('post_id' => $post_id, 'stage' => 'content'),
@@ -8437,6 +8698,8 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 self::schedule_staged_generation_stage($post_id, 10);
             } catch (Throwable $error) {
                 self::fail_staged_generation($post_id, $state, $error);
+            } finally {
+                delete_transient($lock_key);
             }
         }
 
@@ -8448,6 +8711,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             if ($message === '') {
                 $message = 'Falha durante a geracao do conteudo.';
             }
+            update_post_meta($post_id, '_arc_generation_pipeline_error', $message);
             $generator_id = !empty($state['generator_id']) ? intval($state['generator_id']) : 0;
             $item = !empty($state['item']) && is_array($state['item']) ? $state['item'] : array();
             self::force_generated_post_draft($post_id, $message);
