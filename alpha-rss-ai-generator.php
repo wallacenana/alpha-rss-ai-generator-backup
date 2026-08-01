@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.34
+Version: 1.9.35
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.34';
+        const VERSION = '1.9.35';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -8571,6 +8571,16 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         render(item);
                     }
 
+                    function showPollingError(message) {
+                        toast.classList.remove('is-success');
+                        toast.classList.add('is-error');
+                        titleNode.textContent = 'Geração interrompida';
+                        stageNode.textContent = 'Erro ao consultar o progresso: ' + (message || 'resposta inválida do servidor.');
+                        trackNode.style.width = '100%';
+                        trackNode.style.animationPlayState = 'paused';
+                        linkNode.style.display = 'none';
+                    }
+
                     function showGenerationToast(nextPostIds, fallbackTitle) {
                         nextPostIds = Array.isArray(nextPostIds) ? nextPostIds.map(function (id) { return String(id); }).filter(Boolean) : [];
                         if (nextPostIds.length) {
@@ -8614,9 +8624,25 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                         body.append('nonce', <?php echo wp_json_encode($nonce); ?>);
                         postIds.forEach(function (id) { body.append('post_ids[]', id); });
                         fetch(<?php echo wp_json_encode($status_url); ?>, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body.toString() })
-                            .then(function (response) { return response.json(); })
+                            .then(function (response) {
+                                if (!response.ok) {
+                                    throw new Error('HTTP ' + response.status);
+                                }
+                                return response.text().then(function (text) {
+                                    try {
+                                        return JSON.parse(text);
+                                    } catch (error) {
+                                        throw new Error('resposta inválida do servidor');
+                                    }
+                                });
+                            })
                             .then(function (payload) {
-                                if (!payload || !payload.success || !payload.data || !Array.isArray(payload.data.items)) return;
+                                if (!payload || !payload.success) {
+                                    throw new Error(payload && payload.data && payload.data.message ? payload.data.message : 'resposta inválida do servidor');
+                                }
+                                if (!payload.data || !Array.isArray(payload.data.items)) {
+                                    throw new Error('progresso não encontrado');
+                                }
                                 if (!payload.data.items.length) return;
                                 items = payload.data.items;
                                 postIds = items.map(function (item) { return String(item.post_id); });
@@ -8631,7 +8657,11 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                                 window.clearInterval(timer);
                                 timer = null;
                             })
-                            .catch(function () {});
+                            .catch(function (error) {
+                                showPollingError(error && error.message ? error.message : 'falha de comunicação com o servidor');
+                                window.clearInterval(timer);
+                                timer = null;
+                            });
                     }
 
                     closeButton.addEventListener('click', function () { window.clearInterval(timer); timer = null; toast.style.display = 'none'; });
