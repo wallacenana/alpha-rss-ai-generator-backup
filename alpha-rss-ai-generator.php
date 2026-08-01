@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.33
+Version: 1.9.34
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.33';
+        const VERSION = '1.9.34';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -3808,7 +3808,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $body['prompt_cache_retention'] = $prompt_cache_retention;
             }
 
-            error_log("prompt: " . $prompt);
+            // error_log("prompt: " . $prompt);
             $response = wp_remote_post($use_responses_api ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions', array(
                 'timeout' => 240,
                 'headers' => array(
@@ -3860,7 +3860,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $text = trim((string) $data['choices'][0]['message']['content']);
             }
 
-            error_log("response: " . print_r($text, true));
+            // error_log("response: " . print_r($text, true));
             return self::parse_ai_json($text, $context);
         }
 
