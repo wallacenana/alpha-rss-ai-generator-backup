@@ -10,6 +10,12 @@ if (!defined('ALPHA_RSS_AI_GENERATOR_STYLE_PATH')) {
 if (!defined('ALPHA_RSS_AI_GENERATOR_STYLE_URL')) {
     define('ALPHA_RSS_AI_GENERATOR_STYLE_URL', plugin_dir_url(__FILE__) . 'assets/css/style.css');
 }
+if (!defined('ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_PATH')) {
+    define('ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_PATH', plugin_dir_path(__FILE__) . 'assets/css/review-card.css');
+}
+if (!defined('ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_URL')) {
+    define('ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_URL', plugin_dir_url(__FILE__) . 'assets/css/review-card.css');
+}
 
 if (!defined('ALPHA_RSS_AI_GENERATOR_SCRIPT_URL')) {
     define('ALPHA_RSS_AI_GENERATOR_SCRIPT_URL', plugin_dir_url(__FILE__) . 'assets/js/scripts.js');
@@ -76,3 +82,22 @@ if (!function_exists('alpha_rss_ai_generator_enqueue_assets')) {
 }
 
 add_action('admin_enqueue_scripts', 'alpha_rss_ai_generator_enqueue_assets');
+
+if (!function_exists('alpha_rss_ai_generator_enqueue_review_card_styles')) {
+    function alpha_rss_ai_generator_enqueue_review_card_styles() {
+        if (!file_exists(ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_PATH)) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'alpha-rss-ai-review-card',
+            ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_URL,
+            array(),
+            filemtime(ALPHA_RSS_AI_GENERATOR_REVIEW_STYLE_PATH)
+        );
+    }
+}
+
+add_action('wp_enqueue_scripts', 'alpha_rss_ai_generator_enqueue_review_card_styles');
+add_action('enqueue_block_assets', 'alpha_rss_ai_generator_enqueue_review_card_styles');
+add_action('enqueue_block_editor_assets', 'alpha_rss_ai_generator_enqueue_review_card_styles');

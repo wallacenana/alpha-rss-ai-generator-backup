@@ -1,0 +1,263 @@
+.rc-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    margin: 20px 0;
+}
+
+.rc-card {
+    width: 100%;
+    max-width: 900px;
+    background: #ffffff;
+    border: 2px solid #e5e7eb;
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+}
+
+.rc-badge {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+    color: white;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    padding: 8px;
+    text-align: center;
+}
+
+.rc-grid {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    padding: 25px;
+    align-items: center;
+}
+
+.rc-img-sec {
+    background: #f9fafb;
+    border-radius: 12px;
+    height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border: 1px solid #e5e7eb;
+}
+
+.d-none {
+    display: none;
+}
+
+.brand-name {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #9333ea;
+    letter-spacing: 0.05em;
+}
+
+.rc-rank {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: #9333ea;
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 12px;
+}
+
+.rc-svg {
+    width: 100%;
+    height: 100%;
+    max-height: 190px;
+    object-fit: contain;
+}
+
+.rc-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.rc-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rc-brand {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9333ea;
+    text-transform: uppercase;
+}
+
+.rc-tag-oficial {
+    font-size: 11px;
+    font-weight: 600;
+    background: #f3e8ff;
+    color: #6b21a8;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.rc-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0;
+}
+
+.rc-stars-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rc-stars {
+    color: #f59e0b;
+    font-size: 16px;
+    letter-spacing: 2px;
+}
+
+.rc-number {
+    font-size: 14px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.rc-gray {
+    color: #9ca3af;
+    font-weight: 400;
+}
+
+.rc-desc {
+    font-size: 13.5px;
+    color: #4b5563;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.rc-pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    border-top: 1px dashed #e5e7eb;
+    border-bottom: 1px dashed #e5e7eb;
+    padding: 12px 0;
+}
+
+.rc-pc-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rc-pc-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.rc-green {
+    color: #10b981;
+}
+
+.rc-red {
+    color: #ef4444;
+}
+
+.rc-pc-item {
+    font-size: 12px;
+    color: #4b5563;
+}
+
+.rc-price-cta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    margin-top: 5px;
+}
+
+.rc-price {
+    display: flex;
+    flex-direction: column;
+}
+
+.rc-old {
+    font-size: 11px;
+    color: #9ca3af;
+    text-decoration: line-through;
+}
+
+.rc-current {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111827;
+}
+
+.rc-inst {
+    font-size: 11px;
+    color: #4b5563;
+}
+
+.rc-btn {
+    background: linear-gradient(135deg, #9333ea, #7e22ce);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-decoration: none;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 10px rgba(147, 51, 234, 0.3);
+}
+
+.rc-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(147, 51, 234, 0.4);
+}
+
+.rc-container h3 {
+    margin-bottom: 0;
+    margin-top: 0;
+}
+
+.wp-block-table .has-fixed-layout td {
+    font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+    .rc-grid {
+        grid-template-columns: 1fr;
+        padding: 15px;
+    }
+
+    .rc-img-sec {
+        height: 180px;
+    }
+
+    .rc-price-cta {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+    }
+
+    .rc-btn {
+        text-align: center;
+    }
+}
