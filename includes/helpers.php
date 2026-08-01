@@ -813,9 +813,9 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($output) !== '' ? trim($output) : $content;
     }
 
-    public static function apply_humanized_bold_markup_to_content($content, $min_bolds = 2, $max_bolds = 4)
+    public static function apply_humanized_bold_markup_to_content($content, $min_bolds = 2, $max_bolds = 4, $focus_keyword = '')
     {
-        return self::apply_humanized_bold_markup_per_paragraph($content, $min_bolds, $max_bolds);
+        return self::apply_humanized_bold_markup_per_paragraph($content, $min_bolds, $max_bolds, $focus_keyword);
 
         $content = trim((string) $content);
         if ($content === '') {
@@ -929,7 +929,7 @@ class Alpha_RSS_AI_Generator_Helper
         return trim($output);
     }
 
-    protected static function apply_humanized_bold_markup_per_paragraph($content, $min_bolds = 2, $max_bolds = 4)
+    protected static function apply_humanized_bold_markup_per_paragraph($content, $min_bolds = 2, $max_bolds = 4, $focus_keyword = '')
     {
         $content = trim((string) $content);
         if ($content === '' || !class_exists('DOMDocument') || !class_exists('DOMXPath')) {
@@ -982,7 +982,49 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
 
-        if (empty($candidate_blocks)) {
+        $focus_keyword = trim((string) $focus_keyword);
+        $focus_block = null;
+        $focus_applied = false;
+        if ($focus_keyword !== '') {
+            for ($block_index = 0; $block_index < $blocks->length; $block_index++) {
+                $block = $blocks->item($block_index);
+                if (!$block || $xpath->query('.//strong', $block)->length > 0) {
+                    continue;
+                }
+
+                $text_nodes = $xpath->query($text_query, $block);
+                if (!$text_nodes || $text_nodes->length === 0) {
+                    continue;
+                }
+
+                for ($node_index = 0; $node_index < $text_nodes->length; $node_index++) {
+                    $node = $text_nodes->item($node_index);
+                    if (!$node || trim((string) $node->nodeValue) === '') {
+                        continue;
+                    }
+
+                    $replacement = self::build_focus_keyword_bold_markup_for_text(
+                        (string) $node->nodeValue,
+                        $focus_keyword
+                    );
+                    if (empty($replacement['html'])) {
+                        continue;
+                    }
+
+                    $fragment = $dom->createDocumentFragment();
+                    if (!$fragment->appendXML($replacement['html']) || !$node->parentNode) {
+                        continue;
+                    }
+
+                    $node->parentNode->replaceChild($fragment, $node);
+                    $focus_block = $block;
+                    $focus_applied = true;
+                    break 2;
+                }
+            }
+        }
+
+        if (empty($candidate_blocks) && !$focus_applied) {
             return $content;
         }
 
@@ -993,12 +1035,48 @@ class Alpha_RSS_AI_Generator_Helper
         $target_bolds = max($min_bolds, min($max_bolds, $target_bolds));
         $target_bolds = min($target_bolds, $block_count);
 
-        shuffle($candidate_blocks);
-        $applied = 0;
-        foreach ($candidate_blocks as $block) {
+        // Do not place highlights in adjacent paragraphs; the spacing makes
+        // the emphasis read like editorial guidance instead of decoration.
+        $block_indexes = $block_count > 0 ? range(0, $block_count - 1) : array();
+        shuffle($block_indexes);
+        $selected_block_indexes = array();
+        $focus_candidate_index = $focus_block !== null ? array_search($focus_block, $candidate_blocks, true) : false;
+        if ($focus_candidate_index !== false) {
+            $selected_block_indexes[] = intval($focus_candidate_index);
+        }
+        foreach ($block_indexes as $block_index) {
+            if (count($selected_block_indexes) >= $target_bolds) {
+                break;
+            }
+
+            if (in_array($block_index, $selected_block_indexes, true)) {
+                continue;
+            }
+
+            $has_adjacent_selection = false;
+            foreach ($selected_block_indexes as $selected_index) {
+                if (abs($selected_index - $block_index) <= 1) {
+                    $has_adjacent_selection = true;
+                    break;
+                }
+            }
+            if (!$has_adjacent_selection) {
+                $selected_block_indexes[] = $block_index;
+            }
+        }
+        sort($selected_block_indexes);
+
+        $applied = $focus_applied ? 1 : 0;
+        foreach ($selected_block_indexes as $selected_block_index) {
             if ($applied >= $target_bolds) {
                 break;
             }
+
+            if ($focus_candidate_index !== false && $selected_block_index === intval($focus_candidate_index)) {
+                continue;
+            }
+
+            $block = $candidate_blocks[$selected_block_index];
 
             $text_nodes = $xpath->query($text_query, $block);
             if (!$text_nodes || $text_nodes->length === 0) {
@@ -1049,6 +1127,34 @@ class Alpha_RSS_AI_Generator_Helper
         $output = preg_replace('/(<\/strong>)([\p{L}\p{N}])/u', '$1 $2', $output);
 
         return trim($output) !== '' ? trim($output) : $content;
+    }
+
+    protected static function build_focus_keyword_bold_markup_for_text($text, $focus_keyword)
+    {
+        $text = (string) $text;
+        $focus_keyword = trim((string) $focus_keyword);
+        if ($text === '' || $focus_keyword === '') {
+            return array();
+        }
+
+        $pattern = '/(?<![\p{L}\p{N}])' . preg_quote($focus_keyword, '/') . '(?![\p{L}\p{N}])/iu';
+        if (!preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE)) {
+            return array();
+        }
+
+        $offset = isset($match[0][1]) ? intval($match[0][1]) : -1;
+        $matched_text = isset($match[0][0]) ? (string) $match[0][0] : '';
+        if ($offset < 0 || $matched_text === '') {
+            return array();
+        }
+
+        $prefix = substr($text, 0, $offset);
+        $suffix = substr($text, $offset + strlen($matched_text));
+
+        return array(
+            'html' => esc_html($prefix) . '<strong>' . esc_html($matched_text) . '</strong>' . esc_html($suffix),
+            'phrase' => $matched_text,
+        );
     }
 
     protected static function build_humanized_bold_markup_for_text_v2($text)
@@ -1138,6 +1244,21 @@ class Alpha_RSS_AI_Generator_Helper
             'isso',
             'isto',
             'aquilo',
+            'como',
+            'assim',
+            'disso',
+            'desse',
+            'dessa',
+            'desses',
+            'dessas',
+            'deste',
+            'desta',
+            'destes',
+            'destas',
+            'daquele',
+            'daquela',
+            'daqueles',
+            'daquelas',
             'ser',
             'ter',
             'vai',
@@ -1177,22 +1298,14 @@ class Alpha_RSS_AI_Generator_Helper
             'from',
             'by',
         );
-        // A bold should communicate a complete concept, not a clipped word.
-        $sizes = array(4, 3, 2);
-        shuffle($sizes);
-
-        foreach ($sizes as $size) {
+        // Rank complete concepts instead of choosing a random word sequence.
+        $candidate_phrases = array();
+        foreach (array(4, 3, 2, 1) as $size) {
             if (count($words) < $size) {
                 continue;
             }
 
-            $starts = range(0, count($words) - $size);
-            shuffle($starts);
-            foreach ($starts as $start) {
-                if ($start === 0) {
-                    continue;
-                }
-
+            for ($start = 0; $start <= count($words) - $size; $start++) {
                 $slice = array_slice($words, $start, $size);
                 $first_word = $slice[0];
                 $last_word = $slice[count($slice) - 1];
@@ -1200,7 +1313,10 @@ class Alpha_RSS_AI_Generator_Helper
                 $last_normalized = (string) $last_word['normalized'];
                 $last_length = function_exists('mb_strlen') ? mb_strlen($last_normalized, 'UTF-8') : strlen($last_normalized);
 
-                // Never start or finish the bold with a filler word.
+                // Do not bold the first word or leave a sentence hanging on a filler word.
+                if (intval($first_word['offset']) <= strlen($leading_whitespace)) {
+                    continue;
+                }
                 if (in_array($first_normalized, $stopwords, true) || strlen($first_normalized) < 3) {
                     continue;
                 }
@@ -1208,36 +1324,88 @@ class Alpha_RSS_AI_Generator_Helper
                     continue;
                 }
 
-                $has_meaningful_word = false;
+                $meaningful_count = 0;
+                $stopword_count = 0;
+                $longest_word = 0;
+                $has_entity = false;
                 foreach ($slice as $word_item) {
                     $normalized_word = (string) $word_item['normalized'];
-                    if (strlen($normalized_word) >= 4 && !in_array($normalized_word, $stopwords, true)) {
-                        $has_meaningful_word = true;
-                        break;
+                    $word_length = function_exists('mb_strlen') ? mb_strlen($normalized_word, 'UTF-8') : strlen($normalized_word);
+                    if (in_array($normalized_word, $stopwords, true)) {
+                        $stopword_count++;
+                        continue;
+                    }
+                    if ($word_length >= 4) {
+                        $meaningful_count++;
+                    }
+                    $longest_word = max($longest_word, $word_length);
+                    if (preg_match('/^[\p{Lu}\d]/u', (string) $word_item['text'])) {
+                        $has_entity = true;
                     }
                 }
-                if (!$has_meaningful_word) {
+
+                if ($meaningful_count < 1 || $stopword_count >= $size) {
                     continue;
                 }
 
-                $start_offset = intval($slice[0]['offset']);
+                // Keep a short article with the concept instead of leaving
+                // an isolated "a" or "o" immediately before the bold.
+                $phrase_slice = $slice;
+                if ($start > 0) {
+                    $previous_word = $words[$start - 1];
+                    if (in_array((string) $previous_word['normalized'], array('a', 'o', 'as', 'os', 'um', 'uma'), true)
+                        && intval($previous_word['offset']) > strlen($leading_whitespace)) {
+                        array_unshift($phrase_slice, $previous_word);
+                    }
+                }
+
+                $start_offset = intval($phrase_slice[0]['offset']);
                 $last_slice_index = count($slice) - 1;
                 $end_offset = intval($slice[$last_slice_index]['offset']) + intval($slice[$last_slice_index]['length']);
-                $prefix = substr($text, 0, $start_offset);
                 $middle = substr($text, $start_offset, $end_offset - $start_offset);
-                $suffix = substr($text, $end_offset);
-                if ($middle === false || $middle === '') {
+                if ($middle === false || trim($middle) === '') {
+                    continue;
+                }
+                // A highlight must stay inside one sentence. Do not allow a
+                // phrase to join the end of one sentence to the next one.
+                if (preg_match('/[.!?;]/u', $middle)) {
                     continue;
                 }
 
-                return array(
-                    'html' => esc_html($leading_whitespace . $prefix) . '<strong>' . esc_html($middle) . '</strong>' . esc_html($suffix . $trailing_whitespace),
-                    'phrase' => trim(implode(' ', array_column($slice, 'text'))),
+                $score = ($meaningful_count * 10) + min(12, $longest_word) + ($has_entity ? 5 : 0);
+                $score -= ($stopword_count * 3);
+                if ($size === 2) {
+                    $score += 3;
+                } elseif ($size === 3) {
+                    $score += 2;
+                }
+
+                $candidate_phrases[] = array(
+                    'score' => $score,
+                    'start_offset' => $start_offset,
+                    'end_offset' => $end_offset,
+                    'middle' => $middle,
+                    'phrase' => trim(implode(' ', array_column($phrase_slice, 'text'))),
                 );
             }
         }
 
-        return array();
+        if (empty($candidate_phrases)) {
+            return array();
+        }
+
+        usort($candidate_phrases, static function ($left, $right) {
+            return intval($right['score']) <=> intval($left['score']);
+        });
+        $best_candidates = array_slice($candidate_phrases, 0, min(3, count($candidate_phrases)));
+        $selected = $best_candidates[function_exists('wp_rand') ? wp_rand(0, count($best_candidates) - 1) : 0];
+        $prefix = substr($text, 0, intval($selected['start_offset']));
+        $suffix = substr($text, intval($selected['end_offset']));
+
+        return array(
+            'html' => esc_html($leading_whitespace . $prefix) . '<strong>' . esc_html($selected['middle']) . '</strong>' . esc_html($suffix . $trailing_whitespace),
+            'phrase' => $selected['phrase'],
+        );
     }
 
     protected static function build_humanized_bold_markup_for_text($text)

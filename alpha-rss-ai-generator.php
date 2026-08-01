@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.37
+Version: 1.9.38
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -47,6 +47,7 @@ require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/global-filters.php';
 require_once __DIR__ . '/includes/thumbnail-helper.php';
+require_once __DIR__ . '/includes/pexels-media.php';
 require_once __DIR__ . '/includes/generated-posts.php';
 require_once __DIR__ . '/includes/content-plans.php';
 require_once __DIR__ . '/includes/link-suggestions.php';
@@ -58,7 +59,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.37';
+        const VERSION = '1.9.38';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -166,6 +167,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             self::maybe_upgrade_schema();
             if (class_exists('Alpha_RSS_AI_Generator_Updater')) {
                 new Alpha_RSS_AI_Generator_Updater(ALPHA_RSS_AI_GENERATOR_PLUGIN_FILE);
+            }
+            if (class_exists('Alpha_RSS_AI_Pexels_Media')) {
+                new Alpha_RSS_AI_Pexels_Media();
             }
             if (class_exists('Alpha_RSS_AI_Related_Posts')) {
                 new Alpha_RSS_AI_Related_Posts();
@@ -2778,7 +2782,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
 
             $cutoff = wp_date('Y-m-d H:i:s', time() - ($stale_minutes * MINUTE_IN_SECONDS), wp_timezone());
             $updated = $wpdb->query($wpdb->prepare(
-                "UPDATE {$tables['rows']} SET row_status = 'failed', error_message = %s, updated_at = %s WHERE list_id = %d AND row_status = 'processing' AND updated_at < %s",
+                "UPDATE {$tables['rows']} SET row_status = 'failed', error_message = %s, updated_at = %s WHERE list_id = %d AND row_status = 'processing' AND post_id = 0 AND updated_at < %s",
                 'Processamento interrompido antes da conclusao. O item pode ser tentado novamente.',
                 current_time('mysql'),
                 $list_id,
@@ -6760,6 +6764,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
 
             $tables = self::bulk_tables();
+            if ($post_id <= 0 && $status === 'failed') {
+                $post_id = intval($wpdb->get_var($wpdb->prepare(
+                    "SELECT post_id FROM {$tables['rows']} WHERE id = %d AND list_id = %d LIMIT 1",
+                    $row_id,
+                    $list_id
+                )));
+            }
             $data = array(
                 'row_status' => $status,
                 'post_id' => $post_id,
@@ -7298,6 +7309,13 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return 0;
             }
 
+            // Preserve the draft created before a later pipeline stage failed.
+            $existing_post_id = intval($wpdb->get_var($wpdb->prepare(
+                "SELECT post_id FROM " . self::$table_items . " WHERE generator_id = %d AND item_guid = %s LIMIT 1",
+                $generator_id,
+                $item_guid
+            )));
+
             return $wpdb->replace(
                 self::$table_items,
                 array(
@@ -7305,12 +7323,41 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     'item_guid' => $item_guid,
                     'item_permalink' => $item_permalink,
                     'item_title' => $item_title,
-                    'post_id' => 0,
+                    'post_id' => $existing_post_id,
                     'item_status' => 'failed',
                     'item_hash' => $item_hash,
                     'created_at' => current_time('mysql'),
                 ),
                 array('%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s')
+            );
+        }
+
+        /**
+         * Persist the placeholder post as soon as the staged pipeline creates it.
+         */
+        public static function link_processing_item_to_post($generator_id, $item, $post_id)
+        {
+            global $wpdb;
+            $generator_id = intval($generator_id);
+            $item_guid = isset($item['guid']) ? trim((string) $item['guid']) : '';
+            $post_id = intval($post_id);
+
+            if ($generator_id <= 0 || $item_guid === '' || $post_id <= 0) {
+                return false;
+            }
+
+            return false !== $wpdb->update(
+                self::$table_items,
+                array(
+                    'post_id' => $post_id,
+                    'item_status' => 'processing',
+                ),
+                array(
+                    'generator_id' => $generator_id,
+                    'item_guid' => $item_guid,
+                ),
+                array('%d', '%s'),
+                array('%d', '%s')
             );
         }
 
@@ -8805,6 +8852,17 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
             }
 
+            // Link the reserved item before the asynchronous AI stages start.
+            self::link_processing_item_to_post($generator['id'], $item, $post_id);
+            if (!empty($generator['list_id']) && !empty($item['guid'])) {
+                self::update_keyword_list_row_status_from_item(
+                    intval($generator['list_id']),
+                    $item['guid'],
+                    'processing',
+                    $post_id
+                );
+            }
+
             delete_post_meta($post_id, '_arc_generation_pipeline_error');
             update_post_meta($post_id, self::GENERATION_PIPELINE_META, array(
                 'stage' => 'planning',
@@ -9053,7 +9111,15 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             );
 
             if (!empty($article['content_html']) && !empty($generator['random_bolds_enabled'])) {
-                $article['content_html'] = Alpha_RSS_AI_Generator_Helper::apply_humanized_bold_markup_to_content($article['content_html']);
+                $focus_keyword = !empty($article['focus_keyword'])
+                    ? (string) $article['focus_keyword']
+                    : (!empty($article['palavra_chave_foco']) ? (string) $article['palavra_chave_foco'] : '');
+                $article['content_html'] = Alpha_RSS_AI_Generator_Helper::apply_humanized_bold_markup_to_content(
+                    $article['content_html'],
+                    2,
+                    4,
+                    $focus_keyword
+                );
             }
 
             $title_outline_count = Alpha_RSS_AI_Generator_Helper::extract_outline_target_h2_count_from_title(
