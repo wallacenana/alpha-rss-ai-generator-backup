@@ -54,6 +54,7 @@ require_once __DIR__ . '/includes/link-suggestions.php';
 require_once __DIR__ . '/includes/related-posts.php';
 require_once __DIR__ . '/includes/prompt-settings.php';
 require_once __DIR__ . '/includes/updater.php';
+require_once __DIR__ . '/includes/review-builder.php';
 
 if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
@@ -189,6 +190,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             }
             if (class_exists('Alpha_RSS_AI_Content_Plans')) {
                 new Alpha_RSS_AI_Content_Plans();
+            }
+            if (class_exists('Alpha_RSS_AI_Review_Builder')) {
+                new Alpha_RSS_AI_Review_Builder();
             }
             add_action('admin_menu', array($this, 'admin_menu'));
             add_action('admin_menu', array(new Alpha_RSS_AI_Generator_Admin(), 'admin_menu_late'), 999);

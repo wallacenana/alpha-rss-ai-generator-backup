@@ -6237,6 +6237,9 @@ class Alpha_RSS_AI_Generator_Helper
             'include_html' => false,
         ));
         $prompt = strtr($template, $replacements);
+        if (!empty($item['review_products_prompt'])) {
+            $prompt .= "\n\nDADOS DOS PRODUTOS DA REVIEW:\n" . trim((string) $item['review_products_prompt']);
+        }
         $prompt .= "\n\n";
         $prompt .= "\n\n" . Alpha_RSS_AI_Generator::get_prompt_output_suffix();
         $prompt .= "\n\n";
@@ -6320,6 +6323,9 @@ class Alpha_RSS_AI_Generator_Helper
             }
         }
         $source_outline_titles = self::build_source_outline_titles_for_prompt($item, 10);
+        $review_products_prompt = !empty($item['review_products_prompt'])
+            ? trim((string) $item['review_products_prompt'])
+            : '';
         $tavily_text = !empty($item['tavily_context']) && is_array($item['tavily_context'])
             ? self::format_tavily_context_for_prompt($item['tavily_context'])
             : '';
@@ -6420,6 +6426,8 @@ class Alpha_RSS_AI_Generator_Helper
             !empty($fact_lines) ? "Informacoes coletadas no planejamento:\n" . implode("\n", $fact_lines) : 'Informacoes coletadas no planejamento: [sem dados adicionais]',
             $source_outline_titles !== '' && $is_list_outline ? 'Itens da fonte, preserve a ordem:' . "\n" . $source_outline_titles : '',
             $tavily_text !== '' ? 'Informacoes adicionais coletadas pelo Tavily:' . "\n" . $tavily_text : '',
+            $review_products_prompt !== '' ? 'Dados fixos dos produtos da review. Use os placeholders exatamente como informados:' . "\n" . $review_products_prompt : '',
+            $review_products_prompt !== '' ? 'Review de produtos: organize uma secao para cada produto e indique no outline o placeholder correspondente. O redator deve usar {{prod1}}, {{prod2}} e assim por diante no ponto exato em que cada card deve aparecer.' : '',
             !$is_keyword_only && $source_html !== '' ? 'HTML filtrado da pagina de referencia:' . "\n" . $source_html : '',
         );
 
@@ -6675,6 +6683,9 @@ class Alpha_RSS_AI_Generator_Helper
         if (!empty($generator['source_type']) && sanitize_key((string) $generator['source_type']) === 'keyword_list' && !empty($item['tavily_context']) && is_array($item['tavily_context'])) {
             $tavily_context_text = self::format_tavily_context_for_prompt($item['tavily_context']);
         }
+        $review_products_prompt = !empty($item['review_products_prompt'])
+            ? trim((string) $item['review_products_prompt'])
+            : '';
         $generator_editorial_context = self::get_generator_editorial_context($generator);
 
         $hidden_context = array(
@@ -6737,6 +6748,11 @@ class Alpha_RSS_AI_Generator_Helper
             $hidden_context[] = '{{outline_text}}';
             $hidden_context[] = 'Siga este esboco na ordem apresentada. A primeira secao e a introducao sem H2; desenvolva as secoes H2/H3 indicadas; termine pela secao de conclusao. Nao substitua o esboco por uma estrutura generica.';
         }
+        if ($review_products_prompt !== '') {
+            $hidden_context[] = 'DADOS FIXOS DOS PRODUTOS DA REVIEW:';
+            $hidden_context[] = '{{review_products_prompt}}';
+            $hidden_context[] = 'REVIEW COM CARDS: no ponto em que cada produto deve aparecer, escreva somente o placeholder correspondente, como {{prod1}}. Nao crie HTML de card, nao invente dados e nao troque a ordem dos produtos. Use cada placeholder no maximo uma vez.';
+        }
         if ($tavily_context_text !== '') {
             $hidden_context[] = 'Pesquisa factual auxiliar do Tavily. Use apenas como apoio factual e nao invente informacoes fora dela:';
             $hidden_context[] = $tavily_context_text;
@@ -6798,6 +6814,7 @@ class Alpha_RSS_AI_Generator_Helper
             '{{outline_model_text}}' => $outline_model_text,
             '{{outline_text}}' => $outline_text,
             '{{key_facts}}' => $key_facts_text,
+            '{{review_products_prompt}}' => $review_products_prompt,
         );
 
         $prompt = strtr($template, $replacements);
@@ -6977,6 +6994,14 @@ class Alpha_RSS_AI_Generator_Helper
 
         $item = !empty($planning['item']) && is_array($planning['item']) ? $planning['item'] : (is_array($item) ? $item : array());
         $outline_context = !empty($planning['outline_context']) && is_array($planning['outline_context']) ? $planning['outline_context'] : array();
+        if (!empty($item['review_products_prompt'])) {
+            // Reviews de produtos usam o modelo review mesmo que a analise
+            // geral encontre uma estrutura parecida com artigo ou lista.
+            $outline_context['content_type'] = 'review';
+            $outline_context['recommended_prompt_model_key'] = 'review';
+            $outline_context['recommended_outline_model_key'] = 'guide_long';
+            $outline_context['outline_model_key'] = 'guide_long';
+        }
         $seo_stage = self::generate_seo_article_stage($generator, $item, $outline_context);
         if (is_wp_error($seo_stage)) {
             return $seo_stage;
