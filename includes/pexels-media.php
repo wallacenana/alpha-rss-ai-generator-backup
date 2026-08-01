@@ -40,7 +40,7 @@ if (!class_exists('Alpha_RSS_AI_Pexels_Media')) {
             $response = wp_remote_get(add_query_arg(array(
                 'query' => $query,
                 'page' => $page,
-                'per_page' => 20,
+                'per_page' => 6,
                 'orientation' => 'landscape',
             ), 'https://api.pexels.com/v1/search'), array(
                 'timeout' => 20,

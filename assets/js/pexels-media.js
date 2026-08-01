@@ -209,8 +209,11 @@
 
             frame.alphaRssAiPexelsAttached = true;
             frame.on('router:render:browse', addPexelsRoute);
-            frame.on('content:render:alpha-rss-ai-pexels', function (content) {
-                content.view = new PexelsView({ controller: frame }).render();
+            frame.on('content:render:alpha-rss-ai-pexels', function () {
+                var view = new PexelsView({ controller: frame }).render();
+                if (frame.content && frame.content.set) {
+                    frame.content.set(view);
+                }
             });
 
             // A frame can already have a router when the plugin loads.
