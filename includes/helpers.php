@@ -6790,6 +6790,13 @@ class Alpha_RSS_AI_Generator_Helper
             return $content_article;
         }
 
+        if (!is_array($content_article) || trim((string) ($content_article['content_html'] ?? '')) === '') {
+            return new WP_Error(
+                'arc_content_response_invalid',
+                'A resposta da OpenAI nao trouxe content_html valido para a etapa de conteudo.'
+            );
+        }
+
         return $content_article;
     }
 

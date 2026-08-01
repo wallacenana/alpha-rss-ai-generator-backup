@@ -1569,6 +1569,17 @@ class Alpha_RSS_AI_Generator_Admin
                             if (!payload.items || !payload.items.length) {
                                 if (manualRunEmpty) {
                                     manualRunEmpty.classList.remove('hidden');
+                                    var listCounts = payload.list_counts || {};
+                                    var pendingCount = parseInt(listCounts.pending_rows || 0, 10) || 0;
+                                    var processingCount = parseInt(listCounts.processing_rows || 0, 10) || 0;
+                                    var failedCount = parseInt(listCounts.failed_rows || 0, 10) || 0;
+                                    if (pendingCount > 0) {
+                                        manualRunEmpty.textContent = 'Existem ' + pendingCount + ' item(ns) pendente(s), mas nenhum passou pelos filtros atuais.';
+                                    } else if (processingCount > 0 || failedCount > 0) {
+                                        manualRunEmpty.textContent = 'Nao ha itens pendentes. ' + processingCount + ' em processamento e ' + failedCount + ' com falha.';
+                                    } else {
+                                        manualRunEmpty.textContent = 'Nenhum item pendente. Todos os itens elegiveis ja foram processados.';
+                                    }
                                 }
                             }
                             if (manualRunCount) {
@@ -3133,7 +3144,7 @@ class Alpha_RSS_AI_Generator_Admin
                             }
                             var rows = result.payload.rows || [];
                             var pendingKeywords = rows.filter(function(row) {
-                                return !row || row.row_status !== 'generated';
+                                return row && row.row_status === 'pending';
                             }).map(function(row) {
                                 return row && row.keyword ? row.keyword : (row && row.row_data && row.row_data.keyword ? row.row_data.keyword : '');
                             }).filter(function(keyword) {

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Alpha RSS AI Generator
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.35
+Version: 1.9.36
 Author: Wallace Tavares e Codex
 License: GPLv2 or later
 */
@@ -58,7 +58,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Alpha_RSS_AI_Generator
     {
-        const VERSION = '1.9.35';
+        const VERSION = '1.9.36';
         const DB_VERSION = '1.8.4';
         const CRON_HOOK = 'alpha_rss_ai_generator_tick';
         const STAGED_GENERATION_HOOK = 'alpha_rss_ai_generator_generation_stage';
@@ -6856,6 +6856,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 }
 
                 $list = self::get_keyword_list(intval($generator['list_id']));
+                $list_counts = self::bulk_get_list_counts(intval($generator['list_id']));
 
                 return rest_ensure_response(array(
                     'success' => true,
@@ -6869,6 +6870,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                     ),
                     'available_count' => count($available_items),
                     'fetched_count' => count($items),
+                    'list_counts' => $list_counts,
                     'items' => $available_items,
                 ));
             }
@@ -10036,14 +10038,9 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 return new WP_Error('arc_missing_generator', 'Gerador não encontrado.');
             }
 
+            // A lista selecionada e uma fonte compartilhada. Duplicar o gerador
+            // nao deve criar uma nova lista nem reiniciar suas linhas.
             $duplicated_list_id = !empty($generator['list_id']) ? intval($generator['list_id']) : 0;
-            if (!empty($generator['source_type']) && self::source_type_uses_keyword_list($generator['source_type']) && $duplicated_list_id > 0) {
-                $duplicated_list_name = !empty($generator['name']) ? $generator['name'] . ' copy' : '';
-                $duplicated_list_id = self::duplicate_keyword_list($duplicated_list_id, $duplicated_list_name);
-                if (is_wp_error($duplicated_list_id)) {
-                    return $duplicated_list_id;
-                }
-            }
 
             $duplicated = array(
                 'name' => $generator['name'] . ' copy',
