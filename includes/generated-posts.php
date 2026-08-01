@@ -201,9 +201,11 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
             $link_selector_class = !empty($generator['link_selector_class'])
                 ? sanitize_text_field((string) $generator['link_selector_class'])
                 : (string) get_post_meta($post_id, '_arc_source_link_selector_class', true);
-            $content_image_size = !empty($generator['content_image_size'])
-                ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
-                : Alpha_RSS_AI_Generator::normalize_image_display_size((string) get_post_meta($post_id, '_arc_content_image_size', true));
+            $content_image_size_generator = $generator;
+            if (empty($content_image_size_generator['content_image_size'])) {
+                $content_image_size_generator['content_image_size'] = (string) get_post_meta($post_id, '_arc_content_image_size', true);
+            }
+            $content_image_size = Alpha_RSS_AI_Generator::get_content_image_size_for_generator($content_image_size_generator);
             $content_selector = !empty($generator['content_selector'])
                 ? sanitize_text_field((string) $generator['content_selector'])
                 : (string) get_post_meta($post_id, '_arc_content_selector', true);
@@ -337,9 +339,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                     }
                 }
             }
-            $content_image_size = !empty($generator['content_image_size'])
-                ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
-                : 'medium';
+            $content_image_size = Alpha_RSS_AI_Generator::get_content_image_size_for_generator($generator);
             $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
             $is_keyword_list = Alpha_RSS_AI_Generator::source_type_uses_keyword_list($source_type);
             $is_keyword_list_url_reference = Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator);
@@ -390,9 +390,7 @@ if (!class_exists('Alpha_RSS_AI_Generated_Posts')) {
                 $content_media_sections = Alpha_RSS_AI_Generator::resolve_content_image_sections_for_generation($item, $generator, $article);
             }
             if (!empty($content_media_sections) && is_array($content_media_sections)) {
-                $content_image_size = !empty($generator['content_image_size'])
-                    ? Alpha_RSS_AI_Generator::normalize_image_display_size((string) $generator['content_image_size'])
-                    : 'medium';
+                $content_image_size = Alpha_RSS_AI_Generator::get_content_image_size_for_generator($generator);
                 $existing_image_map = array();
                 if ($content_html !== '') {
                     $existing_image_map = Alpha_RSS_AI_Generator_Helper::extract_outline_section_image_map_from_content($content_html);

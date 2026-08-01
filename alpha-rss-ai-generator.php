@@ -2127,7 +2127,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             $generator['image_selector_class'] = isset($generator['image_selector_class']) ? sanitize_text_field((string) $generator['image_selector_class']) : '';
             $generator['link_selector_class'] = isset($generator['link_selector_class']) ? sanitize_text_field((string) $generator['link_selector_class']) : '';
             $generator['content_selector'] = isset($generator['content_selector']) ? sanitize_text_field((string) $generator['content_selector']) : '';
-            $generator['content_image_size'] = isset($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
+            $generator['content_image_size'] = self::get_content_image_size_for_generator($generator);
             $generator['content_image_interval_words'] = isset($generator['content_image_interval_words'])
                 ? max(100, min(5000, intval($generator['content_image_interval_words'])))
                 : 500;
@@ -5970,6 +5970,25 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
             return $size;
         }
 
+        /**
+         * Resolve the content image size for the active generator.
+         * List-backed generators do not expose the RSS size control, so use
+         * a readable default instead of the database column default.
+         */
+        public static function get_content_image_size_for_generator($generator)
+        {
+            $generator = is_array($generator) ? $generator : array();
+            $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+            $generation_mode = !empty($generator['generation_mode']) ? sanitize_key((string) $generator['generation_mode']) : '';
+            if ($generation_mode === 'satellite' || self::source_type_uses_keyword_list($source_type)) {
+                return 'medium_large';
+            }
+
+            return !empty($generator['content_image_size'])
+                ? self::normalize_image_display_size($generator['content_image_size'])
+                : 'medium';
+        }
+
         public static function download_image_attachment_from_url($post_id, $image_url, $title, $source_label = 'source', $query = '', $credit = '')
         {
             $post_id = intval($post_id);
@@ -7905,7 +7924,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 update_post_meta($post_id, '_arc_content_selector', sanitize_text_field($generator['content_selector']));
             }
             if (!empty($generator['content_image_size'])) {
-                update_post_meta($post_id, '_arc_content_image_size', self::normalize_image_display_size((string) $generator['content_image_size']));
+                update_post_meta($post_id, '_arc_content_image_size', self::get_content_image_size_for_generator($generator));
             }
             if (!empty($item['source_page_title'])) {
                 update_post_meta($post_id, '_arc_source_page_title', sanitize_text_field($item['source_page_title']));
@@ -9111,7 +9130,7 @@ if (!class_exists('Alpha_RSS_AI_Generator')) {
                 $content_media_sections = self::resolve_content_image_sections_for_generation($item, $generator, $article);
             }
             if (!empty($content_media_sections) && is_array($content_media_sections)) {
-                $content_image_size = !empty($generator['content_image_size']) ? self::normalize_image_display_size((string) $generator['content_image_size']) : 'medium';
+                $content_image_size = self::get_content_image_size_for_generator($generator);
                 $use_source_content_images = self::generator_uses_source_content_images($generator);
                 $use_source_content_links = self::generator_uses_source_content_links($generator);
                 $existing_image_map = array();
