@@ -1,9 +1,9 @@
 {
   "name": "Content Rank",
   "slug": "content-rank",
-  "version": "1.9.41",
+  "version": "1.9.42",
   "homepage": "http://content-rank.com/",
-  "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
+  "download_url": "https://github.com/wallacenana/content-rank/archive/refs/heads/main.zip",
   "requires": "6.0",
   "tested": "7.0.2", 
   "requires_php": "7.4",
