@@ -19,6 +19,7 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             add_filter('site_transient_update_plugins', array($this, 'inject_update_data'));
             add_filter('plugins_api', array($this, 'plugins_api'), 20, 3);
             add_filter('upgrader_source_selection', array($this, 'normalize_package_source'), 10, 4);
+            add_filter('upgrader_source_selection', array($this, 'recover_package_validation'), 99, 4);
             add_filter('upgrader_pre_install', array($this, 'log_pre_install'), 10, 2);
             add_filter('upgrader_post_install', array($this, 'log_post_install'), 10, 3);
             add_filter('upgrader_install_package_result', array($this, 'log_install_result'), 10, 2);
@@ -75,6 +76,56 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
                 'content_rank_update_folder',
                 'Não foi possível preparar a pasta do pacote Content Rank para atualização.'
             );
+        }
+
+        public function recover_package_validation($source, $remote_source, $upgrader, $hook_extra)
+        {
+            if (!$this->is_target_update($hook_extra) || !is_wp_error($source) || $source->get_error_code() !== 'incompatible_archive_no_plugins') {
+                return $source;
+            }
+
+            global $wp_filesystem;
+            if (!is_object($wp_filesystem)) {
+                error_log('[content-rank-updater] package_validation_recovery skipped | filesystem=none');
+                return $source;
+            }
+
+            $remote_source = untrailingslashit((string) $remote_source);
+            $entries = $wp_filesystem->dirlist($remote_source);
+            if (!is_array($entries)) {
+                error_log('[content-rank-updater] package_validation_recovery failed | remote_source=' . $remote_source . ' | reason=dirlist');
+                return $source;
+            }
+
+            foreach ($entries as $entry_name => $entry) {
+                if (!is_array($entry) || (isset($entry['type']) && $entry['type'] !== 'd')) {
+                    continue;
+                }
+
+                $candidate = trailingslashit($remote_source) . trim((string) $entry_name, '/');
+                $working_directory = str_replace(
+                    $wp_filesystem->wp_content_dir(),
+                    trailingslashit(WP_CONTENT_DIR),
+                    trailingslashit($candidate)
+                );
+                $plugin_files = glob($working_directory . '*.php');
+                if (!is_array($plugin_files)) {
+                    continue;
+                }
+
+                foreach ($plugin_files as $plugin_file) {
+                    $plugin_data = get_plugin_data($plugin_file, false, false);
+                    if (empty($plugin_data['Name'])) {
+                        continue;
+                    }
+
+                    error_log('[content-rank-updater] package_validation_recovered | source=' . $candidate . ' | plugin_file=' . $plugin_file . ' | plugin_name=' . $plugin_data['Name']);
+                    return trailingslashit($candidate);
+                }
+            }
+
+            error_log('[content-rank-updater] package_validation_recovery failed | remote_source=' . $remote_source . ' | reason=no_plugin_header');
+            return $source;
         }
 
         public function log_pre_install($response, $hook_extra)
