@@ -42,7 +42,13 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
                 return $source;
             }
 
-            $target = trailingslashit($remote_source) . 'content-rank';
+            // Some WordPress versions pass the extracted directory itself as
+            // remote_source. In that case the target must be its sibling,
+            // not a directory inside the source being moved.
+            $target_base = $source === $remote_source
+                ? dirname($remote_source)
+                : $remote_source;
+            $target = trailingslashit($target_base) . 'content-rank';
             global $wp_filesystem;
             if (is_object($wp_filesystem) && $wp_filesystem->move($source, $target, true)) {
                 return $target;

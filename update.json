@@ -1,7 +1,7 @@
 {
   "name": "Content Rank",
   "slug": "content-rank",
-  "version": "1.9.43",
+  "version": "1.9.44",
   "homepage": "http://content-rank.com/",
   "download_url": "https://github.com/wallacenana/content-rank/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -12,7 +12,7 @@
   "last_updated": "2026-08-02",
   "sections": {
     "description": "Atualizacao via GitHub para o plugin Content Rank.",
-  "changelog": "<ul><li>Thumbnails do Pexels agora exigem no minimo 1200x675 e proporcao compativel com 16:9.</li><li>O fluxo usa a imagem original do Pexels e tenta outros candidatos quando uma imagem e rejeitada.</li></ul>",
+  "changelog": "<ul><li>Thumbnails do Pexels agora exigem no minimo 1200x675 e proporcao compativel com 16:9.</li><li>Corrigida a instalacao do pacote ZIP do GitHub em diferentes versoes do WordPress.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote e distribuido a partir do branch main do repositorio.",
     "screenshots": ""
