@@ -2,7 +2,7 @@
 /*
 Plugin Name: Content Rank
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.42
+Version: 1.9.43
 Author: Wallace Tavares e Codex
 Plugin URI: http://content-rank.com/
 License: GPLv2 or later
@@ -35,7 +35,7 @@ if (!defined('CONTENT_RANK_GENERATOR_UPDATE_ENABLED')) {
     define('CONTENT_RANK_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/content-rank/main/update.json?v=1.9.42');
+    define('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/content-rank/main/update.json?v=1.9.43');
 }
 
 $content_rank_autoload_file = CONTENT_RANK_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -62,8 +62,12 @@ if (!class_exists('Content_Rank_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Content_Rank_Generator
     {
-        const VERSION = '1.9.42';
+        const VERSION = '1.9.43';
         const DB_VERSION = '1.8.4';
+        const FEATURED_IMAGE_MIN_WIDTH = 1200;
+        const FEATURED_IMAGE_MIN_HEIGHT = 675;
+        const FEATURED_IMAGE_TARGET_RATIO = 1.7777777778;
+        const FEATURED_IMAGE_RATIO_TOLERANCE = 0.12;
         const CRON_HOOK = 'content_rank_tick';
         const STAGED_GENERATION_HOOK = 'content_rank_generation_stage';
         const GENERATION_PIPELINE_META = '_content_rank_generation_pipeline';
@@ -6127,6 +6131,19 @@ if (!class_exists('Content_Rank_Generator')) {
             return $size;
         }
 
+        public static function is_valid_featured_image_dimensions($width, $height)
+        {
+            $width = absint($width);
+            $height = absint($height);
+            if ($width < self::FEATURED_IMAGE_MIN_WIDTH || $height < self::FEATURED_IMAGE_MIN_HEIGHT) {
+                return false;
+            }
+
+            $ratio = $height > 0 ? ($width / $height) : 0;
+            return $ratio > 0
+                && abs($ratio - self::FEATURED_IMAGE_TARGET_RATIO) <= self::FEATURED_IMAGE_RATIO_TOLERANCE;
+        }
+
         /**
          * Resolve the content image size for the active generator.
          * List-backed generators do not expose the RSS size control, so use
@@ -6206,6 +6223,24 @@ if (!class_exists('Content_Rank_Generator')) {
                     'error' => $tmp->get_error_message(),
                 ));
                 return false;
+            }
+
+            if (sanitize_key((string) $source_label) === 'pexels') {
+                $dimensions = @getimagesize($tmp);
+                $width = is_array($dimensions) && isset($dimensions[0]) ? absint($dimensions[0]) : 0;
+                $height = is_array($dimensions) && isset($dimensions[1]) ? absint($dimensions[1]) : 0;
+                if (!self::is_valid_featured_image_dimensions($width, $height)) {
+                    self::log_image_debug('pexels_thumbnail_rejected_dimensions', array(
+                        'post_id' => $post_id,
+                        'image_url' => $image_url,
+                        'width' => $width,
+                        'height' => $height,
+                        'min_width' => self::FEATURED_IMAGE_MIN_WIDTH,
+                        'min_height' => self::FEATURED_IMAGE_MIN_HEIGHT,
+                    ));
+                    wp_delete_file($tmp);
+                    return false;
+                }
             }
 
             $file_array = array(
@@ -8457,7 +8492,10 @@ if (!class_exists('Content_Rank_Generator')) {
                     return false;
                 }
 
-                return !empty($photo['src']['large']) || !empty($photo['src']['original']);
+                $width = !empty($photo['width']) ? absint($photo['width']) : 0;
+                $height = !empty($photo['height']) ? absint($photo['height']) : 0;
+                return Content_Rank_Generator::is_valid_featured_image_dimensions($width, $height)
+                    && (!empty($photo['src']['original']) || !empty($photo['src']['large2x']) || !empty($photo['src']['large']));
             }));
 
             if (empty($photos)) {
@@ -8469,45 +8507,50 @@ if (!class_exists('Content_Rank_Generator')) {
                 return false;
             }
 
-            $photo_index = 0;
-            if (count($photos) > 1) {
-                $photo_index = function_exists('wp_rand')
-                    ? wp_rand(0, count($photos) - 1)
-                    : random_int(0, count($photos) - 1);
-            }
-            $photo = $photos[$photo_index];
-            $image_url = '';
-            if (!empty($photo['src']['large'])) {
-                $image_url = $photo['src']['large'];
-            } elseif (!empty($photo['src']['original'])) {
-                $image_url = $photo['src']['original'];
-            }
+            $photo_count = count($photos);
+            $start_index = $photo_count > 1
+                ? (function_exists('wp_rand') ? wp_rand(0, $photo_count - 1) : random_int(0, $photo_count - 1))
+                : 0;
+            for ($attempt = 0; $attempt < $photo_count; $attempt++) {
+                $photo_index = ($start_index + $attempt) % $photo_count;
+                $photo = $photos[$photo_index];
+                $image_url = !empty($photo['src']['original'])
+                    ? $photo['src']['original']
+                    : (!empty($photo['src']['large2x']) ? $photo['src']['large2x'] : $photo['src']['large']);
+                if ($image_url === '') {
+                    continue;
+                }
 
-            if ($image_url === '') {
-                self::log_image_debug('pexels_no_image_url', array(
+                self::log_image_debug('pexels_image_selected', array(
                     'post_id' => intval($post_id),
                     'query' => $query,
+                    'image_url' => $image_url,
+                    'photo_index' => $photo_index,
+                    'photo_count' => $photo_count,
+                    'width' => !empty($photo['width']) ? absint($photo['width']) : 0,
+                    'height' => !empty($photo['height']) ? absint($photo['height']) : 0,
+                    'photographer' => !empty($photo['photographer']) ? $photo['photographer'] : '',
                 ));
-                return false;
+
+                $attachment_id = self::download_and_set_featured_image_from_url(
+                    $post_id,
+                    $image_url,
+                    $article['title'],
+                    'pexels',
+                    $query,
+                    !empty($photo['photographer']) ? sanitize_text_field($photo['photographer']) : ''
+                );
+                if (!is_wp_error($attachment_id) && intval($attachment_id) > 0) {
+                    return intval($attachment_id);
+                }
             }
 
-            self::log_image_debug('pexels_image_selected', array(
+            self::log_image_debug('pexels_all_candidates_rejected', array(
                 'post_id' => intval($post_id),
                 'query' => $query,
-                'image_url' => $image_url,
-                'photo_index' => $photo_index,
-                'photo_count' => count($photos),
-                'photographer' => !empty($photo['photographer']) ? $photo['photographer'] : '',
+                'photo_count' => $photo_count,
             ));
-
-            return self::download_and_set_featured_image_from_url(
-                $post_id,
-                $image_url,
-                $article['title'],
-                'pexels',
-                $query,
-                !empty($photo['photographer']) ? sanitize_text_field($photo['photographer']) : ''
-            );
+            return false;
         }
 
         public static function build_dalle_prompt($generator, $item, $article)

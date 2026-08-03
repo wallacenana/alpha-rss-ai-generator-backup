@@ -66,12 +66,18 @@ if (!class_exists('Content_Rank_Pexels_Media')) {
                         continue;
                     }
 
+                    $width = !empty($photo['width']) ? absint($photo['width']) : 0;
+                    $height = !empty($photo['height']) ? absint($photo['height']) : 0;
+                    if (!Content_Rank_Generator::is_valid_featured_image_dimensions($width, $height)) {
+                        continue;
+                    }
+
                     $preview_url = !empty($photo['src']['medium'])
                         ? (string) $photo['src']['medium']
                         : (!empty($photo['src']['small']) ? (string) $photo['src']['small'] : '');
-                    $image_url = !empty($photo['src']['large'])
-                        ? (string) $photo['src']['large']
-                        : (!empty($photo['src']['original']) ? (string) $photo['src']['original'] : '');
+                    $image_url = !empty($photo['src']['original'])
+                        ? (string) $photo['src']['original']
+                        : (!empty($photo['src']['large2x']) ? (string) $photo['src']['large2x'] : (!empty($photo['src']['large']) ? (string) $photo['src']['large'] : ''));
                     if ($preview_url === '' || $image_url === '') {
                         continue;
                     }
