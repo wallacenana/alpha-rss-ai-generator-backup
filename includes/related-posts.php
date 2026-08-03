@@ -4,15 +4,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
-    final class Alpha_RSS_AI_Related_Posts
+if (!class_exists('Content_Rank_Related_Posts')) {
+    final class Content_Rank_Related_Posts
     {
-        public const OPTION_KEY = 'alpha_rss_ai_related_posts_settings';
+        public const OPTION_KEY = 'content_rank_related_posts_settings';
 
         public function __construct()
         {
             add_action('admin_menu', array($this, 'admin_menu'), 20);
-            add_action('admin_post_arc_save_related_posts_settings', array($this, 'handle_save_settings'));
+            add_action('admin_post_content_rank_save_related_posts_settings', array($this, 'handle_save_settings'));
             add_filter('the_content', array($this, 'filter_the_content'), 8);
         }
 
@@ -27,7 +27,7 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
                 'related_posts_same_category_only' => 1,
                 'related_posts_allow_fallback' => 1,
                 'related_posts_style' => 'list',
-                'related_posts_phrases' => Alpha_RSS_AI_Generator::get_default_related_posts_phrases(),
+                'related_posts_phrases' => Content_Rank_Generator::get_default_related_posts_phrases(),
             );
         }
 
@@ -72,11 +72,11 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
         public function admin_menu()
         {
             add_submenu_page(
-                'alpha-rss-ai-generator',
+                'content-rank',
                 'Sugestões de posts',
                 'Sugestões de posts',
                 'manage_options',
-                'alpha-rss-ai-related-posts',
+                'content-rank-related-posts',
                 array($this, 'render_page')
             );
         }
@@ -87,15 +87,15 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
                 wp_die('Acesso negado.');
             }
 
-            check_admin_referer('arc_save_related_posts_settings', 'arc_related_posts_nonce');
+            check_admin_referer('content_rank_save_related_posts_settings', 'content_rank_related_posts_nonce');
 
             $raw = isset($_POST) ? wp_unslash($_POST) : array();
             $settings = self::normalize_settings($raw);
             update_option(self::OPTION_KEY, $settings, false);
 
             wp_safe_redirect(add_query_arg(array(
-                'page' => 'alpha-rss-ai-related-posts',
-                'arc_notice' => 'saved',
+                'page' => 'content-rank-related-posts',
+                'content_rank_notice' => 'saved',
             ), admin_url('admin.php')));
             exit;
         }
@@ -111,7 +111,7 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
             }
 
             $settings = self::get_settings();
-            $saved = isset($_GET['arc_notice']) && sanitize_key(wp_unslash($_GET['arc_notice'])) === 'saved';
+            $saved = isset($_GET['content_rank_notice']) && sanitize_key(wp_unslash($_GET['content_rank_notice'])) === 'saved';
             ?>
             <script>
                 window.tailwind = window.tailwind || {};
@@ -126,11 +126,11 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
                 };
             </script>
             <script src="https://cdn.tailwindcss.com"></script>
-            <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
-                <h1 class="screen-reader-text">Alpha RSS AI</h1>
+            <div class="wrap content-rank-wrap min-h-screen bg-slate-100 text-slate-900">
+                <h1 class="screen-reader-text">Content Rank</h1>
                 <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
+                        <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Content Rank</div>
                         <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Sugestões de posts</h1>
                         <p class="mt-2 max-w-3xl text-sm text-slate-600">Configure frases, posição e estilo para inserir posts relacionados no conteúdo gerado.</p>
                     </div>
@@ -146,8 +146,8 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
                         <p class="mt-1 text-sm text-slate-500">Essas regras valem para os conteúdos gerados pelo plugin e não dependem do gerador individual.</p>
                     </div>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="space-y-6 px-6 py-6">
-                        <?php wp_nonce_field('arc_save_related_posts_settings', 'arc_related_posts_nonce'); ?>
-                        <input type="hidden" name="action" value="arc_save_related_posts_settings" />
+                        <?php wp_nonce_field('content_rank_save_related_posts_settings', 'content_rank_related_posts_nonce'); ?>
+                        <input type="hidden" name="action" value="content_rank_save_related_posts_settings" />
 
                         <div class="grid gap-4 md:grid-cols-2">
                             <div>
@@ -203,7 +203,7 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
 
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Frases do marcador</label>
-                            <textarea name="related_posts_phrases" rows="5" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Você também pode gostar de:\nLeia também:\nVeja também:"><?php echo esc_textarea(isset($settings['related_posts_phrases']) ? $settings['related_posts_phrases'] : Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
+                            <textarea name="related_posts_phrases" rows="5" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Você também pode gostar de:\nLeia também:\nVeja também:"><?php echo esc_textarea(isset($settings['related_posts_phrases']) ? $settings['related_posts_phrases'] : Content_Rank_Generator::get_default_related_posts_phrases()); ?></textarea>
                             <p class="mt-1 text-xs text-slate-500">Uma frase por linha. O sistema escolhe uma delas em cada bloco de sugestão.</p>
                         </div>
 
@@ -240,7 +240,7 @@ if (!class_exists('Alpha_RSS_AI_Related_Posts')) {
                 return $content;
             }
 
-            $filtered_content = Alpha_RSS_AI_Generator_Helper::inject_related_posts_into_content($content, intval($post->ID), $settings);
+            $filtered_content = Content_Rank_Generator_Helper::inject_related_posts_into_content($content, intval($post->ID), $settings);
             return $filtered_content !== '' ? $filtered_content : $content;
         }
     }

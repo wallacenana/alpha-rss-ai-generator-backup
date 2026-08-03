@@ -4,34 +4,34 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
-    final class Alpha_RSS_AI_Link_Suggestions
+if (!class_exists('Content_Rank_Link_Suggestions')) {
+    final class Content_Rank_Link_Suggestions
     {
-        public const PAGE_SLUG = 'alpha-rss-ai-link-suggestions';
+        public const PAGE_SLUG = 'content-rank-link-suggestions';
 
-        private const META_JSON = '_arc_link_suggestions_json';
-        private const META_GENERATED_AT = '_arc_link_suggestions_generated_at';
-        private const META_SOURCE_POST_ID = '_arc_link_suggestions_source_post_id';
-        private const META_CUSTOM_PROMPT = '_arc_link_suggestions_custom_prompt';
-        private const META_REQUESTED_COUNT = '_arc_link_suggestions_requested_count';
-        private const META_APPLIED_AT = '_arc_link_suggestions_applied_at';
-        private const META_APPLIED_COUNT = '_arc_link_suggestions_applied_count';
+        private const META_JSON = '_content_rank_link_suggestions_json';
+        private const META_GENERATED_AT = '_content_rank_link_suggestions_generated_at';
+        private const META_SOURCE_POST_ID = '_content_rank_link_suggestions_source_post_id';
+        private const META_CUSTOM_PROMPT = '_content_rank_link_suggestions_custom_prompt';
+        private const META_REQUESTED_COUNT = '_content_rank_link_suggestions_requested_count';
+        private const META_APPLIED_AT = '_content_rank_link_suggestions_applied_at';
+        private const META_APPLIED_COUNT = '_content_rank_link_suggestions_applied_count';
         private const MAX_SOURCE_WORDS = 1000;
         private const MAX_TARGET_POSTS = 25;
 
         public function __construct()
         {
             add_action('admin_menu', array($this, 'admin_menu'), 22);
-            add_action('wp_ajax_arc_link_suggestions_search_posts', array($this, 'ajax_search_posts'));
-            add_action('admin_post_arc_generate_link_suggestions', array($this, 'handle_generate_link_suggestions'));
-            add_action('admin_post_arc_apply_link_suggestions', array($this, 'handle_apply_link_suggestions'));
-            add_action('admin_post_arc_clear_link_suggestions', array($this, 'handle_clear_link_suggestions'));
+            add_action('wp_ajax_content_rank_link_suggestions_search_posts', array($this, 'ajax_search_posts'));
+            add_action('admin_post_content_rank_generate_link_suggestions', array($this, 'handle_generate_link_suggestions'));
+            add_action('admin_post_content_rank_apply_link_suggestions', array($this, 'handle_apply_link_suggestions'));
+            add_action('admin_post_content_rank_clear_link_suggestions', array($this, 'handle_clear_link_suggestions'));
         }
 
         public function admin_menu()
         {
             add_submenu_page(
-                'alpha-rss-ai-generator',
+                'content-rank',
                 'Sugestões de links',
                 'Sugestões de links',
                 'manage_options',
@@ -39,7 +39,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 array($this, 'render_page')
             );
 
-            remove_submenu_page('alpha-rss-ai-generator', self::PAGE_SLUG);
+            remove_submenu_page('content-rank', self::PAGE_SLUG);
         }
 
         public function register_row_action_filters()
@@ -69,7 +69,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 return $actions;
             }
 
-            $actions['alpha_rss_ai_link_suggestions'] = '<a href="' . esc_url($url) . '" aria-label="Lincagem automática" title="Lincagem automática">Lincagem automática</a>';
+            $actions['content_rank_link_suggestions'] = '<a href="' . esc_url($url) . '" aria-label="Lincagem automática" title="Lincagem automática">Lincagem automática</a>';
             return $actions;
         }
 
@@ -120,13 +120,13 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             libxml_use_internal_errors(true);
             $dom = new DOMDocument('1.0', 'UTF-8');
-            $loaded = @$dom->loadHTML('<?xml encoding="utf-8" ?><div id="arc-link-source-root">' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            $loaded = @$dom->loadHTML('<?xml encoding="utf-8" ?><div id="content-rank-link-source-root">' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
             if (!$loaded) {
                 return self::normalize_plain_text(wp_strip_all_tags($html));
             }
 
             $xpath = new DOMXPath($dom);
-            $root = $dom->getElementById('arc-link-source-root');
+            $root = $dom->getElementById('content-rank-link-source-root');
             if (!$root) {
                 return self::normalize_plain_text(wp_strip_all_tags($html));
             }
@@ -321,7 +321,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
         private static function get_default_generator_context()
         {
-            $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+            $settings = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_settings() : array();
 
             return array(
                 'id' => 0,
@@ -330,8 +330,8 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 'model' => !empty($settings['default_model']) ? (string) $settings['default_model'] : '',
                 'temperature' => isset($settings['default_temperature']) ? floatval($settings['default_temperature']) : 0.4,
                 'max_tokens' => isset($settings['default_max_tokens']) ? max(512, intval($settings['default_max_tokens'])) : 2000,
-                'generation_language' => class_exists('Alpha_RSS_AI_Generator')
-                    ? Alpha_RSS_AI_Generator::get_default_generation_language()
+                'generation_language' => class_exists('Content_Rank_Generator')
+                    ? Content_Rank_Generator::get_default_generation_language()
                     : get_bloginfo('language'),
             );
         }
@@ -341,13 +341,13 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $post_id = intval($post_id);
             $post = $post_id > 0 ? get_post($post_id) : null;
             if (!$post instanceof WP_Post) {
-                return new WP_Error('arc_link_suggestions_post_missing', 'Post não encontrado.');
+                return new WP_Error('content_rank_link_suggestions_post_missing', 'Post não encontrado.');
             }
 
             $generator = array();
-            $generator_id = intval(get_post_meta($post_id, '_arc_generator_id', true));
-            if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
-                $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
+            $generator_id = intval(get_post_meta($post_id, '_content_rank_generator_id', true));
+            if ($generator_id > 0 && class_exists('Content_Rank_Generator')) {
+                $generator = Content_Rank_Generator::get_generator($generator_id);
             }
             if (empty($generator) || !is_array($generator)) {
                 $generator = self::get_default_generator_context();
@@ -488,7 +488,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 wp_send_json_error(array('message' => 'Permissao negada.'), 403);
             }
 
-            check_ajax_referer('arc_link_suggestions_posts_search', 'nonce');
+            check_ajax_referer('content_rank_link_suggestions_posts_search', 'nonce');
 
             $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
             $page = isset($_POST['page']) ? intval($_POST['page']) : 1;
@@ -505,7 +505,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $post_title = isset($item['title']) ? self::normalize_plain_text($item['title']) : '';
             $post_type = isset($item['post_type']) ? self::normalize_plain_text($item['post_type']) : 'post';
             $is_active = $selected_post_id > 0 && $post_id === intval($selected_post_id);
-            $button = '<button type="button" class="arc-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200' . ($is_active ? ' border-indigo-500 bg-indigo-50' : ' border-slate-200 bg-white hover:bg-slate-50') . '" data-post-id="' . esc_attr($post_id) . '" data-post-title="' . esc_attr($post_title) . '" data-post-type="' . esc_attr($post_type) . '" aria-pressed="' . ($is_active ? 'true' : 'false') . '">';
+            $button = '<button type="button" class="content-rank-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200' . ($is_active ? ' border-indigo-500 bg-indigo-50' : ' border-slate-200 bg-white hover:bg-slate-50') . '" data-post-id="' . esc_attr($post_id) . '" data-post-title="' . esc_attr($post_title) . '" data-post-type="' . esc_attr($post_type) . '" aria-pressed="' . ($is_active ? 'true' : 'false') . '">';
             $button .= '<div class="font-medium text-slate-900">' . esc_html(isset($item['label']) && $item['label'] !== '' ? $item['label'] : (isset($item['title']) ? $item['title'] : 'Post')) . '</div>';
             $button .= '<div class="mt-1 text-xs text-slate-500">ID ' . esc_html($post_id) . ' · ' . esc_html($post_type) . '</div>';
             $button .= '</button>';
@@ -520,23 +520,23 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $selected_meta = $selected_post instanceof WP_Post ? 'ID ' . intval($selected_post_id) : '';
             $button_label = $selected_title !== '' ? $selected_title : 'Selecionar post';
 
-            $search_nonce = wp_create_nonce('arc_link_suggestions_posts_search');
+            $search_nonce = wp_create_nonce('content_rank_link_suggestions_posts_search');
             $initial = self::query_picker_posts('', 1, 10);
             $has_more = !empty($initial['has_more']);
             $items = !empty($initial['items']) && is_array($initial['items']) ? $initial['items'] : array();
 
-            echo '<div id="arc-link-picker" class="relative space-y-3" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr($search_nonce) . '" data-per-page="10" data-current-page="1" data-has-more="' . ($has_more ? '1' : '0') . '" data-selected-title="' . esc_attr($selected_title) . '" data-selected-meta="' . esc_attr($selected_meta) . '">';
-            echo '<input type="hidden" name="source_post_id" id="arc-link-picker-value" value="' . esc_attr($selected_post_id) . '" />';
-            echo '<button type="button" id="arc-link-picker-toggle" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false">';
-            echo '<span id="arc-link-picker-label">' . esc_html($button_label) . '</span>';
+            echo '<div id="content-rank-link-picker" class="relative space-y-3" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr($search_nonce) . '" data-per-page="10" data-current-page="1" data-has-more="' . ($has_more ? '1' : '0') . '" data-selected-title="' . esc_attr($selected_title) . '" data-selected-meta="' . esc_attr($selected_meta) . '">';
+            echo '<input type="hidden" name="source_post_id" id="content-rank-link-picker-value" value="' . esc_attr($selected_post_id) . '" />';
+            echo '<button type="button" id="content-rank-link-picker-toggle" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false">';
+            echo '<span id="content-rank-link-picker-label">' . esc_html($button_label) . '</span>';
             echo '<svg class="h-4 w-4 shrink-0 text-slate-400 transition" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             echo '</button>';
-            echo '<div id="arc-link-picker-menu" class="absolute left-0 right-0 top-full z-20 mt-2 hidden rounded-2xl border border-slate-200 bg-white shadow-soft">';
+            echo '<div id="content-rank-link-picker-menu" class="absolute left-0 right-0 top-full z-20 mt-2 hidden rounded-2xl border border-slate-200 bg-white shadow-soft">';
             echo '<div class="flex items-center gap-2 border-b border-slate-200 p-3">';
-            echo '<input id="arc-link-picker-search" type="search" class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Buscar post..." autocomplete="off" />';
-            echo '<button type="button" id="arc-link-picker-search-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Buscar</button>';
+            echo '<input id="content-rank-link-picker-search" type="search" class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Buscar post..." autocomplete="off" />';
+            echo '<button type="button" id="content-rank-link-picker-search-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Buscar</button>';
             echo '</div>';
-            echo '<div id="arc-link-picker-results" class="max-h-80 space-y-2 overflow-y-auto p-3 pr-1">';
+            echo '<div id="content-rank-link-picker-results" class="max-h-80 space-y-2 overflow-y-auto p-3 pr-1">';
             if (!empty($items)) {
                 foreach ($items as $item) {
                     echo self::render_picker_post_button($item, $selected_post_id);
@@ -544,8 +544,8 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             }
             echo '</div>';
             echo '<div class="border-t border-slate-200 p-3">';
-            echo '<button type="button" id="arc-link-picker-load-more" class="' . ($has_more ? '' : 'hidden ') . 'inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Carregar mais</button>';
-            echo '<p id="arc-link-picker-empty" class="hidden px-1 pt-2 text-sm text-slate-500">Nenhum post encontrado.</p>';
+            echo '<button type="button" id="content-rank-link-picker-load-more" class="' . ($has_more ? '' : 'hidden ') . 'inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Carregar mais</button>';
+            echo '<p id="content-rank-link-picker-empty" class="hidden px-1 pt-2 text-sm text-slate-500">Nenhum post encontrado.</p>';
             echo '</div>';
             echo '</div>';
             echo '</div>';
@@ -1019,7 +1019,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
         private static function render_notice()
         {
-            $notice = self::get_request_param('arc_notice', '');
+            $notice = self::get_request_param('content_rank_notice', '');
             if ($notice === '') {
                 return;
             }
@@ -1028,15 +1028,15 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $message = '';
 
             if ($notice === 'generated') {
-                $count = intval(self::get_request_param('arc_count', 0));
+                $count = intval(self::get_request_param('content_rank_count', 0));
                 $message = $count > 0 ? sprintf('Sugestões geradas com sucesso. %d item(s) pronto(s) para aplicar.', $count) : 'Sugestões geradas com sucesso.';
             } elseif ($notice === 'applied') {
-                $count = intval(self::get_request_param('arc_count', 0));
+                $count = intval(self::get_request_param('content_rank_count', 0));
                 $message = $count > 0 ? sprintf('Links aplicados com sucesso. %d link(s) inserido(s).', $count) : 'Links aplicados com sucesso.';
             } elseif ($notice === 'cleared') {
                 $message = 'Sugestões removidas.';
             } elseif ($notice === 'error') {
-                $message = self::get_request_param('arc_message', 'Não foi possivel concluir a operacao.');
+                $message = self::get_request_param('content_rank_message', 'Não foi possivel concluir a operacao.');
                 $class = 'notice-error';
             }
 
@@ -1106,7 +1106,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 wp_die('Permissao negada.');
             }
 
-            check_admin_referer('arc_generate_link_suggestions', 'arc_link_suggestions_nonce');
+            check_admin_referer('content_rank_generate_link_suggestions', 'content_rank_link_suggestions_nonce');
             self::lift_execution_time_limit(300);
 
             $post_id = isset($_POST['source_post_id']) ? intval($_POST['source_post_id']) : 0;
@@ -1126,7 +1126,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $candidates = $context['candidates'];
 
             $prompt = self::build_link_suggestion_prompt($source, $candidates, $requested_count, $custom_prompt);
-            $response = Alpha_RSS_AI_Generator::request_openai_json($generator, $prompt, array(
+            $response = Content_Rank_Generator::request_openai_json($generator, $prompt, array(
                 'stage' => 'link_suggestions',
                 'source_type' => 'post',
                 'item_guid' => !empty($source['id']) ? 'post:' . intval($source['id']) : '',
@@ -1170,7 +1170,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             $this->redirect_with_notice('generated', 'success', array(
                 'post_id' => $post_id,
-                'arc_count' => count($normalized['suggestions']),
+                'content_rank_count' => count($normalized['suggestions']),
             ));
         }
 
@@ -1180,7 +1180,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 wp_die('Permissao negada.');
             }
 
-            check_admin_referer('arc_apply_link_suggestions', 'arc_link_suggestions_nonce');
+            check_admin_referer('content_rank_apply_link_suggestions', 'content_rank_link_suggestions_nonce');
 
             $post_id = isset($_POST['source_post_id']) ? intval($_POST['source_post_id']) : 0;
             if ($post_id <= 0) {
@@ -1215,7 +1215,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $generator['internal_links_json'] = wp_json_encode($rules, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $generator['internal_links_count'] = count($rules);
 
-            $updated_content = Alpha_RSS_AI_Generator_Helper::apply_internal_links_to_content(
+            $updated_content = Content_Rank_Generator_Helper::apply_internal_links_to_content(
                 $content,
                 $generator,
                 array(
@@ -1245,7 +1245,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             $this->redirect_with_notice('applied', 'success', array(
                 'post_id' => $post_id,
-                'arc_count' => count($rules),
+                'content_rank_count' => count($rules),
             ));
         }
 
@@ -1254,7 +1254,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $post_id = intval($post_id);
             $post = $post_id > 0 ? get_post($post_id) : null;
             if (!$post instanceof WP_Post) {
-                return new WP_Error('arc_link_suggestions_post_missing', 'Post não encontrado.');
+                return new WP_Error('content_rank_link_suggestions_post_missing', 'Post não encontrado.');
             }
 
             self::lift_execution_time_limit(300);
@@ -1311,7 +1311,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 'linkable_text' => $source_linkable_text,
             );
             $prompt = self::build_link_suggestion_prompt($source, $candidates, $requested_count, $custom_prompt);
-            $response = Alpha_RSS_AI_Generator::request_openai_json($generator, $prompt, array(
+            $response = Content_Rank_Generator::request_openai_json($generator, $prompt, array(
                 'stage' => 'link_suggestions',
                 'source_type' => 'post',
                 'item_guid' => 'post:' . $post_id,
@@ -1364,7 +1364,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $working_generator['internal_links_json'] = wp_json_encode($rules, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $working_generator['internal_links_count'] = count($rules);
 
-            $updated_content = Alpha_RSS_AI_Generator_Helper::apply_internal_links_to_content(
+            $updated_content = Content_Rank_Generator_Helper::apply_internal_links_to_content(
                 $content_html,
                 $working_generator,
                 array(
@@ -1398,7 +1398,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 wp_die('Permissao negada.');
             }
 
-            check_admin_referer('arc_clear_link_suggestions', 'arc_link_suggestions_nonce');
+            check_admin_referer('content_rank_clear_link_suggestions', 'content_rank_link_suggestions_nonce');
 
             $post_id = isset($_POST['source_post_id']) ? intval($_POST['source_post_id']) : 0;
             if ($post_id > 0) {
@@ -1420,8 +1420,8 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
         {
             $url = add_query_arg(array_merge(array(
                 'page' => self::PAGE_SLUG,
-                'arc_notice' => $message,
-                'arc_notice_type' => $type,
+                'content_rank_notice' => $message,
+                'content_rank_notice_type' => $type,
             ), $extra), admin_url('admin.php'));
 
             wp_safe_redirect($url);
@@ -1436,10 +1436,10 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
             $post_type = $selected_post instanceof WP_Post && !empty($selected_post->post_type) ? $selected_post->post_type : 'post';
             $hidden_class = $selected_post instanceof WP_Post ? '' : ' hidden';
 
-            $html = '<div id="arc-link-selected-card" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm' . esc_attr($hidden_class) . '">';
+            $html = '<div id="content-rank-link-selected-card" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm' . esc_attr($hidden_class) . '">';
             $html .= '<div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Post selecionado</div>';
-            $html .= '<div id="arc-link-selected-title" class="mt-2 text-base font-semibold text-slate-950">' . esc_html($title) . '</div>';
-            $html .= '<div id="arc-link-selected-meta" class="mt-1 text-sm text-slate-500">' . ($selected_post instanceof WP_Post ? 'ID ' . esc_html($selected_post_id) . ' · ' . esc_html($post_type) : '') . '</div>';
+            $html .= '<div id="content-rank-link-selected-title" class="mt-2 text-base font-semibold text-slate-950">' . esc_html($title) . '</div>';
+            $html .= '<div id="content-rank-link-selected-meta" class="mt-1 text-sm text-slate-500">' . ($selected_post instanceof WP_Post ? 'ID ' . esc_html($selected_post_id) . ' · ' . esc_html($post_type) : '') . '</div>';
             $html .= '</div>';
 
             return $html;
@@ -1488,10 +1488,10 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                 };
             </script>
             <script src="https://cdn.tailwindcss.com"></script>
-            <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
-                <h1 class="screen-reader-text">Alpha RSS AI</h1>
+            <div class="wrap content-rank-wrap min-h-screen bg-slate-100 text-slate-900">
+                <h1 class="screen-reader-text">Content Rank</h1>
                 <div class="mb-6">
-                    <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Alpha RSS AI</div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Content Rank</div>
                     <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Sugestões de links</h1>
                 </div>
 
@@ -1512,11 +1512,11 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                                 <?php echo self::render_selected_card($selected_post_id); ?>
                             </div>
 
-                            <div id="arc-link-options" class="mt-5 space-y-4 <?php echo $selected_post instanceof WP_Post ? '' : 'hidden'; ?>">
+                            <div id="content-rank-link-options" class="mt-5 space-y-4 <?php echo $selected_post instanceof WP_Post ? '' : 'hidden'; ?>">
                                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="space-y-4">
-                                    <?php wp_nonce_field('arc_generate_link_suggestions', 'arc_link_suggestions_nonce'); ?>
-                                    <input type="hidden" name="action" value="arc_generate_link_suggestions" />
-                                    <input type="hidden" name="source_post_id" id="arc-link-picker-value-form" value="<?php echo esc_attr($selected_post_id); ?>" />
+                                    <?php wp_nonce_field('content_rank_generate_link_suggestions', 'content_rank_link_suggestions_nonce'); ?>
+                                    <input type="hidden" name="action" value="content_rank_generate_link_suggestions" />
+                                    <input type="hidden" name="source_post_id" id="content-rank-link-picker-value-form" value="<?php echo esc_attr($selected_post_id); ?>" />
 
                                     <div>
                                         <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Qtd. links</label>
@@ -1533,20 +1533,20 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                                         </div>
                                     </details>
 
-                                    <button type="submit" id="arc-link-generate-button" <?php echo $selected_post instanceof WP_Post ? '' : 'disabled="disabled"'; ?> class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500 <?php echo $selected_post instanceof WP_Post ? '' : 'opacity-50 cursor-not-allowed'; ?>">Gerar sugestões</button>
+                                    <button type="submit" id="content-rank-link-generate-button" <?php echo $selected_post instanceof WP_Post ? '' : 'disabled="disabled"'; ?> class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-emerald-500 <?php echo $selected_post instanceof WP_Post ? '' : 'opacity-50 cursor-not-allowed'; ?>">Gerar sugestões</button>
                                 </form>
 
                                 <?php if (!empty($plan) && !empty($plan['suggestions']) && is_array($plan['suggestions'])): ?>
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                                        <?php wp_nonce_field('arc_apply_link_suggestions', 'arc_link_suggestions_nonce'); ?>
-                                        <input type="hidden" name="action" value="arc_apply_link_suggestions" />
+                                        <?php wp_nonce_field('content_rank_apply_link_suggestions', 'content_rank_link_suggestions_nonce'); ?>
+                                        <input type="hidden" name="action" value="content_rank_apply_link_suggestions" />
                                         <input type="hidden" name="source_post_id" value="<?php echo esc_attr($selected_post_id); ?>" />
                                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-slate-800">Aplicar links</button>
                                     </form>
 
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mt-3" data-swal-confirm="Remover as sugestoes salvas deste post?">
-                                        <?php wp_nonce_field('arc_clear_link_suggestions', 'arc_link_suggestions_nonce'); ?>
-                                        <input type="hidden" name="action" value="arc_clear_link_suggestions" />
+                                        <?php wp_nonce_field('content_rank_clear_link_suggestions', 'content_rank_link_suggestions_nonce'); ?>
+                                        <input type="hidden" name="action" value="content_rank_clear_link_suggestions" />
                                         <input type="hidden" name="source_post_id" value="<?php echo esc_attr($selected_post_id); ?>" />
                                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100">Limpar sugestões</button>
                                     </form>
@@ -1563,21 +1563,21 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
             <script>
                 (function () {
-                    const picker = document.getElementById('arc-link-picker');
-                    const optionsWrap = document.getElementById('arc-link-options');
-                    const toggleButton = document.getElementById('arc-link-picker-toggle');
-                    const labelNode = document.getElementById('arc-link-picker-label');
-                    const menu = document.getElementById('arc-link-picker-menu');
-                    const searchInput = document.getElementById('arc-link-picker-search');
-                    const searchButton = document.getElementById('arc-link-picker-search-btn');
-                    const results = document.getElementById('arc-link-picker-results');
-                    const loadMoreButton = document.getElementById('arc-link-picker-load-more');
-                    const emptyState = document.getElementById('arc-link-picker-empty');
-                    const generateButton = document.getElementById('arc-link-generate-button');
-                    const valueInputs = document.querySelectorAll('input[name="source_post_id"], #arc-link-picker-value-form');
-                    const selectedCard = document.getElementById('arc-link-selected-card');
-                    const selectedTitle = document.getElementById('arc-link-selected-title');
-                    const selectedMeta = document.getElementById('arc-link-selected-meta');
+                    const picker = document.getElementById('content-rank-link-picker');
+                    const optionsWrap = document.getElementById('content-rank-link-options');
+                    const toggleButton = document.getElementById('content-rank-link-picker-toggle');
+                    const labelNode = document.getElementById('content-rank-link-picker-label');
+                    const menu = document.getElementById('content-rank-link-picker-menu');
+                    const searchInput = document.getElementById('content-rank-link-picker-search');
+                    const searchButton = document.getElementById('content-rank-link-picker-search-btn');
+                    const results = document.getElementById('content-rank-link-picker-results');
+                    const loadMoreButton = document.getElementById('content-rank-link-picker-load-more');
+                    const emptyState = document.getElementById('content-rank-link-picker-empty');
+                    const generateButton = document.getElementById('content-rank-link-generate-button');
+                    const valueInputs = document.querySelectorAll('input[name="source_post_id"], #content-rank-link-picker-value-form');
+                    const selectedCard = document.getElementById('content-rank-link-selected-card');
+                    const selectedTitle = document.getElementById('content-rank-link-selected-title');
+                    const selectedMeta = document.getElementById('content-rank-link-selected-meta');
                     const ajaxUrl = picker ? picker.dataset.ajaxUrl : '';
                     const nonce = picker ? picker.dataset.nonce : '';
                     const perPage = picker ? parseInt(picker.dataset.perPage || '10', 10) : 10;
@@ -1638,7 +1638,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                     };
 
                     const syncActiveButtons = () => {
-                        const buttons = results.querySelectorAll('.arc-link-picker-item');
+                        const buttons = results.querySelectorAll('.content-rank-link-picker-item');
                         buttons.forEach((button) => {
                             const buttonId = parseInt(button.dataset.postId || '0', 10) || 0;
                             const active = selectedPostId > 0 && buttonId === selectedPostId;
@@ -1652,7 +1652,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
 
                     if (results) {
                         results.addEventListener('click', (event) => {
-                            const button = event.target.closest('.arc-link-picker-item');
+                            const button = event.target.closest('.content-rank-link-picker-item');
                             if (!button || !results.contains(button)) {
                                 return;
                             }
@@ -1689,7 +1689,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                     const renderButton = (item) => {
                         const button = document.createElement('button');
                         button.type = 'button';
-                        button.className = 'arc-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
+                        button.className = 'content-rank-link-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
                         button.dataset.postId = item.id;
                         button.dataset.postTitle = item.title || '';
                         button.dataset.postType = item.post_type || 'post';
@@ -1738,7 +1738,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
                                 },
                                 body: new URLSearchParams({
-                                    action: 'arc_link_suggestions_search_posts',
+                                    action: 'content_rank_link_suggestions_search_posts',
                                     nonce: nonce,
                                     search: search,
                                     page: String(page),
@@ -1825,7 +1825,7 @@ if (!class_exists('Alpha_RSS_AI_Link_Suggestions')) {
                     }
 
                     setLoadMoreState();
-                    setEmptyState(results.querySelectorAll('.arc-link-picker-item').length === 0);
+                    setEmptyState(results.querySelectorAll('.content-rank-link-picker-item').length === 0);
                     syncActiveButtons();
 
                     if (toggleButton) {

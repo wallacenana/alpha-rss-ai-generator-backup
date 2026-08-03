@@ -1,5 +1,5 @@
 (function () {
-    var arcConfig = window.AlphaRssAiGenerator || {};
+    var arcConfig = window.ContentRankGenerator || {};
     var generators = Array.isArray(arcConfig.generators) ? arcConfig.generators : [];
     var defaults = arcConfig.defaults || {
         generator_id: '',
@@ -52,31 +52,31 @@
         keyword_prompt_template: ''
     };
     var editId = parseInt(arcConfig.editId || 0, 10) || 0;
-    var settingsModal = document.getElementById('arc-settings-modal');
-    var settingsBackdrop = document.getElementById('arc-settings-backdrop');
-    var runsModal = document.getElementById('arc-runs-modal');
-    var runsBackdrop = document.getElementById('arc-runs-backdrop');
-    var generatorImportModal = document.getElementById('arc-generator-import-modal');
-    var generatorImportBackdrop = document.getElementById('arc-generator-import-backdrop');
-    var manualRunModal = document.getElementById('arc-manual-run-modal');
-    var manualRunBackdrop = document.getElementById('arc-manual-run-backdrop');
-    var manualRunTitle = document.getElementById('arc-manual-run-title');
-    var manualRunSubtitle = document.getElementById('arc-manual-run-subtitle');
-    var manualRunCount = document.getElementById('arc-manual-run-count');
-    var manualRunRefresh = document.getElementById('arc-manual-run-refresh');
-    var manualRunStatus = document.getElementById('arc-manual-run-status');
-    var manualRunLoading = document.getElementById('arc-manual-run-loading');
-    var manualRunEmpty = document.getElementById('arc-manual-run-empty');
-    var manualRunList = document.getElementById('arc-manual-run-list');
-    var manualRunForm = document.getElementById('arc-manual-run-form');
-    var modal = document.getElementById('arc-generator-modal');
-    var backdrop = document.getElementById('arc-generator-backdrop');
-    var form = document.getElementById('arc-generator-form');
+    var settingsModal = document.getElementById('content-rank-settings-modal');
+    var settingsBackdrop = document.getElementById('content-rank-settings-backdrop');
+    var runsModal = document.getElementById('content-rank-runs-modal');
+    var runsBackdrop = document.getElementById('content-rank-runs-backdrop');
+    var generatorImportModal = document.getElementById('content-rank-generator-import-modal');
+    var generatorImportBackdrop = document.getElementById('content-rank-generator-import-backdrop');
+    var manualRunModal = document.getElementById('content-rank-manual-run-modal');
+    var manualRunBackdrop = document.getElementById('content-rank-manual-run-backdrop');
+    var manualRunTitle = document.getElementById('content-rank-manual-run-title');
+    var manualRunSubtitle = document.getElementById('content-rank-manual-run-subtitle');
+    var manualRunCount = document.getElementById('content-rank-manual-run-count');
+    var manualRunRefresh = document.getElementById('content-rank-manual-run-refresh');
+    var manualRunStatus = document.getElementById('content-rank-manual-run-status');
+    var manualRunLoading = document.getElementById('content-rank-manual-run-loading');
+    var manualRunEmpty = document.getElementById('content-rank-manual-run-empty');
+    var manualRunList = document.getElementById('content-rank-manual-run-list');
+    var manualRunForm = document.getElementById('content-rank-manual-run-form');
+    var modal = document.getElementById('content-rank-generator-modal');
+    var backdrop = document.getElementById('content-rank-generator-backdrop');
+    var form = document.getElementById('content-rank-generator-form');
     if (!form) {
         return;
     }
-    var titleEl = document.getElementById('arc-generator-modal-title');
-    var submitEl = document.getElementById('arc-generator-submit');
+    var titleEl = document.getElementById('content-rank-generator-modal-title');
+    var submitEl = document.getElementById('content-rank-generator-submit');
     var feedUrlField = form.querySelector('[data-feed-url-field]');
     var listIdField = form.querySelector('[data-list-id-field]');
     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
@@ -87,6 +87,7 @@
     var imageSelectorField = form.querySelector('[data-rss-image-selector-field]');
     var linkSelectorField = form.querySelector('[data-rss-link-selector-field]');
     var imageSizeField = form.querySelector('[data-rss-image-size-field]');
+    var imageIntervalField = form.querySelector('[data-rss-image-interval-field]');
     var linkPhrasesField = form.querySelector('[data-rss-link-phrases-field]');
     var sourceFiltersField = form.querySelector('[data-rss-source-filters-field]');
     var apiBase = arcConfig.apiBase || '';
@@ -362,6 +363,9 @@
         if (imageSizeField) {
             imageSizeField.classList.toggle('hidden', !showSourceMediaControls || !useSourceContentImages);
         }
+        if (imageIntervalField) {
+            imageIntervalField.classList.toggle('hidden', isSatelliteMode || !isListSource);
+        }
         if (linkPhrasesField) {
             linkPhrasesField.classList.toggle('hidden', !showSourceMediaControls || !useSourceContentLinks);
         }
@@ -433,7 +437,7 @@
     }
 
     function getSwalBridge() {
-        return window.AlphaRssAiGeneratorSwal || null;
+        return window.ContentRankGeneratorSwal || null;
     }
 
     function showSwalLoading(title, text) {
@@ -568,7 +572,7 @@
 
     function submitManualRunItem(itemGuid) {
         var generatorId = String(manualRunCurrentGeneratorId || '');
-        if (!generatorId || !itemGuid || manualRunGenerating || window.AlphaRssAiGeneratorManualRunInFlight) {
+        if (!generatorId || !itemGuid || manualRunGenerating || window.ContentRankGeneratorManualRunInFlight) {
             return;
         }
         if (!apiBase) {
@@ -577,10 +581,10 @@
         }
 
         manualRunGenerating = true;
-        window.AlphaRssAiGeneratorManualRunInFlight = true;
+        window.ContentRankGeneratorManualRunInFlight = true;
         setManualRunStatus('Gerando item selecionado...', 'warning');
-        if (window.AlphaRssAiGenerationToast && typeof window.AlphaRssAiGenerationToast.start === 'function') {
-            window.AlphaRssAiGenerationToast.start([], 'Gerando item selecionado...');
+        if (window.ContentRankGenerationToast && typeof window.ContentRankGenerationToast.start === 'function') {
+            window.ContentRankGenerationToast.start([], 'Gerando item selecionado...');
         }
         showSwalLoading('Gerando item...', 'Aguarde enquanto o post e criado.');
 
@@ -619,8 +623,8 @@
             var viewLink = String(payload.view_link || payload.permalink || '');
             var editLink = String(payload.edit_link || '');
             var itemTitle = String(payload.item_title || '');
-            if (window.AlphaRssAiGenerationToast && typeof window.AlphaRssAiGenerationToast.start === 'function') {
-                window.AlphaRssAiGenerationToast.start(payload.post_id ? [payload.post_id] : [], itemTitle || 'Geração iniciada');
+            if (window.ContentRankGenerationToast && typeof window.ContentRankGenerationToast.start === 'function') {
+                window.ContentRankGenerationToast.start(payload.post_id ? [payload.post_id] : [], itemTitle || 'Geração iniciada');
             }
             var htmlParts = [];
             if (itemTitle) {
@@ -651,7 +655,7 @@
             showSwalError(error.message || 'Falha ao gerar o item.', 'Erro');
         }).finally(function () {
             manualRunGenerating = false;
-            window.AlphaRssAiGeneratorManualRunInFlight = false;
+            window.ContentRankGeneratorManualRunInFlight = false;
             if (manualRunGenerationRequest && manualRunGenerationRequest.abort) {
                 manualRunGenerationRequest.abort();
             }

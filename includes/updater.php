@@ -4,12 +4,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
-    final class Alpha_RSS_AI_Generator_Updater
+if (!class_exists('Content_Rank_Generator_Updater')) {
+    final class Content_Rank_Generator_Updater
     {
         private $plugin_file;
         private $plugin_basename;
-        private $cache_key_prefix = 'alpha_rss_ai_update_manifest_';
+        private $cache_key_prefix = 'content_rank_update_manifest_';
 
         public function __construct($plugin_file)
         {
@@ -18,12 +18,46 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
 
             add_filter('site_transient_update_plugins', array($this, 'inject_update_data'));
             add_filter('plugins_api', array($this, 'plugins_api'), 20, 3);
+            add_filter('upgrader_source_selection', array($this, 'normalize_package_source'), 10, 4);
+        }
+
+        /**
+         * GitHub archive files use the repository name as their root folder.
+         * WordPress must receive the package under the installed plugin slug.
+         */
+        public function normalize_package_source($source, $remote_source, $upgrader, $hook_extra)
+        {
+            if (!$this->is_enabled() || !is_array($hook_extra)) {
+                return $source;
+            }
+
+            $requested_plugin = !empty($hook_extra['plugin']) ? (string) $hook_extra['plugin'] : '';
+            if ($requested_plugin !== $this->plugin_basename) {
+                return $source;
+            }
+
+            $source = untrailingslashit((string) $source);
+            $remote_source = untrailingslashit((string) $remote_source);
+            if ($source === '' || $remote_source === '' || basename($source) === 'content-rank') {
+                return $source;
+            }
+
+            $target = trailingslashit($remote_source) . 'content-rank';
+            global $wp_filesystem;
+            if (is_object($wp_filesystem) && $wp_filesystem->move($source, $target, true)) {
+                return $target;
+            }
+
+            return new WP_Error(
+                'content_rank_update_folder',
+                'Não foi possível preparar a pasta do pacote Content Rank para atualização.'
+            );
         }
 
         private function is_enabled()
         {
-            if (defined('ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED')) {
-                return (bool) ALPHA_RSS_AI_GENERATOR_UPDATE_ENABLED;
+            if (defined('CONTENT_RANK_GENERATOR_UPDATE_ENABLED')) {
+                return (bool) CONTENT_RANK_GENERATOR_UPDATE_ENABLED;
             }
 
             return true;
@@ -31,8 +65,8 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
 
         private function get_manifest_url()
         {
-            if (defined('ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL')) {
-                $manifest_url = (string) ALPHA_RSS_AI_GENERATOR_UPDATE_MANIFEST_URL;
+            if (defined('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL')) {
+                $manifest_url = (string) CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL;
             } else {
                 $manifest_url = '';
             }
@@ -60,8 +94,8 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
             }
 
             return array(
-                'name' => !empty($manifest['name']) ? sanitize_text_field((string) $manifest['name']) : 'Alpha RSS AI Generator',
-                'slug' => !empty($manifest['slug']) ? sanitize_key((string) $manifest['slug']) : 'alpha-rss-ai-generator',
+                'name' => !empty($manifest['name']) ? sanitize_text_field((string) $manifest['name']) : 'Content Rank',
+                'slug' => !empty($manifest['slug']) ? sanitize_key((string) $manifest['slug']) : 'content-rank',
                 'version' => !empty($manifest['version']) ? sanitize_text_field((string) $manifest['version']) : '',
                 'homepage' => !empty($manifest['homepage']) ? esc_url_raw((string) $manifest['homepage']) : '',
                 'download_url' => !empty($manifest['download_url']) ? esc_url_raw((string) $manifest['download_url']) : (!empty($manifest['package']) ? esc_url_raw((string) $manifest['package']) : ''),
@@ -104,7 +138,7 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
             $response = wp_remote_get($manifest_url, array(
                 'timeout' => 10,
                 'redirection' => 3,
-                'user-agent' => 'Alpha-RSS-AI-Generator/' . (class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::VERSION : '1.0.0') . '; ' . home_url('/'),
+                'user-agent' => 'Content-Rank/' . (class_exists('Content_Rank_Generator') ? Content_Rank_Generator::VERSION : '1.0.0') . '; ' . home_url('/'),
                 'headers' => array(
                     'Accept' => 'application/json',
                     'Cache-Control' => 'no-cache, no-store, max-age=0',
@@ -154,7 +188,7 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
                 return $transient;
             }
 
-            $current_version = isset($transient->checked[$this->plugin_basename]) ? (string) $transient->checked[$this->plugin_basename] : (class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::VERSION : '');
+            $current_version = isset($transient->checked[$this->plugin_basename]) ? (string) $transient->checked[$this->plugin_basename] : (class_exists('Content_Rank_Generator') ? Content_Rank_Generator::VERSION : '');
             if ($current_version === '' || version_compare($manifest['version'], $current_version, '<=')) {
                 if (isset($transient->response[$this->plugin_basename])) {
                     unset($transient->response[$this->plugin_basename]);
@@ -186,7 +220,7 @@ if (!class_exists('Alpha_RSS_AI_Generator_Updater')) {
                 return $result;
             }
 
-            if (!is_object($args) || empty($args->slug) || sanitize_key((string) $args->slug) !== 'alpha-rss-ai-generator') {
+            if (!is_object($args) || empty($args->slug) || sanitize_key((string) $args->slug) !== 'content-rank') {
                 return $result;
             }
 

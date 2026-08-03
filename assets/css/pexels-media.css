@@ -1,39 +1,39 @@
-.alpha-rss-ai-pexels-browser {
+.content-rank-pexels-browser {
     height: 100%;
     overflow: auto;
     padding: 20px;
     box-sizing: border-box;
 }
 
-.alpha-rss-ai-pexels-toolbar {
+.content-rank-pexels-toolbar {
     display: flex;
     gap: 8px;
     align-items: center;
     margin-bottom: 16px;
 }
 
-.alpha-rss-ai-pexels-search-input {
+.content-rank-pexels-search-input {
     flex: 1;
     min-width: 0;
     margin: 0 !important;
 }
 
-.alpha-rss-ai-pexels-status {
+.content-rank-pexels-status {
     min-height: 24px;
     color: #50575e;
 }
 
-.alpha-rss-ai-pexels-status.is-error {
+.content-rank-pexels-status.is-error {
     color: #b32d2e;
 }
 
-.alpha-rss-ai-pexels-grid {
+.content-rank-pexels-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 14px;
 }
 
-.alpha-rss-ai-pexels-card {
+.content-rank-pexels-card {
     display: flex;
     flex-direction: column;
     padding: 0;
@@ -45,25 +45,25 @@
     text-align: left;
 }
 
-.alpha-rss-ai-pexels-card:hover,
-.alpha-rss-ai-pexels-card:focus {
+.content-rank-pexels-card:hover,
+.content-rank-pexels-card:focus {
     border-color: #2271b1;
     box-shadow: 0 0 0 1px #2271b1;
 }
 
-.alpha-rss-ai-pexels-card.is-loading {
+.content-rank-pexels-card.is-loading {
     opacity: 0.55;
     cursor: wait;
 }
 
-.alpha-rss-ai-pexels-card img {
+.content-rank-pexels-card img {
     display: block;
     width: 100%;
     aspect-ratio: 4 / 3;
     object-fit: cover;
 }
 
-.alpha-rss-ai-pexels-credit {
+.content-rank-pexels-credit {
     display: block;
     padding: 7px 8px;
     color: #50575e;
@@ -73,13 +73,13 @@
     text-overflow: ellipsis;
 }
 
-.alpha-rss-ai-pexels-more-wrap {
+.content-rank-pexels-more-wrap {
     padding: 18px 0 4px;
     text-align: center;
 }
 
 @media (max-width: 600px) {
-    .alpha-rss-ai-pexels-toolbar {
+    .content-rank-pexels-toolbar {
         flex-direction: column;
         align-items: stretch;
     }

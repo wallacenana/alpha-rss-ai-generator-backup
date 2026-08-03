@@ -1,8 +1,8 @@
 {
-  "name": "Alpha RSS AI Generator",
-  "slug": "alpha-rss-ai-generator",
-  "version": "1.9.38",
-  "homepage": "https://github.com/wallacenana/alpha-rss-ai-generator-backup",
+  "name": "Content Rank",
+  "slug": "content-rank",
+  "version": "1.9.39",
+  "homepage": "http://content-rank.com/",
   "download_url": "https://github.com/wallacenana/alpha-rss-ai-generator-backup/archive/refs/heads/main.zip",
   "requires": "6.0",
   "tested": "7.0.2", 
@@ -11,7 +11,7 @@
   "author_url": "https://github.com/wallacenana",
   "last_updated": "2026-07-25",
   "sections": {
-    "description": "Atualizacao via GitHub para o plugin Alpha RSS AI Generator.",
+    "description": "Atualizacao via GitHub para o plugin Content Rank.",
   "changelog": "<ul><li>Coluna de categoria na tabela de geradores.</li><li>Acoes dos posts gerados ajustadas para abrir em nova aba e remover a lincagem automatica.</li><li>Ajustes no fluxo de imagens e mapeamento de origem.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote e distribuido a partir do branch main do repositorio.",

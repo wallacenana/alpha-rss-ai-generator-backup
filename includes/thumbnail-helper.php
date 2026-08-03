@@ -1,7 +1,7 @@
 <?php
 
-if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
-    class Alpha_RSS_AI_Thumbnail_Helper
+if (!class_exists('Content_Rank_Thumbnail_Helper')) {
+    class Content_Rank_Thumbnail_Helper
     {
         public static function set_featured_image($post_id, $generator, $item, $article, $reuse_existing = false)
         {
@@ -25,13 +25,13 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
             $is_keyword_list = $source_type === 'keyword_list';
             $keyword_list_mode = !empty($generator['keyword_list_mode'])
                 ? (string) $generator['keyword_list_mode']
-                : Alpha_RSS_AI_Generator::get_default_keyword_list_mode();
-            $is_url_reference = Alpha_RSS_AI_Generator::generator_uses_keyword_list_url_reference_mode($generator);
+                : Content_Rank_Generator::get_default_keyword_list_mode();
+            $is_url_reference = Content_Rank_Generator::generator_uses_keyword_list_url_reference_mode($generator);
             $treat_like_rss = !$is_keyword_list || $is_url_reference;
 
             $image_source_mode = !empty($generator['image_source_mode'])
                 ? sanitize_key((string) $generator['image_source_mode'])
-                : Alpha_RSS_AI_Generator::normalize_image_source_mode(
+                : Content_Rank_Generator::normalize_image_source_mode(
                     $source_type,
                     '',
                     isset($generator['pexels_enabled']) ? !empty($generator['pexels_enabled']) : null,
@@ -39,9 +39,9 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                 );
 
             $use_source_image = $treat_like_rss
-                && Alpha_RSS_AI_Generator::image_source_mode_uses_source_image($image_source_mode);
-            $use_pexels = Alpha_RSS_AI_Generator::image_source_mode_uses_pexels($image_source_mode);
-            $use_dalle = Alpha_RSS_AI_Generator::image_source_mode_uses_dalle($image_source_mode);
+                && Content_Rank_Generator::image_source_mode_uses_source_image($image_source_mode);
+            $use_pexels = Content_Rank_Generator::image_source_mode_uses_pexels($image_source_mode);
+            $use_dalle = Content_Rank_Generator::image_source_mode_uses_dalle($image_source_mode);
             $title = !empty($article['title'])
                 ? (string) $article['title']
                 : (!empty($item['source_title']) ? (string) $item['source_title'] : (!empty($item['title']) ? (string) $item['title'] : ''));
@@ -54,7 +54,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                 );
             }
 
-            Alpha_RSS_AI_Generator::log_image_debug('thumbnail_helper_start', array(
+            Content_Rank_Generator::log_image_debug('thumbnail_helper_start', array(
                 'post_id' => $post_id,
                 'image_source_mode' => $image_source_mode,
                 'use_source_image' => $use_source_image ? 1 : 0,
@@ -63,8 +63,8 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                 'has_source_image' => $source_image_url !== '' ? 1 : 0,
             ));
 
-            if ($use_source_image && $source_image_url !== '' && !Alpha_RSS_AI_Generator::is_probably_bad_featured_image_url($source_image_url, $title)) {
-                $source_result = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_url(
+            if ($use_source_image && $source_image_url !== '' && !Content_Rank_Generator::is_probably_bad_featured_image_url($source_image_url, $title)) {
+                $source_result = Content_Rank_Generator::download_and_set_featured_image_from_url(
                     $post_id,
                     $source_image_url,
                     $title,
@@ -73,8 +73,8 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                     ''
                 );
                 if (!is_wp_error($source_result) && intval($source_result) > 0) {
-                    update_post_meta($post_id, '_arc_source_image_url', esc_url_raw($source_image_url));
-                    Alpha_RSS_AI_Generator::log_image_debug('thumbnail_helper_source_done', array(
+                    update_post_meta($post_id, '_content_rank_source_image_url', esc_url_raw($source_image_url));
+                    Content_Rank_Generator::log_image_debug('thumbnail_helper_source_done', array(
                         'post_id' => $post_id,
                         'source_image_url' => $source_image_url,
                     ));
@@ -83,7 +83,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
             }
 
             if ($use_pexels) {
-                $pexels_result = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_pexels(
+                $pexels_result = Content_Rank_Generator::download_and_set_featured_image_from_pexels(
                     $post_id,
                     $generator,
                     $item,
@@ -94,7 +94,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                     return intval($pexels_result);
                 }
             } elseif ($use_dalle) {
-                $dalle_result = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_dalle(
+                $dalle_result = Content_Rank_Generator::download_and_set_featured_image_from_dalle(
                     $post_id,
                     $generator,
                     $item,
@@ -106,7 +106,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                 }
             }
 
-            $fallback_id = Alpha_RSS_AI_Generator::create_placeholder_image_attachment(
+            $fallback_id = Content_Rank_Generator::create_placeholder_image_attachment(
                 $post_id,
                 $title,
                 'fallback',
@@ -114,7 +114,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                 ''
             );
 
-            Alpha_RSS_AI_Generator::log_image_debug('thumbnail_helper_fallback', array(
+            Content_Rank_Generator::log_image_debug('thumbnail_helper_fallback', array(
                 'post_id' => $post_id,
                 'attachment_id' => intval($fallback_id),
                 'image_source_mode' => $image_source_mode,
@@ -136,7 +136,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                 return '';
             }
 
-            return (string) Alpha_RSS_AI_Generator_Helper::fetch_source_page_html(
+            return (string) Content_Rank_Generator_Helper::fetch_source_page_html(
                 $source_url,
                 5,
                 'thumbnail_og'
@@ -174,7 +174,7 @@ if (!class_exists('Alpha_RSS_AI_Thumbnail_Helper')) {
                     continue;
                 }
 
-                $image_url = Alpha_RSS_AI_Generator::resolve_url_against_base(
+                $image_url = Content_Rank_Generator::resolve_url_against_base(
                     trim((string) $meta_node->getAttribute('content')),
                     $base_url
                 );
