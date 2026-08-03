@@ -32,24 +32,30 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             }
 
             $requested_plugin = !empty($hook_extra['plugin']) ? (string) $hook_extra['plugin'] : '';
-            if ($requested_plugin !== $this->plugin_basename) {
+            if ($requested_plugin !== $this->plugin_basename && basename($requested_plugin) !== basename($this->plugin_basename)) {
                 return $source;
             }
 
             $source = untrailingslashit((string) $source);
-            $remote_source = untrailingslashit((string) $remote_source);
-            if ($source === '' || $remote_source === '' || basename($source) === 'content-rank') {
+            if ($source === '') {
                 return $source;
             }
 
-            // Some WordPress versions pass the extracted directory itself as
-            // remote_source. In that case the target must be its sibling,
-            // not a directory inside the source being moved.
-            $target_base = $source === $remote_source
-                ? dirname($remote_source)
-                : $remote_source;
-            $target = trailingslashit($target_base) . 'content-rank';
+            // Use the folder where the plugin is already installed. This
+            // works whether GitHub returns content-rank-main or another root.
+            $installed_folder = basename(dirname($this->plugin_basename));
+            if ($installed_folder === '' || $installed_folder === '.' || $installed_folder === DIRECTORY_SEPARATOR) {
+                $installed_folder = 'content-rank';
+            }
+            if (basename($source) === $installed_folder) {
+                return $source;
+            }
+
+            $target = trailingslashit(dirname($source)) . $installed_folder;
             global $wp_filesystem;
+            if (is_object($wp_filesystem) && $wp_filesystem->is_dir($target)) {
+                $wp_filesystem->delete($target, true);
+            }
             if (is_object($wp_filesystem) && $wp_filesystem->move($source, $target, true)) {
                 return $target;
             }
