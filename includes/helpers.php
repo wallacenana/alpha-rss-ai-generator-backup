@@ -5156,6 +5156,7 @@ class Content_Rank_Generator_Helper
         $max_items = max(1, intval($max_items));
 
         $titles = array();
+
         $source_html = '';
         foreach (array('source_page_content_html', 'source_page_html', 'content_html') as $candidate_key) {
             if (!empty($item[$candidate_key])) {
@@ -5545,6 +5546,9 @@ class Content_Rank_Generator_Helper
         $outline_context = is_array($outline_context) ? $outline_context : self::build_outline_context_base($generator);
 
         $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        $generation_language = !empty($generator['generation_language'])
+            ? Content_Rank_Generator::normalize_generation_language_value($generator['generation_language'])
+            : Content_Rank_Generator::get_default_generation_language();
         $is_keyword_only = $source_type === 'keyword_list'
             || ($source_type === 'spreadsheet' && !Content_Rank_Generator::generator_uses_keyword_list_url_reference_mode($generator));
         if ($is_keyword_only) {
@@ -5603,6 +5607,8 @@ class Content_Rank_Generator_Helper
 
         $prompt = array(
             'Voce e um planejador editorial interno.',
+            'Idioma obrigatorio de toda a resposta: ' . $generation_language . '.',
+            'Escreva todos os titulos, fatos, perguntas, notas e demais campos textuais exclusivamente nesse idioma. Use outro idioma somente em nomes proprios, termos da fonte e nas chaves tecnicas obrigatorias do JSON.',
             'Analise principalmente o conteudo html enviado e escolha apenas 1 modelo.',
             'Ignore rodape, sidebar, widgets, navegacao e blocos auxiliares (caso exista).',
             'Retorne apenas JSON valido com estas chaves: content_type, funnel_level, tone, primary_pain, focus_keyword, recommended_prompt_model_key, key_facts, semantic_terms, reader_questions.',
@@ -5654,6 +5660,9 @@ class Content_Rank_Generator_Helper
         $generator = is_array($generator) ? $generator : array();
         $item = is_array($item) ? $item : array();
         $outline_context = is_array($outline_context) ? $outline_context : array();
+        $generation_language = !empty($generator['generation_language'])
+            ? Content_Rank_Generator::normalize_generation_language_value($generator['generation_language'])
+            : Content_Rank_Generator::get_default_generation_language();
 
         $keyword = '';
         foreach (array('keyword', 'title', 'source_title', 'item_title') as $candidate_key) {
@@ -5707,6 +5716,8 @@ class Content_Rank_Generator_Helper
 
         $lines = array(
             'Voce e um planejador editorial para uma keyword, sem pagina de referencia.',
+            'Idioma obrigatorio de toda a resposta: ' . $generation_language . '.',
+            'Escreva semantic_terms, conflitos, dores e todos os demais campos textuais exclusivamente nesse idioma. Use outro idioma somente em nomes proprios, termos da keyword e nas chaves tecnicas obrigatorias do JSON.',
             'Analise somente a intencao da keyword e escolha o modelo mais adequado.',
             'O objetivo principal e criar um conteudo com potencial para Google Discover.',
             'Evite estruturar o conteudo como um guia generico apenas porque a keyword e ampla.',
@@ -6342,6 +6353,9 @@ class Content_Rank_Generator_Helper
             ? self::normalize_prompt_context_text((string) $outline_model['description'])
             : '';
         $source_type = !empty($generator['source_type']) ? sanitize_key((string) $generator['source_type']) : 'rss';
+        $generation_language = !empty($generator['generation_language'])
+            ? Content_Rank_Generator::normalize_generation_language_value($generator['generation_language'])
+            : Content_Rank_Generator::get_default_generation_language();
         $is_keyword_only = $source_type === 'keyword_list'
             || ($source_type === 'spreadsheet' && !Content_Rank_Generator::generator_uses_keyword_list_url_reference_mode($generator));
 
@@ -6417,6 +6431,8 @@ class Content_Rank_Generator_Helper
             "editorial_conflict deve caber em uma frase e descrever o conflito real da pauta. reader_transformation deve deixar claro o antes e o depois do leitor. main_promise deve corresponder ao que o titulo promete entregar.",
             "",
             "Regras para a estrutura:",
+            'IDIOMA OBRIGATORIO DO OUTLINE: ' . $generation_language . '.',
+            'Todos os titulos H2/H3, perguntas, propositos, informacoes novas, transicoes, conflitos e demais campos textuais devem ser escritos exclusivamente no idioma do gerador. Nao escreva o outline em ingles. Preserve em outro idioma somente nomes proprios, marcas, obras e termos que existam assim na fonte.',
             "- Use intro_without_h2 para a introducao. Nao crie um H2 chamado Introducao.",
             "- Crie somente os H2 necessarios para responder ao titulo gerado \"$generated_title\". Cada secao deve avancar a resposta com fatos novos.",
             "- Nenhuma secao pode existir apenas porque costuma aparecer em artigos. Cada secao deve responder uma duvida criada pela anterior, apresentar informacao nova e conduzir naturalmente a proxima.",
