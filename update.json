@@ -1,7 +1,7 @@
 {
   "name": "Content Rank",
   "slug": "content-rank",
-  "version": "1.9.44",
+  "version": "1.9.45",
   "homepage": "http://content-rank.com/",
   "download_url": "https://github.com/wallacenana/content-rank/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -9,10 +9,10 @@
   "requires_php": "7.4",
   "author": "Wallace Tavares e Codex",
   "author_url": "https://github.com/wallacenana",
-  "last_updated": "2026-08-02",
+  "last_updated": "2026-08-03",
   "sections": {
     "description": "Atualizacao via GitHub para o plugin Content Rank.",
-  "changelog": "<ul><li>Thumbnails do Pexels agora exigem no minimo 1200x675 e proporcao compativel com 16:9.</li><li>Corrigida a instalacao do pacote ZIP do GitHub em diferentes versoes do WordPress.</li></ul>",
+  "changelog": "<ul><li>Idioma do gerador agora e aplicado em todas as etapas da IA, incluindo o outline.</li><li>Continuacao em segundo plano mais rapida e resiliente quando o loopback demora.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote e distribuido a partir do branch main do repositorio.",
     "screenshots": ""

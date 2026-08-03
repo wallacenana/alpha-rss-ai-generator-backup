@@ -2,7 +2,7 @@
 /*
 Plugin Name: Content Rank
 Description: Geradores RSS com reescrita com IA, imagens do Pexels, SEO, execucoes manuais e agendamento aleatorio.
-Version: 1.9.44
+Version: 1.9.45
 Author: Wallace Tavares e Codex
 Plugin URI: http://content-rank.com/
 License: GPLv2 or later
@@ -35,7 +35,7 @@ if (!defined('CONTENT_RANK_GENERATOR_UPDATE_ENABLED')) {
     define('CONTENT_RANK_GENERATOR_UPDATE_ENABLED', true);
 }
 if (!defined('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL')) {
-    define('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/content-rank/main/update.json?v=1.9.44');
+    define('CONTENT_RANK_GENERATOR_UPDATE_MANIFEST_URL', 'https://raw.githubusercontent.com/wallacenana/content-rank/main/update.json?v=1.9.45');
 }
 
 $content_rank_autoload_file = CONTENT_RANK_GENERATOR_PLUGIN_DIR . 'vendor/autoload.php';
@@ -62,7 +62,7 @@ if (!class_exists('Content_Rank_Generator')) {
     // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.WP.AlternativeFunctions.parse_url_parse_url, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     final class Content_Rank_Generator
     {
-        const VERSION = '1.9.44';
+        const VERSION = '1.9.45';
         const DB_VERSION = '1.8.4';
         const FEATURED_IMAGE_MIN_WIDTH = 1200;
         const FEATURED_IMAGE_MIN_HEIGHT = 675;
@@ -3872,6 +3872,13 @@ if (!class_exists('Content_Rank_Generator')) {
             if ($api_key === '') {
                 return new WP_Error('content_rank_missing_openai_key', 'A chave da API da OpenAI não esta configurada.');
             }
+
+            $generation_language = !empty($generator['generation_language'])
+                ? self::normalize_generation_language_value($generator['generation_language'])
+                : self::get_default_generation_language();
+            $language_instruction = 'IDIOMA OBRIGATORIO: gere toda a resposta exclusivamente em ' . $generation_language . '. '
+                . 'Mantenha em outro idioma somente nomes proprios, marcas, obras ou termos que precisem permanecer assim.';
+            $prompt = $language_instruction . "\n\n" . trim((string) $prompt) . "\n\n" . $language_instruction;
 
             $model = trim((string) $settings['default_model']);
             $temperature = max(0.0, min(2.0, floatval($settings['default_temperature'])));
@@ -8997,7 +9004,9 @@ if (!class_exists('Content_Rank_Generator')) {
             $token = wp_generate_password(40, false, false);
             set_transient('content_rank_staged_generation_token_' . $post_id, $token, 10 * MINUTE_IN_SECONDS);
             $response = wp_remote_post(admin_url('admin-ajax.php'), array(
-                'timeout' => 0.01,
+                // A requisicao nao bloqueia, mas precisa de tempo suficiente
+                // para concluir o loopback antes de o cron de fallback assumir.
+                'timeout' => 1.0,
                 'blocking' => false,
                 'redirection' => 0,
                 'body' => array(
@@ -9022,7 +9031,7 @@ if (!class_exists('Content_Rank_Generator')) {
                 return false;
             }
 
-            $delay = max(5, intval($delay));
+            $delay = max(1, intval($delay));
             if (!wp_next_scheduled(self::STAGED_GENERATION_HOOK, array($post_id))) {
                 wp_schedule_single_event(time() + $delay, self::STAGED_GENERATION_HOOK, array($post_id));
             }
@@ -9155,7 +9164,7 @@ if (!class_exists('Content_Rank_Generator')) {
                     'stage' => 'planning',
                 ),
             ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
-            self::schedule_staged_generation_stage($post_id, 5);
+            self::schedule_staged_generation_stage($post_id, 1);
 
             return array(
                 'queued' => 1,
@@ -9302,7 +9311,7 @@ if (!class_exists('Content_Rank_Generator')) {
                     'request' => array('post_id' => $post_id, 'stage' => $stage),
                     'response' => array('next_stage' => $state['stage']),
                 ), $post_id, !empty($item['guid']) ? $item['guid'] : '', !empty($item['permalink']) ? $item['permalink'] : '');
-                self::schedule_staged_generation_stage($post_id, 10);
+                self::schedule_staged_generation_stage($post_id, 1);
             } catch (Throwable $error) {
                 self::fail_staged_generation($post_id, $state, $error);
             } finally {
