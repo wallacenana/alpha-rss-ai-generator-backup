@@ -20,9 +20,6 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             add_filter('plugins_api', array($this, 'plugins_api'), 20, 3);
             add_filter('upgrader_source_selection', array($this, 'normalize_package_source'), 10, 4);
             add_filter('upgrader_source_selection', array($this, 'recover_package_validation'), 99, 4);
-            add_filter('upgrader_pre_install', array($this, 'log_pre_install'), 10, 2);
-            add_filter('upgrader_post_install', array($this, 'log_post_install'), 10, 3);
-            add_filter('upgrader_install_package_result', array($this, 'log_install_result'), 10, 2);
         }
 
         /**
@@ -36,15 +33,12 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             }
 
             $requested_plugin = !empty($hook_extra['plugin']) ? (string) $hook_extra['plugin'] : '';
-            error_log('[content-rank-updater] source_selection start | plugin=' . $requested_plugin . ' | source=' . (string) $source . ' | remote_source=' . (string) $remote_source);
             if ($requested_plugin !== $this->plugin_basename && basename($requested_plugin) !== basename($this->plugin_basename)) {
-                error_log('[content-rank-updater] source_selection skipped | installed_plugin=' . $this->plugin_basename);
                 return $source;
             }
 
             $source = untrailingslashit((string) $source);
             if ($source === '') {
-                error_log('[content-rank-updater] source_selection failed | empty_source');
                 return $source;
             }
 
@@ -55,23 +49,18 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
                 $installed_folder = 'content-rank';
             }
             if (basename($source) === $installed_folder) {
-                error_log('[content-rank-updater] source_selection unchanged | folder=' . $installed_folder);
                 return $source;
             }
 
             $target = trailingslashit(dirname($source)) . $installed_folder;
             global $wp_filesystem;
-            error_log('[content-rank-updater] source_selection target | source=' . $source . ' | target=' . $target . ' | filesystem=' . (is_object($wp_filesystem) ? get_class($wp_filesystem) : 'none'));
             if (is_object($wp_filesystem) && $wp_filesystem->is_dir($target)) {
-                error_log('[content-rank-updater] source_selection target_exists | deleting=' . $target);
                 $wp_filesystem->delete($target, true);
             }
             if (is_object($wp_filesystem) && $wp_filesystem->move($source, $target, true)) {
-                error_log('[content-rank-updater] source_selection moved | target=' . $target);
                 return $target;
             }
 
-            error_log('[content-rank-updater] source_selection move_failed | source=' . $source . ' | target=' . $target);
             return new WP_Error(
                 'content_rank_update_folder',
                 'Não foi possível preparar a pasta do pacote Content Rank para atualização.'
@@ -86,14 +75,12 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
 
             global $wp_filesystem;
             if (!is_object($wp_filesystem)) {
-                error_log('[content-rank-updater] package_validation_recovery skipped | filesystem=none');
                 return $source;
             }
 
             $remote_source = untrailingslashit((string) $remote_source);
             $entries = $wp_filesystem->dirlist($remote_source);
             if (!is_array($entries)) {
-                error_log('[content-rank-updater] package_validation_recovery failed | remote_source=' . $remote_source . ' | reason=dirlist');
                 return $source;
             }
 
@@ -119,43 +106,11 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
                         continue;
                     }
 
-                    error_log('[content-rank-updater] package_validation_recovered | source=' . $candidate . ' | plugin_file=' . $plugin_file . ' | plugin_name=' . $plugin_data['Name']);
                     return trailingslashit($candidate);
                 }
             }
 
-            error_log('[content-rank-updater] package_validation_recovery failed | remote_source=' . $remote_source . ' | reason=no_plugin_header');
             return $source;
-        }
-
-        public function log_pre_install($response, $hook_extra)
-        {
-            if (!$this->is_target_update($hook_extra)) {
-                return $response;
-            }
-
-            error_log('[content-rank-updater] pre_install | response=' . $this->summarize_result($response) . ' | hook=' . wp_json_encode($hook_extra));
-            return $response;
-        }
-
-        public function log_post_install($response, $hook_extra, $result)
-        {
-            if (!$this->is_target_update($hook_extra)) {
-                return $response;
-            }
-
-            error_log('[content-rank-updater] post_install | response=' . $this->summarize_result($response) . ' | result=' . $this->summarize_result($result));
-            return $response;
-        }
-
-        public function log_install_result($result, $hook_extra)
-        {
-            if (!$this->is_target_update($hook_extra)) {
-                return $result;
-            }
-
-            error_log('[content-rank-updater] install_result | result=' . $this->summarize_result($result) . ' | hook=' . wp_json_encode($hook_extra));
-            return $result;
         }
 
         private function is_target_update($hook_extra)
@@ -169,25 +124,6 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
                 $requested_plugin === $this->plugin_basename ||
                 basename($requested_plugin) === basename($this->plugin_basename)
             );
-        }
-
-        private function summarize_result($result)
-        {
-            if (is_wp_error($result)) {
-                return 'error_code=' . $result->get_error_code() . ' | error_message=' . $result->get_error_message();
-            }
-
-            if (is_array($result)) {
-                $summary = array();
-                foreach (array('source', 'destination', 'remote_destination', 'destination_name', 'local_destination') as $key) {
-                    if (isset($result[$key])) {
-                        $summary[$key] = $result[$key];
-                    }
-                }
-                return 'array=' . wp_json_encode($summary);
-            }
-
-            return 'type=' . gettype($result) . ' value=' . (is_scalar($result) ? var_export($result, true) : 'non_scalar');
         }
 
         private function is_enabled()
@@ -260,7 +196,6 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
 
             $manifest_url = $this->get_manifest_url();
             if ($manifest_url === '') {
-                error_log('[content-rank-updater] manifest skipped | empty_url');
                 return array();
             }
 
@@ -268,12 +203,9 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             if (!$force) {
                 $cached = get_transient($cache_key);
                 if (is_array($cached) && !empty($cached)) {
-                    error_log('[content-rank-updater] manifest cache | url=' . $manifest_url . ' | version=' . (!empty($cached['version']) ? $cached['version'] : ''));
                     return $cached;
                 }
             }
-
-            error_log('[content-rank-updater] manifest request | url=' . $manifest_url . ' | force=' . ($force ? '1' : '0'));
 
             $response = wp_remote_get($manifest_url, array(
                 'timeout' => 10,
@@ -287,14 +219,12 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             ));
 
             if (is_wp_error($response)) {
-                error_log('[content-rank-updater] manifest error | message=' . $response->get_error_message());
                 set_transient($cache_key, array(), 15 * MINUTE_IN_SECONDS);
                 return array();
             }
 
             $status_code = intval(wp_remote_retrieve_response_code($response));
             $body = trim((string) wp_remote_retrieve_body($response));
-            error_log('[content-rank-updater] manifest response | status=' . $status_code . ' | body_length=' . strlen($body));
             if ($status_code !== 200 || $body === '') {
                 set_transient($cache_key, array(), 15 * MINUTE_IN_SECONDS);
                 return array();
@@ -302,13 +232,11 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
 
             $decoded = json_decode($body, true);
             if (!is_array($decoded)) {
-                error_log('[content-rank-updater] manifest invalid_json | error=' . json_last_error_msg());
                 set_transient($cache_key, array(), 15 * MINUTE_IN_SECONDS);
                 return array();
             }
 
             $manifest = $this->normalize_manifest($decoded);
-            error_log('[content-rank-updater] manifest loaded | version=' . $manifest['version'] . ' | package=' . $manifest['download_url']);
             set_transient($cache_key, $manifest, MINUTE_IN_SECONDS);
             return $manifest;
         }
@@ -333,7 +261,6 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             }
 
             $current_version = isset($transient->checked[$this->plugin_basename]) ? (string) $transient->checked[$this->plugin_basename] : (class_exists('Content_Rank_Generator') ? Content_Rank_Generator::VERSION : '');
-            error_log('[content-rank-updater] compare | plugin=' . $this->plugin_basename . ' | current=' . $current_version . ' | remote=' . $manifest['version'] . ' | package=' . $manifest['download_url']);
             if ($current_version === '' || version_compare($manifest['version'], $current_version, '<=')) {
                 if (isset($transient->response[$this->plugin_basename])) {
                     unset($transient->response[$this->plugin_basename]);

@@ -1,7 +1,7 @@
 {
   "name": "Content Rank",
   "slug": "content-rank",
-  "version": "1.9.50",
+  "version": "1.9.51",
   "homepage": "http://content-rank.com/",
   "download_url": "https://github.com/wallacenana/content-rank/archive/refs/heads/main.zip",
   "requires": "6.0",
@@ -12,7 +12,7 @@
   "last_updated": "2026-08-03",
   "sections": {
     "description": "Atualizacao via GitHub para o plugin Content Rank.",
-  "changelog": "<ul><li>Adicionada recuperacao segura da validacao do pacote e logs detalhados do atualizador.</li><li>Corrigida a instalacao do pacote ZIP do GitHub em diferentes pastas do plugin.</li></ul>",
+  "changelog": "<ul><li>Removidos os logs temporarios do atualizador.</li><li>Mantida a correcao da validacao do pacote ZIP em diferentes pastas do plugin.</li></ul>",
     "installation": "Atualize diretamente pelo painel do WordPress.",
     "faq": "O pacote e distribuido a partir do branch main do repositorio.",
     "screenshots": ""
