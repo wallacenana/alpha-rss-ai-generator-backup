@@ -19,6 +19,9 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
             add_filter('site_transient_update_plugins', array($this, 'inject_update_data'));
             add_filter('plugins_api', array($this, 'plugins_api'), 20, 3);
             add_filter('upgrader_source_selection', array($this, 'normalize_package_source'), 10, 4);
+            add_filter('upgrader_pre_install', array($this, 'log_pre_install'), 10, 2);
+            add_filter('upgrader_post_install', array($this, 'log_post_install'), 10, 3);
+            add_filter('upgrader_install_package_result', array($this, 'log_install_result'), 10, 2);
         }
 
         /**
@@ -72,6 +75,68 @@ if (!class_exists('Content_Rank_Generator_Updater')) {
                 'content_rank_update_folder',
                 'Não foi possível preparar a pasta do pacote Content Rank para atualização.'
             );
+        }
+
+        public function log_pre_install($response, $hook_extra)
+        {
+            if (!$this->is_target_update($hook_extra)) {
+                return $response;
+            }
+
+            error_log('[content-rank-updater] pre_install | response=' . $this->summarize_result($response) . ' | hook=' . wp_json_encode($hook_extra));
+            return $response;
+        }
+
+        public function log_post_install($response, $hook_extra, $result)
+        {
+            if (!$this->is_target_update($hook_extra)) {
+                return $response;
+            }
+
+            error_log('[content-rank-updater] post_install | response=' . $this->summarize_result($response) . ' | result=' . $this->summarize_result($result));
+            return $response;
+        }
+
+        public function log_install_result($result, $hook_extra)
+        {
+            if (!$this->is_target_update($hook_extra)) {
+                return $result;
+            }
+
+            error_log('[content-rank-updater] install_result | result=' . $this->summarize_result($result) . ' | hook=' . wp_json_encode($hook_extra));
+            return $result;
+        }
+
+        private function is_target_update($hook_extra)
+        {
+            if (!is_array($hook_extra)) {
+                return false;
+            }
+
+            $requested_plugin = !empty($hook_extra['plugin']) ? (string) $hook_extra['plugin'] : '';
+            return $requested_plugin !== '' && (
+                $requested_plugin === $this->plugin_basename ||
+                basename($requested_plugin) === basename($this->plugin_basename)
+            );
+        }
+
+        private function summarize_result($result)
+        {
+            if (is_wp_error($result)) {
+                return 'error_code=' . $result->get_error_code() . ' | error_message=' . $result->get_error_message();
+            }
+
+            if (is_array($result)) {
+                $summary = array();
+                foreach (array('source', 'destination', 'remote_destination', 'destination_name', 'local_destination') as $key) {
+                    if (isset($result[$key])) {
+                        $summary[$key] = $result[$key];
+                    }
+                }
+                return 'array=' . wp_json_encode($summary);
+            }
+
+            return 'type=' . gettype($result) . ' value=' . (is_scalar($result) ? var_export($result, true) : 'non_scalar');
         }
 
         private function is_enabled()
