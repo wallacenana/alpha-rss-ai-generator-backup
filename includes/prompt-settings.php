@@ -4,22 +4,22 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class Alpha_RSS_AI_Prompt_Settings
+class Content_Rank_Prompt_Settings
 {
     public function __construct()
     {
         add_action('admin_menu', array($this, 'admin_menu'), 998);
-        add_action('admin_post_arc_save_prompt_settings', array($this, 'handle_save_prompt_settings'));
-        add_action('admin_post_arc_reset_prompt_settings', array($this, 'handle_reset_prompt_settings'));
+        add_action('admin_post_content_rank_save_prompt_settings', array($this, 'handle_save_prompt_settings'));
+        add_action('admin_post_content_rank_reset_prompt_settings', array($this, 'handle_reset_prompt_settings'));
     }
 
     public static function maybe_migrate_prompt_settings()
     {
-        if (!class_exists('Alpha_RSS_AI_Generator')) {
+        if (!class_exists('Content_Rank_Generator')) {
             return;
         }
 
-        $storage = Alpha_RSS_AI_Generator::get_prompt_models_storage();
+        $storage = Content_Rank_Generator::get_prompt_models_storage();
         if (!empty($storage['prompt_models_initialized'])) {
             return;
         }
@@ -28,7 +28,7 @@ class Alpha_RSS_AI_Prompt_Settings
         $source_generator_id = 0;
 
         global $wpdb;
-        $table_generators = !empty(Alpha_RSS_AI_Generator::$table_generators) ? Alpha_RSS_AI_Generator::$table_generators : '';
+        $table_generators = !empty(Content_Rank_Generator::$table_generators) ? Content_Rank_Generator::$table_generators : '';
         if ($table_generators !== '') {
             $row = $wpdb->get_row(
                 "SELECT id, prompt_models_json FROM {$table_generators} WHERE prompt_models_json IS NOT NULL AND prompt_models_json <> '' ORDER BY created_at ASC LIMIT 1",
@@ -38,34 +38,34 @@ class Alpha_RSS_AI_Prompt_Settings
             if (is_array($row) && !empty($row['prompt_models_json'])) {
                 $decoded = json_decode((string) $row['prompt_models_json'], true);
                 if (is_array($decoded)) {
-                    $prompt_models = Alpha_RSS_AI_Generator::normalize_prompt_models($decoded);
+                    $prompt_models = Content_Rank_Generator::normalize_prompt_models($decoded);
                     $source_generator_id = !empty($row['id']) ? intval($row['id']) : 0;
                 }
             }
         }
 
         if (empty($prompt_models)) {
-            $prompt_models = Alpha_RSS_AI_Generator::get_default_prompt_models();
+            $prompt_models = Content_Rank_Generator::get_default_prompt_models();
         }
 
-        Alpha_RSS_AI_Generator::save_prompt_models_storage($prompt_models, $source_generator_id);
+        Content_Rank_Generator::save_prompt_models_storage($prompt_models, $source_generator_id);
     }
 
     public function admin_menu()
     {
         add_submenu_page(
-            'alpha-rss-ai-generator',
+            'content-rank',
             'Prompts',
             'Prompts',
             'manage_options',
-            'alpha-rss-ai-prompts',
+            'content-rank-prompts',
             array($this, 'render_prompt_settings_page')
         );
     }
 
     public static function get_prompt_models()
     {
-        $storage = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_prompt_models_storage() : array();
+        $storage = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_prompt_models_storage() : array();
         $prompt_models = array();
 
         if (!empty($storage['prompt_models_json'])) {
@@ -75,8 +75,8 @@ class Alpha_RSS_AI_Prompt_Settings
             }
         }
 
-        if (empty($prompt_models) && class_exists('Alpha_RSS_AI_Generator')) {
-            $settings = Alpha_RSS_AI_Generator::get_settings();
+        if (empty($prompt_models) && class_exists('Content_Rank_Generator')) {
+            $settings = Content_Rank_Generator::get_settings();
             if (!empty($settings['prompt_models_json'])) {
                 $decoded = json_decode((string) $settings['prompt_models_json'], true);
                 if (is_array($decoded)) {
@@ -85,12 +85,12 @@ class Alpha_RSS_AI_Prompt_Settings
             }
         }
 
-        $prompt_models = class_exists('Alpha_RSS_AI_Generator')
-            ? Alpha_RSS_AI_Generator::normalize_prompt_models($prompt_models)
+        $prompt_models = class_exists('Content_Rank_Generator')
+            ? Content_Rank_Generator::normalize_prompt_models($prompt_models)
             : array();
 
-        if (empty($prompt_models) && class_exists('Alpha_RSS_AI_Generator')) {
-            $prompt_models = Alpha_RSS_AI_Generator::get_default_prompt_models();
+        if (empty($prompt_models) && class_exists('Content_Rank_Generator')) {
+            $prompt_models = Content_Rank_Generator::get_default_prompt_models();
         }
 
         return $prompt_models;
@@ -118,18 +118,18 @@ class Alpha_RSS_AI_Prompt_Settings
             );
         }
 
-        return class_exists('Alpha_RSS_AI_Generator')
-            ? Alpha_RSS_AI_Generator::normalize_prompt_models($models)
+        return class_exists('Content_Rank_Generator')
+            ? Content_Rank_Generator::normalize_prompt_models($models)
             : $models;
     }
 
     public static function save_prompt_settings($raw)
     {
-        if (!class_exists('Alpha_RSS_AI_Generator')) {
-            return new WP_Error('arc_prompt_settings_unavailable', 'O gerador ainda nao esta carregado.');
+        if (!class_exists('Content_Rank_Generator')) {
+            return new WP_Error('content_rank_prompt_settings_unavailable', 'O gerador ainda nao esta carregado.');
         }
 
-        $storage = Alpha_RSS_AI_Generator::get_prompt_models_storage();
+        $storage = Content_Rank_Generator::get_prompt_models_storage();
         $raw_models = array();
         if (isset($raw['prompt_models_json']) && is_string($raw['prompt_models_json']) && trim((string) $raw['prompt_models_json']) !== '') {
             $decoded = json_decode(wp_unslash((string) $raw['prompt_models_json']), true);
@@ -142,7 +142,7 @@ class Alpha_RSS_AI_Prompt_Settings
 
         $models = self::sanitize_prompt_models_from_request($raw_models);
         if (empty($models)) {
-            $models = Alpha_RSS_AI_Generator::get_default_prompt_models();
+            $models = Content_Rank_Generator::get_default_prompt_models();
         }
 
         $migrated_from_generator_id = isset($raw['prompt_models_migrated_from_generator_id']) ? max(0, intval($raw['prompt_models_migrated_from_generator_id'])) : 0;
@@ -150,7 +150,7 @@ class Alpha_RSS_AI_Prompt_Settings
             $migrated_from_generator_id = intval($storage['prompt_models_migrated_from_generator_id']);
         }
 
-        Alpha_RSS_AI_Generator::save_prompt_models_storage($models, $migrated_from_generator_id);
+        Content_Rank_Generator::save_prompt_models_storage($models, $migrated_from_generator_id);
 
         return $models;
     }
@@ -161,16 +161,16 @@ class Alpha_RSS_AI_Prompt_Settings
             wp_die('Acesso negado.');
         }
 
-        check_admin_referer('arc_save_prompt_settings', 'arc_prompt_settings_nonce');
+        check_admin_referer('content_rank_save_prompt_settings', 'content_rank_prompt_settings_nonce');
         $result = self::save_prompt_settings($_POST);
         if (is_wp_error($result)) {
-            Alpha_RSS_AI_Generator::redirect_with_notice($result->get_error_message(), 'error', array(
-                'page' => 'alpha-rss-ai-prompts',
+            Content_Rank_Generator::redirect_with_notice($result->get_error_message(), 'error', array(
+                'page' => 'content-rank-prompts',
             ));
         }
 
-        Alpha_RSS_AI_Generator::redirect_with_notice('Prompts salvos com sucesso.', 'success', array(
-            'page' => 'alpha-rss-ai-prompts',
+        Content_Rank_Generator::redirect_with_notice('Prompts salvos com sucesso.', 'success', array(
+            'page' => 'content-rank-prompts',
         ));
     }
 
@@ -180,15 +180,15 @@ class Alpha_RSS_AI_Prompt_Settings
             wp_die('Acesso negado.');
         }
 
-        check_admin_referer('arc_reset_prompt_settings', 'arc_prompt_settings_nonce');
-        if (!class_exists('Alpha_RSS_AI_Generator')) {
+        check_admin_referer('content_rank_reset_prompt_settings', 'content_rank_prompt_settings_nonce');
+        if (!class_exists('Content_Rank_Generator')) {
             wp_die('O gerador ainda nao esta carregado.');
         }
 
-        Alpha_RSS_AI_Generator::save_prompt_models_storage(Alpha_RSS_AI_Generator::get_default_prompt_models(), 0);
+        Content_Rank_Generator::save_prompt_models_storage(Content_Rank_Generator::get_default_prompt_models(), 0);
 
-        Alpha_RSS_AI_Generator::redirect_with_notice('Prompts restaurados para o padrão.', 'success', array(
-            'page' => 'alpha-rss-ai-prompts',
+        Content_Rank_Generator::redirect_with_notice('Prompts restaurados para o padrão.', 'success', array(
+            'page' => 'content-rank-prompts',
         ));
     }
 
@@ -204,9 +204,9 @@ class Alpha_RSS_AI_Prompt_Settings
 
         self::maybe_migrate_prompt_settings();
 
-        $storage = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_prompt_models_storage() : array();
+        $storage = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_prompt_models_storage() : array();
         $prompt_models = self::get_prompt_models();
-        $outline_models = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_outline_models() : array();
+        $outline_models = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_outline_models() : array();
 
         ob_start();
 ?>
@@ -223,10 +223,10 @@ class Alpha_RSS_AI_Prompt_Settings
             };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
-        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
-            <h1 class="screen-reader-text">Alpha RSS AI</h1>
+        <div class="wrap content-rank-wrap min-h-screen bg-slate-100 text-slate-900">
+            <h1 class="screen-reader-text">Content Rank</h1>
             <div class="mb-6">
-                <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
+                <div class="text-xs font-semibold text-indigo-600">Content Rank</div>
                 <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Prompts</h1>
                 <p class="mt-2 text-sm text-slate-600">Edite aqui os prompts padrão usados por todos os geradores. Eles são migrados uma vez a partir de qualquer gerador existente e depois passam a valer globalmente.</p>
             </div>
@@ -238,16 +238,16 @@ class Alpha_RSS_AI_Prompt_Settings
                             <h2 class="text-lg font-semibold text-slate-950">Modelos de prompt</h2>
                         </div>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                            <?php wp_nonce_field('arc_reset_prompt_settings', 'arc_prompt_settings_nonce'); ?>
-                            <input type="hidden" name="action" value="arc_reset_prompt_settings" />
+                            <?php wp_nonce_field('content_rank_reset_prompt_settings', 'content_rank_prompt_settings_nonce'); ?>
+                            <input type="hidden" name="action" value="content_rank_reset_prompt_settings" />
                             <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Restaurar padrões</button>
                         </form>
                     </div>
                 </div>
 
-                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="arc-prompt-settings-form p-6">
-                    <?php wp_nonce_field('arc_save_prompt_settings', 'arc_prompt_settings_nonce'); ?>
-                    <input type="hidden" name="action" value="arc_save_prompt_settings" />
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="content-rank-prompt-settings-form p-6">
+                    <?php wp_nonce_field('content_rank_save_prompt_settings', 'content_rank_prompt_settings_nonce'); ?>
+                    <input type="hidden" name="action" value="content_rank_save_prompt_settings" />
                     <input type="hidden" name="prompt_models_migrated_from_generator_id" value="<?php echo esc_attr(isset($storage['prompt_models_migrated_from_generator_id']) ? intval($storage['prompt_models_migrated_from_generator_id']) : 0); ?>" />
                     <textarea name="prompt_models_json" data-prompt-models-json class="hidden" aria-hidden="true" tabindex="-1"></textarea>
 
@@ -298,7 +298,7 @@ class Alpha_RSS_AI_Prompt_Settings
         </div>
         <script>
             document.addEventListener('DOMContentLoaded', function() {
-                var form = document.querySelector('form.arc-prompt-settings-form');
+                var form = document.querySelector('form.content-rank-prompt-settings-form');
                 var serializedField = document.querySelector('[data-prompt-models-json]');
                 var hasUnsavedChanges = false;
                 var allowUnload = false;

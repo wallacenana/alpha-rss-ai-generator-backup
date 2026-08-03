@@ -1,7 +1,7 @@
 (function ($, window) {
     'use strict';
 
-    var config = window.AlphaRSSAIPexelsMedia || {};
+    var config = window.ContentRankPexelsMedia || {};
     var featuredFramePatched = false;
     var selectFramePatched = false;
     var bootAttempts = 0;
@@ -22,13 +22,13 @@
         }
 
         var PexelsView = wp.media.View.extend({
-        className: 'alpha-rss-ai-pexels-browser',
+        className: 'content-rank-pexels-browser',
 
         events: {
-            'click .alpha-rss-ai-pexels-search-button': 'search',
-            'keydown .alpha-rss-ai-pexels-search-input': 'handleKeydown',
-            'click .alpha-rss-ai-pexels-load-more': 'loadMore',
-            'click .alpha-rss-ai-pexels-card': 'useImage'
+            'click .content-rank-pexels-search-button': 'search',
+            'keydown .content-rank-pexels-search-input': 'handleKeydown',
+            'click .content-rank-pexels-load-more': 'loadMore',
+            'click .content-rank-pexels-card': 'useImage'
         },
 
         initialize: function (options) {
@@ -42,15 +42,15 @@
 
         render: function () {
             this.$el.html(
-                '<div class="alpha-rss-ai-pexels-toolbar">' +
-                    '<input type="search" class="alpha-rss-ai-pexels-search-input" placeholder="Buscar no Pexels" />' +
-                    '<button type="button" class="button button-primary alpha-rss-ai-pexels-search-button">Pesquisar</button>' +
+                '<div class="content-rank-pexels-toolbar">' +
+                    '<input type="search" class="content-rank-pexels-search-input" placeholder="Buscar no Pexels" />' +
+                    '<button type="button" class="button button-primary content-rank-pexels-search-button">Pesquisar</button>' +
                 '</div>' +
-                '<div class="alpha-rss-ai-pexels-status" aria-live="polite"></div>' +
-                '<div class="alpha-rss-ai-pexels-grid"></div>' +
-                '<div class="alpha-rss-ai-pexels-more-wrap"><button type="button" class="button alpha-rss-ai-pexels-load-more">Carregar mais</button></div>'
+                '<div class="content-rank-pexels-status" aria-live="polite"></div>' +
+                '<div class="content-rank-pexels-grid"></div>' +
+                '<div class="content-rank-pexels-more-wrap"><button type="button" class="button content-rank-pexels-load-more">Carregar mais</button></div>'
             );
-            this.$more = this.$('.alpha-rss-ai-pexels-load-more').hide();
+            this.$more = this.$('.content-rank-pexels-load-more').hide();
             return this;
         },
 
@@ -62,7 +62,7 @@
         },
 
         search: function () {
-            var query = $.trim(this.$('.alpha-rss-ai-pexels-search-input').val() || '');
+            var query = $.trim(this.$('.content-rank-pexels-search-input').val() || '');
             if (query === '') {
                 this.setStatus('Digite uma busca para pesquisar no Pexels.', true);
                 return;
@@ -71,7 +71,7 @@
             this.page = 1;
             this.query = query;
             this.images = {};
-            this.$('.alpha-rss-ai-pexels-grid').empty();
+            this.$('.content-rank-pexels-grid').empty();
             this.fetchImages(false);
         },
 
@@ -89,7 +89,7 @@
             this.$more.prop('disabled', true);
 
             $.post(config.ajaxUrl, {
-                action: 'alpha_rss_ai_pexels_search',
+                action: 'content_rank_pexels_search',
                 nonce: config.nonce,
                 post_id: this.getPostId(),
                 query: this.query,
@@ -114,7 +114,7 @@
 
         renderImages: function (images, append) {
             var self = this;
-            var $grid = this.$('.alpha-rss-ai-pexels-grid');
+            var $grid = this.$('.content-rank-pexels-grid');
             if (!append) {
                 $grid.empty();
             }
@@ -125,13 +125,13 @@
                 }
                 self.images[image.url] = image;
 
-                var $card = $('<button type="button" class="alpha-rss-ai-pexels-card"></button>');
+                var $card = $('<button type="button" class="content-rank-pexels-card"></button>');
                 $('<img />', {
                     src: image.preview || image.url,
                     alt: image.alt || self.query,
                     loading: 'lazy'
                 }).appendTo($card);
-                $('<span class="alpha-rss-ai-pexels-credit"></span>').text(image.photographer ? 'Foto: ' + image.photographer : 'Pexels').appendTo($card);
+                $('<span class="content-rank-pexels-credit"></span>').text(image.photographer ? 'Foto: ' + image.photographer : 'Pexels').appendTo($card);
                 $card.attr('data-image-url', image.url);
                 $grid.append($card);
             });
@@ -152,7 +152,7 @@
             this.setStatus('Baixando imagem para a biblioteca...', false);
 
             $.post(config.ajaxUrl, {
-                action: 'alpha_rss_ai_pexels_set_featured',
+                action: 'content_rank_pexels_set_featured',
                 nonce: config.nonce,
                 post_id: postId,
                 image_url: image.url,
@@ -184,7 +184,7 @@
         },
 
         setStatus: function (message, isError) {
-            this.$('.alpha-rss-ai-pexels-status').text(message || '').toggleClass('is-error', !!isError);
+            this.$('.content-rank-pexels-status').text(message || '').toggleClass('is-error', !!isError);
         }
     });
 
@@ -194,22 +194,22 @@
             }
 
             router.set({
-                'alpha-rss-ai-pexels': {
+                'content-rank-pexels': {
                     text: 'Pexels',
                     priority: 60,
-                    content: 'alpha-rss-ai-pexels'
+                    content: 'content-rank-pexels'
                 }
             });
         }
 
         function attachFrame(frame) {
-            if (!frame || frame.alphaRssAiPexelsAttached) {
+            if (!frame || frame.contentRankPexelsAttached) {
                 return;
             }
 
-            frame.alphaRssAiPexelsAttached = true;
+            frame.contentRankPexelsAttached = true;
             frame.on('router:render:browse', addPexelsRoute);
-            frame.on('content:render:alpha-rss-ai-pexels', function () {
+            frame.on('content:render:content-rank-pexels', function () {
                 var view = new PexelsView({ controller: frame }).render();
                 if (frame.content && frame.content.set) {
                     frame.content.set(view);

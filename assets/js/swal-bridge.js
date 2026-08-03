@@ -32,7 +32,7 @@
         });
     }
 
-    window.AlphaRssAiGeneratorSwal = {
+    window.ContentRankGeneratorSwal = {
         fire: fire,
         alert: function (message, title) {
             return fire({
@@ -111,7 +111,7 @@
     };
 
     window.alert = function (message) {
-        window.AlphaRssAiGeneratorSwal.alert(message);
+        window.ContentRankGeneratorSwal.alert(message);
     };
 
     document.addEventListener('submit', function (event) {
@@ -128,7 +128,7 @@
         event.preventDefault();
 
         var message = form.getAttribute('data-swal-confirm') || 'Confirmar esta acao?';
-        window.AlphaRssAiGeneratorSwal.confirm(message, {
+        window.ContentRankGeneratorSwal.confirm(message, {
             title: 'Confirmacao',
         }).then(function (confirmed) {
             if (!confirmed) {

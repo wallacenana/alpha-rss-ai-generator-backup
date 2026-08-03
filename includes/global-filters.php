@@ -4,11 +4,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class Alpha_RSS_AI_Global_Filters
+final class Content_Rank_Global_Filters
 {
     public static function get_entries()
     {
-        $settings = Alpha_RSS_AI_Generator::get_settings();
+        $settings = Content_Rank_Generator::get_settings();
         $raw = isset($settings['blacklist_json']) ? $settings['blacklist_json'] : '[]';
         return self::sanitize_entries($raw);
     }
@@ -173,9 +173,9 @@ final class Alpha_RSS_AI_Global_Filters
         );
         $entries = self::sanitize_entries($entries);
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
+        $settings = Content_Rank_Generator::get_settings();
         $settings['blacklist_json'] = wp_json_encode($entries, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        update_option(Alpha_RSS_AI_Generator::OPTION_KEY, $settings, false);
+        update_option(Content_Rank_Generator::OPTION_KEY, $settings, false);
         return true;
     }
 

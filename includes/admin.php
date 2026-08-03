@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class Alpha_RSS_AI_Generator_Admin
+class Content_Rank_Generator_Admin
 {
     public function __construct()
     {
@@ -14,38 +14,38 @@ class Alpha_RSS_AI_Generator_Admin
     public function admin_menu()
     {
         add_menu_page(
-            'Gerador Alpha RSS AI',
-            'Gerador Alpha RSS AI',
+            'Content Rank',
+            'Content Rank',
             'manage_options',
-            'alpha-rss-ai-generator',
+            'content-rank',
             array($this, 'render_admin_page'),
             'dashicons-rss',
             31
         );
-        remove_submenu_page('alpha-rss-ai-generator', 'alpha-rss-ai-generator');
+        remove_submenu_page('content-rank', 'content-rank');
         add_submenu_page(
-            'alpha-rss-ai-generator',
+            'content-rank',
             'Geradores',
             'Geradores',
             'manage_options',
-            'alpha-rss-ai-generator',
+            'content-rank',
             array($this, 'render_admin_page')
         );
         add_submenu_page(
-            'alpha-rss-ai-generator',
+            'content-rank',
             'Importação',
             'Importação',
             'manage_options',
-            'alpha-rss-ai-keyword-lists',
+            'content-rank-keyword-lists',
             array($this, 'render_keyword_lists_page')
         );
-        remove_submenu_page('alpha-rss-ai-generator', 'alpha-rss-ai-keyword-lists');
+        remove_submenu_page('content-rank', 'content-rank-keyword-lists');
         add_submenu_page(
-            'alpha-rss-ai-generator',
+            'content-rank',
             'Keyword lists',
             'Keyword lists',
             'manage_options',
-            'alpha-rss-ai-keyword-lists',
+            'content-rank-keyword-lists',
             array($this, 'render_keyword_lists_page')
         );
     }
@@ -53,11 +53,11 @@ class Alpha_RSS_AI_Generator_Admin
     public function admin_menu_late()
     {
         add_submenu_page(
-            'alpha-rss-ai-generator',
+            'content-rank',
             'Configurações',
             'Configurações',
             'manage_options',
-            'alpha-rss-ai-global-settings',
+            'content-rank-global-settings',
             array($this, 'render_global_settings_page'),
             999
         );
@@ -73,15 +73,15 @@ class Alpha_RSS_AI_Generator_Admin
             nocache_headers();
         }
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
-        $generators = Alpha_RSS_AI_Generator::get_generators(200);
-        $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
+        $settings = Content_Rank_Generator::get_settings();
+        $generators = Content_Rank_Generator::get_generators(200);
+        $keyword_lists = Content_Rank_Generator::get_keyword_lists(200);
         $edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
-        $editing_generator = $edit_id > 0 ? Alpha_RSS_AI_Generator::get_generator($edit_id) : array();
+        $editing_generator = $edit_id > 0 ? Content_Rank_Generator::get_generator($edit_id) : array();
 
-        $users = Alpha_RSS_AI_Generator::get_content_author_users();
+        $users = Content_Rank_Generator::get_content_author_users();
         $categories = get_categories(array('hide_empty' => false));
-        $log_rows = Alpha_RSS_AI_Generator::get_recent_runs(30);
+        $log_rows = Content_Rank_Generator::get_recent_runs(30);
 
         ob_start();
 
@@ -101,11 +101,11 @@ class Alpha_RSS_AI_Generator_Admin
             };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
-        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
-            <h1 class="screen-reader-text">Alpha RSS AI</h1>
+        <div class="wrap content-rank-wrap min-h-screen bg-slate-100 text-slate-900">
+            <h1 class="screen-reader-text">Content Rank</h1>
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between w-3xl">
                 <div class="w-3xl">
-                    <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
+                    <div class="text-xs font-semibold text-indigo-600">Content Rank</div>
                     <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Configurações globais</h1>
                 </div>
                 <div class="flex flex-wrap items-center gap-3 w-3xl">
@@ -114,8 +114,8 @@ class Alpha_RSS_AI_Generator_Admin
                         <span class="sr-only">Importar gerador</span>
                     </button>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mb-0">
-                        <?php wp_nonce_field('arc_export_generators', 'arc_export_generators_nonce'); ?>
-                        <input type="hidden" name="action" value="arc_export_generators" />
+                        <?php wp_nonce_field('content_rank_export_generators', 'content_rank_export_generators_nonce'); ?>
+                        <input type="hidden" name="action" value="content_rank_export_generators" />
                         <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50" aria-label="Exportar geradores" title="Exportar geradores">
                             <span class="dashicons dashicons-upload text-[18px] leading-none"></span>
                             <span class="sr-only">Exportar geradores</span>
@@ -155,9 +155,9 @@ class Alpha_RSS_AI_Generator_Admin
                                 <?php else: ?>
                                     <?php foreach ($generators as $generator): ?>
                                         <?php
-                                        $generator_status_label = Alpha_RSS_AI_Generator::get_generator_status_label($generator['status']);
-                                        $schedule_label = Alpha_RSS_AI_Generator::get_schedule_type_label($generator['schedule_type']);
-                                        $generation_mode_label = Alpha_RSS_AI_Generator::get_generation_mode_label(isset($generator['generation_mode']) ? $generator['generation_mode'] : Alpha_RSS_AI_Generator::get_default_generation_mode());
+                                        $generator_status_label = Content_Rank_Generator::get_generator_status_label($generator['status']);
+                                        $schedule_label = Content_Rank_Generator::get_schedule_type_label($generator['schedule_type']);
+                                        $generation_mode_label = Content_Rank_Generator::get_generation_mode_label(isset($generator['generation_mode']) ? $generator['generation_mode'] : Content_Rank_Generator::get_default_generation_mode());
                                         $category_label = '-';
                                         $generator_category_ids = array();
                                         if (isset($generator['category_ids'])) {
@@ -182,7 +182,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             <td class="px-6 py-4">
                                                 <div class="font-semibold text-slate-950"><?php echo esc_html($generator['name']); ?></div>
                                                 <div class="mt-1 break-all text-sm text-slate-500">
-                                                    <?php if (!empty($generator['source_type']) && Alpha_RSS_AI_Generator::source_type_uses_keyword_list($generator['source_type'])): ?>
+                                                    <?php if (!empty($generator['source_type']) && Content_Rank_Generator::source_type_uses_keyword_list($generator['source_type'])): ?>
                                                         <?php
                                                         $linked_list = null;
                                                         foreach ($keyword_lists as $candidate_list) {
@@ -213,38 +213,53 @@ class Alpha_RSS_AI_Generator_Admin
                                             </td>
                                             <td class="px-6 py-4 text-sm text-slate-600"><?php echo esc_html($generator['next_run_at'] ?: '-'); ?></td>
                                             <td class="px-6 py-4">
-                                                <div class="arc-generator-actions flex flex-wrap gap-2">
+                                                <div class="content-rank-generator-actions flex flex-wrap gap-2">
                                                     <button
                                                         type="button"
                                                         data-edit-generator-id="<?php echo esc_attr($generator['id']); ?>"
-                                                        class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                                                        Editar
+                                                        class="content-rank-generator-action-btn inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50"
+                                                        aria-label="Editar"
+                                                        title="Editar">
+                                                        <span class="dashicons dashicons-edit text-[17px] leading-none"></span>
+                                                        <span class="sr-only">Editar</span>
                                                     </button>
                                                     <button
                                                         type="button"
                                                         data-open-manual-run-modal
                                                         data-generator-id="<?php echo esc_attr($generator['id']); ?>"
                                                         data-generator-name="<?php echo esc_attr($generator['name']); ?>"
-                                                        class="arc-generator-action-btn arc-generator-action-btn--primary inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500">
-                                                        Escolher item
+                                                        class="content-rank-generator-action-btn content-rank-generator-action-btn--primary inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-500"
+                                                        aria-label="Escolher item"
+                                                        title="Escolher item">
+                                                        <span class="dashicons dashicons-list-view text-[17px] leading-none"></span>
+                                                        <span class="sr-only">Escolher item</span>
                                                     </button>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                                                        <?php wp_nonce_field('arc_export_generator', 'arc_export_generator_nonce'); ?>
-                                                        <input type="hidden" name="action" value="arc_export_generator" />
+                                                        <?php wp_nonce_field('content_rank_export_generator', 'content_rank_export_generator_nonce'); ?>
+                                                        <input type="hidden" name="action" value="content_rank_export_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
-                                                        <button type="submit" class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Exportar</button>
+                                                        <button type="submit" class="content-rank-generator-action-btn inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50" aria-label="Exportar" title="Exportar">
+                                                            <span class="dashicons dashicons-download text-[17px] leading-none"></span>
+                                                            <span class="sr-only">Exportar</span>
+                                                        </button>
                                                     </form>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                                                        <?php wp_nonce_field('arc_duplicate_generator', 'arc_duplicate_nonce'); ?>
-                                                        <input type="hidden" name="action" value="arc_duplicate_generator" />
+                                                        <?php wp_nonce_field('content_rank_duplicate_generator', 'content_rank_duplicate_nonce'); ?>
+                                                        <input type="hidden" name="action" value="content_rank_duplicate_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
-                                                        <button type="submit" class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Duplicar</button>
+                                                        <button type="submit" class="content-rank-generator-action-btn inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50" aria-label="Duplicar" title="Duplicar">
+                                                            <span class="dashicons dashicons-admin-page text-[17px] leading-none"></span>
+                                                            <span class="sr-only">Duplicar</span>
+                                                        </button>
                                                     </form>
                                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-swal-confirm="Excluir este gerador?">
-                                                        <?php wp_nonce_field('arc_delete_generator', 'arc_delete_nonce'); ?>
-                                                        <input type="hidden" name="action" value="arc_delete_generator" />
+                                                        <?php wp_nonce_field('content_rank_delete_generator', 'content_rank_delete_nonce'); ?>
+                                                        <input type="hidden" name="action" value="content_rank_delete_generator" />
                                                         <input type="hidden" name="generator_id" value="<?php echo esc_attr($generator['id']); ?>" />
-                                                        <button type="submit" class="arc-generator-action-btn inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir</button>
+                                                        <button type="submit" class="content-rank-generator-action-btn inline-flex h-10 w-10 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100" aria-label="Excluir" title="Excluir">
+                                                            <span class="dashicons dashicons-trash text-[17px] leading-none"></span>
+                                                            <span class="sr-only">Excluir</span>
+                                                        </button>
                                                     </form>
                                                 </div>
                                             </td>
@@ -257,8 +272,8 @@ class Alpha_RSS_AI_Generator_Admin
                 </section>
             </div>
 
-            <div id="arc-settings-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-settings-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-settings-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-settings-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-3xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
@@ -269,8 +284,8 @@ class Alpha_RSS_AI_Generator_Admin
                             <button type="button" data-close-settings-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
-                            <?php wp_nonce_field('arc_save_settings', 'arc_settings_nonce'); ?>
-                            <input type="hidden" name="action" value="arc_save_settings" />
+                            <?php wp_nonce_field('content_rank_save_settings', 'content_rank_settings_nonce'); ?>
+                            <input type="hidden" name="action" value="content_rank_save_settings" />
                             <div class="space-y-4">
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Chave da API da OpenAI</label>
@@ -307,8 +322,8 @@ class Alpha_RSS_AI_Generator_Admin
                 </div>
             </div>
 
-            <div id="arc-runs-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-runs-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-runs-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-runs-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-4xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
@@ -340,12 +355,12 @@ class Alpha_RSS_AI_Generator_Admin
                                                         <td class="px-5 py-4 text-sm text-slate-600"><?php echo esc_html($row['created_at']); ?></td>
                                                         <td class="px-5 py-4">
                                                             <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold <?php echo $row['status'] === 'error' ? 'bg-rose-100 text-rose-700' : (($row['status'] === 'warning' || $row['status'] === 'info') ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'); ?>">
-                                                                <?php echo esc_html(Alpha_RSS_AI_Generator::get_run_status_label($row['status'])); ?>
+                                                                <?php echo esc_html(Content_Rank_Generator::get_run_status_label($row['status'])); ?>
                                                             </span>
                                                         </td>
                                                         <td class="px-5 py-4 text-sm text-slate-700">
                                                             <div><?php echo esc_html($row['message']); ?></div>
-                                                            <?php $run_summary = Alpha_RSS_AI_Generator::format_run_log_summary($row); ?>
+                                                            <?php $run_summary = Content_Rank_Generator::format_run_log_summary($row); ?>
                                                             <?php if ($run_summary !== ''): ?>
                                                                 <div class="mt-1 text-xs leading-5 text-slate-500"><?php echo esc_html($run_summary); ?></div>
                                                             <?php endif; ?>
@@ -362,29 +377,29 @@ class Alpha_RSS_AI_Generator_Admin
                 </div>
             </div>
 
-            <div id="arc-manual-run-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-manual-run-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-manual-run-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-manual-run-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-5xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                             <div>
-                                <h2 id="arc-manual-run-title" class="text-xl font-semibold text-slate-950">Escolher item</h2>
-                                <p id="arc-manual-run-subtitle" class="mt-1 text-sm text-slate-500">Escolha um item disponível para gerar um post único.</p>
+                                <h2 id="content-rank-manual-run-title" class="text-xl font-semibold text-slate-950">Escolher item</h2>
+                                <p id="content-rank-manual-run-subtitle" class="mt-1 text-sm text-slate-500">Escolha um item disponível para gerar um post único.</p>
                             </div>
                             <button type="button" data-close-manual-run-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
                         <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-3">
-                            <div class="text-sm text-slate-600">Itens disponíveis: <span id="arc-manual-run-count" class="font-semibold text-slate-950">0</span></div>
-                            <button type="button" id="arc-manual-run-refresh" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Atualizar itens</button>
+                            <div class="text-sm text-slate-600">Itens disponíveis: <span id="content-rank-manual-run-count" class="font-semibold text-slate-950">0</span></div>
+                            <button type="button" id="content-rank-manual-run-refresh" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Atualizar itens</button>
                         </div>
                         <div class="max-h-[calc(90vh-140px)] overflow-y-auto p-6">
-                            <div id="arc-manual-run-status" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
-                            <div id="arc-manual-run-loading" class="flex items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-sm text-slate-500">Carregando itens...</div>
-                            <div id="arc-manual-run-empty" class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">Nenhum item disponível. Todos os itens já foram processados.</div>
-                            <div id="arc-manual-run-list" class="space-y-4"></div>
-                            <form id="arc-manual-run-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="hidden">
-                                <?php wp_nonce_field('arc_run_generator', 'arc_run_nonce'); ?>
-                                <input type="hidden" name="action" value="arc_run_generator" />
+                            <div id="content-rank-manual-run-status" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
+                            <div id="content-rank-manual-run-loading" class="flex items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-sm text-slate-500">Carregando itens...</div>
+                            <div id="content-rank-manual-run-empty" class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">Nenhum item disponível. Todos os itens já foram processados.</div>
+                            <div id="content-rank-manual-run-list" class="space-y-4"></div>
+                            <form id="content-rank-manual-run-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="hidden">
+                                <?php wp_nonce_field('content_rank_run_generator', 'content_rank_run_nonce'); ?>
+                                <input type="hidden" name="action" value="content_rank_run_generator" />
                                 <input type="hidden" name="generator_id" value="" />
                                 <input type="hidden" name="item_guid" value="" />
                             </form>
@@ -393,8 +408,8 @@ class Alpha_RSS_AI_Generator_Admin
                 </div>
             </div>
 
-            <div id="arc-generator-import-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-generator-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-generator-import-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-generator-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-3xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
@@ -405,8 +420,8 @@ class Alpha_RSS_AI_Generator_Admin
                             <button type="button" data-close-generator-import-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" class="max-h-[calc(90vh-82px)] overflow-y-auto p-6" >
-                            <?php wp_nonce_field('arc_import_generator', 'arc_import_generator_nonce'); ?>
-                            <input type="hidden" name="action" value="arc_import_generators" />
+                            <?php wp_nonce_field('content_rank_import_generator', 'content_rank_import_generator_nonce'); ?>
+                            <input type="hidden" name="action" value="content_rank_import_generators" />
                             <div class="space-y-4">
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo JSON</label>
@@ -425,23 +440,23 @@ class Alpha_RSS_AI_Generator_Admin
                 </div>
             </div>
 
-            <div id="arc-generator-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-generator-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-generator-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-generator-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                             <div>
-                                <h2 id="arc-generator-modal-title" class="text-xl font-semibold text-slate-950">Adicionar gerador</h2>
+                                <h2 id="content-rank-generator-modal-title" class="text-xl font-semibold text-slate-950">Adicionar gerador</h2>
                                 <p class="mt-1 text-sm text-slate-500">Configure tudo aqui e salve sem sair da tabela.</p>
                             </div>
                             <button type="button" data-close-generator-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
-                        <form id="arc-generator-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="max-h-[calc(80vh-82px)] overflow-y-auto p-6">
-                            <?php wp_nonce_field('arc_save_generator', 'arc_generator_nonce'); ?>
-                            <input type="hidden" name="action" value="arc_save_generator" />
+                        <form id="content-rank-generator-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="max-h-[calc(80vh-82px)] overflow-y-auto p-6">
+                            <?php wp_nonce_field('content_rank_save_generator', 'content_rank_generator_nonce'); ?>
+                            <input type="hidden" name="action" value="content_rank_save_generator" />
                             <input type="hidden" name="generator_id" value="<?php echo esc_attr(isset($editing_generator['id']) ? $editing_generator['id'] : ''); ?>" />
 
-                            <div class="arc-generator-fields grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div class="content-rank-generator-fields grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Nome</label>
                                     <input type="text" name="name" required value="<?php echo esc_attr(isset($editing_generator['name']) ? $editing_generator['name'] : ''); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
@@ -453,7 +468,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="satellite" <?php selected(isset($editing_generator['generation_mode']) ? $editing_generator['generation_mode'] : '', 'satellite'); ?>>Satélite</option>
                                     </select>
                                 </div>
-                                <div <?php echo (!empty($editing_generator['generation_mode']) && Alpha_RSS_AI_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) === 'satellite') ? 'class="hidden"' : ''; ?>>
+                                <div <?php echo (!empty($editing_generator['generation_mode']) && Content_Rank_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) === 'satellite') ? 'class="hidden"' : ''; ?>>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Fonte do gerador</label>
                                     <select name="source_type" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                         <option value="rss" <?php selected(isset($editing_generator['source_type']) ? $editing_generator['source_type'] : '', 'rss'); ?>>RSS</option>
@@ -463,8 +478,8 @@ class Alpha_RSS_AI_Generator_Admin
                                 </div>
                                 <?php
                                 $editing_source_type = !empty($editing_generator['source_type']) ? sanitize_key((string) $editing_generator['source_type']) : 'keyword_list';
-                                $editing_generation_mode = !empty($editing_generator['generation_mode']) ? Alpha_RSS_AI_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) : 'pillar';
-                                $editing_is_list_source = Alpha_RSS_AI_Generator::source_type_uses_keyword_list($editing_source_type);
+                                $editing_generation_mode = !empty($editing_generator['generation_mode']) ? Content_Rank_Generator::normalize_generation_mode((string) $editing_generator['generation_mode']) : 'pillar';
+                                $editing_is_list_source = Content_Rank_Generator::source_type_uses_keyword_list($editing_source_type);
                                 $editing_is_spreadsheet = $editing_source_type === 'spreadsheet';
                                 ?>
                                 <div data-feed-url-field class="<?php echo ($editing_generation_mode === 'satellite' || $editing_is_list_source) ? 'hidden' : ''; ?>">
@@ -559,7 +574,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Consulta no Pexels</label>
-                                    <input type="text" name="pexels_query" value="<?php echo esc_attr(Alpha_RSS_AI_Generator::get_default_pexels_query()); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                    <input type="text" name="pexels_query" value="<?php echo esc_attr(Content_Rank_Generator::get_default_pexels_query()); ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Usar vídeo da fonte</label>
@@ -612,7 +627,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <option value="full">Original</option>
                                     </select>
                                 </div>
-                                <div data-rss-image-interval-field>
+                                <div data-rss-image-interval-field class="<?php echo !$editing_is_list_source ? 'hidden' : ''; ?>">
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Intervalo de imagens (palavras)</label>
                                     <input type="number" name="content_image_interval_words" min="100" max="5000" step="50" value="500" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                     <p class="mt-1 text-xs text-slate-500">Usado em keyword list e planilhas. Insere uma imagem a cada intervalo.</p>
@@ -626,7 +641,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 </div>
                                 <div class="md:col-span-2" data-rss-link-phrases-field>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Frases do link da fonte</label>
-                                    <textarea name="source_link_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Assista na plataforma&#10;Veja no catálogo&#10;Confira a fonte"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases()); ?></textarea>
+                                    <textarea name="source_link_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Assista na plataforma&#10;Veja no catálogo&#10;Confira a fonte"><?php echo esc_textarea(Content_Rank_Generator::get_default_source_link_cta_phrases()); ?></textarea>
                                 </div>
                                 <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-rss-source-filters-field>
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -665,7 +680,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 </div>
                                 <div>
                                     <label class="mb-1 block text-sm font-medium text-slate-700">Linguagem final de geração</label>
-                                    <input type="text" name="generation_language" value="<?php echo esc_attr(Alpha_RSS_AI_Generator::get_default_generation_language()); ?>" placeholder="Português do Brasil" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                    <input type="text" name="generation_language" value="<?php echo esc_attr(Content_Rank_Generator::get_default_generation_language()); ?>" placeholder="Português do Brasil" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                 </div>
                                 <div class="hidden md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                     <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -725,11 +740,11 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                         <div class="md:col-span-2">
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Frases do marcador</label>
-                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Você também pode gostar de:\nLeia também:\nVeja também:"><?php echo esc_textarea(Alpha_RSS_AI_Generator::get_default_related_posts_phrases()); ?></textarea>
+                                            <textarea name="related_posts_phrases" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Você também pode gostar de:\nLeia também:\nVeja também:"><?php echo esc_textarea(Content_Rank_Generator::get_default_related_posts_phrases()); ?></textarea>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="md:col-span-2 grid gap-5 md:grid-cols-2 arc-generator-tax-grid essanao">
+                                <div class="md:col-span-2 grid gap-5 md:grid-cols-2 content-rank-generator-tax-grid essanao">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-slate-700">Categorias do WordPress</label>
                                         <div class="max-h-64 overflow-auto rounded-xl border border-slate-300 bg-white p-3" data-category-checkbox-list>
@@ -772,7 +787,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 <div class="essanao mt-6 grid w-full gap-4 border-t border-slate-200 pt-5 lg:grid-cols-[1fr_auto] lg:items-center">
                                     <div class="flex w-full items-center gap-3 lg:w-auto lg:justify-end">
                                         <button type="button" data-close-generator-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</button>
-                                        <button id="arc-generator-submit" type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Salvar gerador</button>
+                                        <button id="content-rank-generator-submit" type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Salvar gerador</button>
                                     </div>
                                 </div>
                         </form>
@@ -807,7 +822,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         'daily_start' => '',
                                         'daily_end' => '',
                                         'image_source_mode' => '',
-                                        'pexels_query' => Alpha_RSS_AI_Generator::get_default_pexels_query(),
+                                        'pexels_query' => Content_Rank_Generator::get_default_pexels_query(),
                                         'source_video_enabled' => '0',
                                         'source_content_images_enabled' => '1',
                                         'source_content_links_enabled' => '1',
@@ -818,19 +833,19 @@ class Alpha_RSS_AI_Generator_Admin
                                         'content_image_size' => 'medium',
                                         'content_image_interval_words' => '500',
                                         'random_bolds_enabled' => '0',
-                                        'source_link_phrases' => Alpha_RSS_AI_Generator::get_default_source_link_cta_phrases(),
+                                        'source_link_phrases' => Content_Rank_Generator::get_default_source_link_cta_phrases(),
                                         'source_context_exclude_phrases' => '',
                                         'source_context_rating_label' => 'IMDb',
                                         'source_context_min_rating' => '0',
                                         'source_context_keep_unrated' => '0',
                                         'seo_enabled' => '1',
-                                        'generation_language' => Alpha_RSS_AI_Generator::get_default_generation_language(),
+                                        'generation_language' => Content_Rank_Generator::get_default_generation_language(),
                                         'category_ids' => array(),
                                         'default_category_id' => '0',
                                         'tags_default' => array(),
-                                        'prompt_template' => Alpha_RSS_AI_Generator::get_default_prompt_template(),
-                                        'content_prompt_template' => Alpha_RSS_AI_Generator::get_default_content_prompt_template_visible(),
-                                        'keyword_prompt_template' => Alpha_RSS_AI_Generator::get_default_keyword_prompt_template(),
+                                        'prompt_template' => Content_Rank_Generator::get_default_prompt_template(),
+                                        'content_prompt_template' => Content_Rank_Generator::get_default_content_prompt_template_visible(),
+                                        'keyword_prompt_template' => Content_Rank_Generator::get_default_keyword_prompt_template(),
                                         'related_posts_enabled' => '0',
                                         'related_posts_position' => 'end',
                                         'related_posts_interval' => '4',
@@ -839,31 +854,31 @@ class Alpha_RSS_AI_Generator_Admin
                                         'related_posts_same_category_only' => '1',
                                         'related_posts_allow_fallback' => '1',
                                         'related_posts_style' => 'list',
-                                        'related_posts_phrases' => Alpha_RSS_AI_Generator::get_default_related_posts_phrases(),
+                                        'related_posts_phrases' => Content_Rank_Generator::get_default_related_posts_phrases(),
                                         'internal_links_count' => '0',
                                         'internal_links_json' => '[]',
                                     )); ?>;
                     var editId = <?php echo intval($edit_id); ?>;
-                    var settingsModal = document.getElementById('arc-settings-modal');
-                    var settingsBackdrop = document.getElementById('arc-settings-backdrop');
-                    var runsModal = document.getElementById('arc-runs-modal');
-                    var runsBackdrop = document.getElementById('arc-runs-backdrop');
-                    var manualRunModal = document.getElementById('arc-manual-run-modal');
-                    var manualRunBackdrop = document.getElementById('arc-manual-run-backdrop');
-                    var manualRunTitle = document.getElementById('arc-manual-run-title');
-                    var manualRunSubtitle = document.getElementById('arc-manual-run-subtitle');
-                    var manualRunCount = document.getElementById('arc-manual-run-count');
-                    var manualRunRefresh = document.getElementById('arc-manual-run-refresh');
-                    var manualRunStatus = document.getElementById('arc-manual-run-status');
-                    var manualRunLoading = document.getElementById('arc-manual-run-loading');
-                    var manualRunEmpty = document.getElementById('arc-manual-run-empty');
-                    var manualRunList = document.getElementById('arc-manual-run-list');
-                    var manualRunForm = document.getElementById('arc-manual-run-form');
-                    var modal = document.getElementById('arc-generator-modal');
-                    var backdrop = document.getElementById('arc-generator-backdrop');
-                    var form = document.getElementById('arc-generator-form');
-                    var titleEl = document.getElementById('arc-generator-modal-title');
-                    var submitEl = document.getElementById('arc-generator-submit');
+                    var settingsModal = document.getElementById('content-rank-settings-modal');
+                    var settingsBackdrop = document.getElementById('content-rank-settings-backdrop');
+                    var runsModal = document.getElementById('content-rank-runs-modal');
+                    var runsBackdrop = document.getElementById('content-rank-runs-backdrop');
+                    var manualRunModal = document.getElementById('content-rank-manual-run-modal');
+                    var manualRunBackdrop = document.getElementById('content-rank-manual-run-backdrop');
+                    var manualRunTitle = document.getElementById('content-rank-manual-run-title');
+                    var manualRunSubtitle = document.getElementById('content-rank-manual-run-subtitle');
+                    var manualRunCount = document.getElementById('content-rank-manual-run-count');
+                    var manualRunRefresh = document.getElementById('content-rank-manual-run-refresh');
+                    var manualRunStatus = document.getElementById('content-rank-manual-run-status');
+                    var manualRunLoading = document.getElementById('content-rank-manual-run-loading');
+                    var manualRunEmpty = document.getElementById('content-rank-manual-run-empty');
+                    var manualRunList = document.getElementById('content-rank-manual-run-list');
+                    var manualRunForm = document.getElementById('content-rank-manual-run-form');
+                    var modal = document.getElementById('content-rank-generator-modal');
+                    var backdrop = document.getElementById('content-rank-generator-backdrop');
+                    var form = document.getElementById('content-rank-generator-form');
+                    var titleEl = document.getElementById('content-rank-generator-modal-title');
+                    var submitEl = document.getElementById('content-rank-generator-submit');
                     var internalLinksField = form.querySelector('[data-internal-links-field]');
                     var internalLinksRows = form.querySelector('[data-internal-links-rows]');
                     var internalLinksJson = form.querySelector('[data-internal-links-json]');
@@ -874,14 +889,15 @@ class Alpha_RSS_AI_Generator_Admin
                     var keywordListModeField = form.querySelector('[data-keyword-list-mode-field]');
                     var tavilyField = form.querySelector('[data-tavily-field]');
                     var videoSelectorField = form.querySelector('[data-rss-video-selector-field]');
-                    var apiBase = <?php echo wp_json_encode(rest_url('alpha-rss-ai-generator/v1')); ?>;
+                    var imageIntervalField = form.querySelector('[data-rss-image-interval-field]');
+                    var apiBase = <?php echo wp_json_encode(rest_url('content-rank/v1')); ?>;
                     var restNonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
-                    window.AlphaRssAiGenerator = window.AlphaRssAiGenerator || {};
-                    window.AlphaRssAiGenerator.generators = generators;
-                    window.AlphaRssAiGenerator.defaults = defaults;
-                    window.AlphaRssAiGenerator.editId = editId;
-                    window.AlphaRssAiGenerator.apiBase = apiBase;
-                    window.AlphaRssAiGenerator.restNonce = restNonce;
+                    window.ContentRankGenerator = window.ContentRankGenerator || {};
+                    window.ContentRankGenerator.generators = generators;
+                    window.ContentRankGenerator.defaults = defaults;
+                    window.ContentRankGenerator.editId = editId;
+                    window.ContentRankGenerator.apiBase = apiBase;
+                    window.ContentRankGenerator.restNonce = restNonce;
                     var openModalCount = 0;
                     var manualRunCurrentGeneratorId = '';
                     var manualRunCurrentGeneratorName = '';
@@ -1144,6 +1160,9 @@ class Alpha_RSS_AI_Generator_Admin
                         }
                         if (tavilyField) {
                             tavilyField.classList.toggle('hidden', isSatelliteMode || sourceType !== 'keyword_list');
+                        }
+                        if (imageIntervalField) {
+                            imageIntervalField.classList.toggle('hidden', isSatelliteMode || !isKeywordListSourceType(sourceType));
                         }
                         if (videoSelectorField) {
                             var showVideoSelector = !isSatelliteMode && (sourceType === 'rss' || (isSpreadsheetSource && keywordListMode === 'url_reference'));
@@ -1513,7 +1532,7 @@ class Alpha_RSS_AI_Generator_Admin
                         if (!manualRunForm) {
                             return;
                         }
-                        if (window.AlphaRssAiGeneratorManualRunInFlight) {
+                        if (window.ContentRankGeneratorManualRunInFlight) {
                             return;
                         }
                         var generatorIdField = manualRunForm.querySelector('[name="generator_id"]');
@@ -1524,10 +1543,10 @@ class Alpha_RSS_AI_Generator_Admin
                         if (itemGuidField) {
                             itemGuidField.value = itemGuid || '';
                         }
-                        if (window.AlphaRssAiGenerationToast && typeof window.AlphaRssAiGenerationToast.start === 'function') {
-                            window.AlphaRssAiGenerationToast.start([], 'Gerando item selecionado...');
+                        if (window.ContentRankGenerationToast && typeof window.ContentRankGenerationToast.start === 'function') {
+                            window.ContentRankGenerationToast.start([], 'Gerando item selecionado...');
                         }
-                        window.AlphaRssAiGeneratorManualRunInFlight = true;
+                        window.ContentRankGeneratorManualRunInFlight = true;
                         manualRunForm.submit();
                     }
 
@@ -2011,8 +2030,8 @@ class Alpha_RSS_AI_Generator_Admin
             nocache_headers();
         }
 
-        $settings = Alpha_RSS_AI_Generator::get_settings();
-        $blacklist_entries = class_exists('Alpha_RSS_AI_Global_Filters') ? Alpha_RSS_AI_Global_Filters::get_entries() : array();
+        $settings = Content_Rank_Generator::get_settings();
+        $blacklist_entries = class_exists('Content_Rank_Global_Filters') ? Content_Rank_Global_Filters::get_entries() : array();
 
         ob_start();
     ?>
@@ -2029,11 +2048,11 @@ class Alpha_RSS_AI_Generator_Admin
             };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
-        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900 flex flex-col items-stretch">
-            <h1 class="screen-reader-text">Alpha RSS AI</h1>
+        <div class="wrap content-rank-wrap min-h-screen bg-slate-100 text-slate-900 flex flex-col items-stretch">
+            <h1 class="screen-reader-text">Content Rank</h1>
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                    <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
+                    <div class="text-xs font-semibold text-indigo-600">Content Rank</div>
                     <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Configurações globais</h1>
                     <p class="mt-2 max-w-3xl text-sm text-slate-600">Ajuste as credenciais e padrões usados por todos os geradores.</p>
                 </div>
@@ -2045,8 +2064,8 @@ class Alpha_RSS_AI_Generator_Admin
                     <p class="mt-1 text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
                 </div>
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="p-6">
-                    <?php wp_nonce_field('arc_save_settings', 'arc_settings_nonce'); ?>
-                    <input type="hidden" name="action" value="arc_save_settings" />
+                    <?php wp_nonce_field('content_rank_save_settings', 'content_rank_settings_nonce'); ?>
+                    <input type="hidden" name="action" value="content_rank_save_settings" />
                     <div class="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4" data-settings-tabs>
                         <button type="button" data-settings-tab-button="general" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Geral</button>
                         <button type="button" data-settings-tab-button="links" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">Links globais</button>
@@ -2110,7 +2129,7 @@ class Alpha_RSS_AI_Generator_Admin
                                 </label>
                             </div>
                         </div>
-                        <div id="arc-global-links-section" data-settings-tab-panel="links" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div id="content-rank-global-links-section" data-settings-tab-panel="links" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                     <h3 class="text-sm font-semibold text-slate-900">Links globais</h3>
@@ -2140,7 +2159,7 @@ class Alpha_RSS_AI_Generator_Admin
                     <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p class="text-sm text-slate-500">Esses valores viram padrão ao criar ou duplicar geradores.</p>
                         <div class="flex items-center gap-3">
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</a>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=content-rank')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Cancelar</a>
                             <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">Salvar configurações</button>
                         </div>
                     </div>
@@ -2342,8 +2361,8 @@ class Alpha_RSS_AI_Generator_Admin
             nocache_headers();
         }
 
-        $global_settings = Alpha_RSS_AI_Generator::get_settings();
-        $keyword_lists = Alpha_RSS_AI_Generator::get_keyword_lists(200);
+        $global_settings = Content_Rank_Generator::get_settings();
+        $keyword_lists = Content_Rank_Generator::get_keyword_lists(200);
         $summary = array(
             'lists' => count($keyword_lists),
             'rows' => 0,
@@ -2356,7 +2375,7 @@ class Alpha_RSS_AI_Generator_Admin
         );
 
         foreach ($keyword_lists as &$keyword_list) {
-            $keyword_list['counts'] = Alpha_RSS_AI_Generator::bulk_get_list_counts(intval($keyword_list['id']));
+            $keyword_list['counts'] = Content_Rank_Generator::bulk_get_list_counts(intval($keyword_list['id']));
             $summary['rows'] += intval($keyword_list['counts']['total_rows']);
             $summary['pending'] += intval($keyword_list['counts']['pending_rows']);
             $summary['generated'] += intval($keyword_list['counts']['generated_rows']);
@@ -2368,7 +2387,7 @@ class Alpha_RSS_AI_Generator_Admin
         unset($keyword_list);
 
         $post_types = get_post_types(array('public' => true), 'objects');
-        $users = Alpha_RSS_AI_Generator::get_content_author_users();
+        $users = Content_Rank_Generator::get_content_author_users();
         $categories = get_categories(array('hide_empty' => false));
         $tags = get_terms(array(
             'taxonomy' => 'post_tag',
@@ -2383,7 +2402,7 @@ class Alpha_RSS_AI_Generator_Admin
         if (!is_array($public_taxonomies)) {
             $public_taxonomies = array();
         }
-        $api_base = rest_url('alpha-rss-ai-generator/v1');
+        $api_base = rest_url('content-rank/v1');
         $rest_nonce = wp_create_nonce('wp_rest');
 
     ?>
@@ -2400,17 +2419,17 @@ class Alpha_RSS_AI_Generator_Admin
             };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
-        <div class="wrap arc-wrap min-h-screen bg-slate-100 text-slate-900">
-            <h1 class="screen-reader-text">Alpha RSS AI</h1>
+        <div class="wrap content-rank-wrap min-h-screen bg-slate-100 text-slate-900">
+            <h1 class="screen-reader-text">Content Rank</h1>
             <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                    <div class="text-xs font-semibold text-indigo-600">Alpha RSS AI</div>
+                    <div class="text-xs font-semibold text-indigo-600">Content Rank</div>
                     <h1 class="mt-2 text-lg font-semibold tracking-tight text-slate-950">Keyword lists</h1>
                     <p class="mt-2 max-w-3xl text-sm text-slate-600">Importe CSV, XLS ou XLSX usando uma coluna de palavras-chave. URL, slug, título e demais campos são opcionais.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" data-open-keyword-import-modal class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Adicionar lista</button>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=alpha-rss-ai-generator')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Ir para geradores</a>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=content-rank')); ?>" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50">Ir para geradores</a>
                 </div>
             </div>
 
@@ -2423,24 +2442,24 @@ class Alpha_RSS_AI_Generator_Admin
                     <div class="grid gap-4 p-6 md:grid-cols-[280px_1fr_auto] md:items-end">
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
-                            <input id="arc-legacy-manual-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Filmes para gerar" />
+                            <input id="content-rank-legacy-manual-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Filmes para gerar" />
                         </div>
                         <div>
                             <label class="mb-1 block text-sm font-medium text-slate-700">Keywords ou títulos</label>
-                            <textarea id="arc-legacy-manual-keyword-list-values" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="kw 1&#10;kw 2&#10;kw 3"></textarea>
+                            <textarea id="content-rank-legacy-manual-keyword-list-values" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="kw 1&#10;kw 2&#10;kw 3"></textarea>
                         </div>
-                        <button type="button" id="arc-legacy-create-manual-keyword-list" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Cadastrar lista</button>
+                        <button type="button" id="content-rank-legacy-create-manual-keyword-list" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Cadastrar lista</button>
                     </div>
-                    <div id="arc-legacy-manual-keyword-list-status" class="hidden px-6 pb-5 text-sm"></div>
+                    <div id="content-rank-legacy-manual-keyword-list-status" class="hidden px-6 pb-5 text-sm"></div>
                 </section>
 
                 <style>
-                    #arc-keyword-source-title + p {
+                    #content-rank-keyword-source-title + p {
                         display: none !important;
                     }
                 </style>
-                <div id="arc-keyword-import-modal" class="fixed inset-0 z-50 hidden">
-                    <div id="arc-keyword-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+                <div id="content-rank-keyword-import-modal" class="fixed inset-0 z-50 hidden">
+                    <div id="content-rank-keyword-import-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                     <div class="relative mx-auto flex min-h-full max-w-7xl items-start px-4 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 lg:px-8">
                         <div class="absolute right-8 top-8 z-10">
                             <button type="button" data-close-keyword-import-modal class="rounded-full bg-white/90 p-2 text-slate-500 shadow-soft transition hover:bg-white hover:text-slate-900" aria-label="Fechar modal">&times;</button>
@@ -2449,7 +2468,7 @@ class Alpha_RSS_AI_Generator_Admin
                             <div class="border-b border-slate-200 px-6 py-4">
                                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                        <h2 id="arc-keyword-source-title" class="text-lg font-semibold text-slate-950">Adicionar lista</h2>
+                                        <h2 id="content-rank-keyword-source-title" class="text-lg font-semibold text-slate-950">Adicionar lista</h2>
                                         <p class="mt-1 text-sm text-slate-500">Etapa 1: analise o arquivo e selecione as colunas antes de gravar a lista. Se existir a coluna <strong>Timestamp</strong>, ela será usada como data de publicação no WordPress.</p>
                                     </div>
                                     <div class="hidden grid grid-cols-2 gap-3 text-sm text-slate-500 sm:grid-cols-4">
@@ -2486,89 +2505,89 @@ class Alpha_RSS_AI_Generator_Admin
                                     <button type="button" data-keyword-source-tab="spreadsheet" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Planilha</button>
                                     <button type="button" data-keyword-source-tab="keyword_list" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Keyword list</button>
                                 </div>
-                                <div id="arc-keyword-manual-panel" class="hidden">
+                                <div id="content-rank-keyword-manual-panel" class="hidden">
                                     <div class="max-w-3xl rounded-2xl border border-slate-200 bg-slate-50 p-5">
                                         <h3 class="text-base font-semibold text-slate-950">Keyword list</h3>
                                         <p class="mt-1 text-sm text-slate-500">Digite uma frase-chave ou título por linha. Cada item gerado deixa de aparecer como pendente.</p>
                                         <div class="mt-4 space-y-4">
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
-                                                <input id="arc-manual-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Filmes para gerar" />
+                                                <input id="content-rank-manual-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Filmes para gerar" />
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Keywords ou títulos</label>
-                                                <textarea id="arc-manual-keyword-list-values" rows="12" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="kw 1&#10;kw 2&#10;kw 3"></textarea>
+                                                <textarea id="content-rank-manual-keyword-list-values" rows="12" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="kw 1&#10;kw 2&#10;kw 3"></textarea>
                                             </div>
                                             <div class="flex flex-wrap items-center gap-3">
-                                                <button type="button" id="arc-create-manual-keyword-list" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Cadastrar lista</button>
-                                                <div id="arc-manual-keyword-list-status" class="text-sm text-slate-500"></div>
+                                                <button type="button" id="content-rank-create-manual-keyword-list" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Cadastrar lista</button>
+                                                <div id="content-rank-manual-keyword-list-status" class="text-sm text-slate-500"></div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div id="arc-keyword-spreadsheet-panel">
+                                <div id="content-rank-keyword-spreadsheet-panel">
                                 <div class="grid gap-4 md:grid-cols-[1fr_220px]">
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-slate-700">Nome da lista</label>
-                                        <input id="arc-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Semrush - Vestibulares" />
+                                        <input id="content-rank-keyword-list-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Ex.: Semrush - Vestibulares" />
                                     </div>
                                     <div>
                                         <label class="mb-1 block text-sm font-medium text-slate-700">Arquivo</label>
-                                        <input id="arc-keyword-file" type="file" accept=".csv,.xls,.xlsx" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white file:transition hover:file:bg-slate-800" />
+                                        <input id="content-rank-keyword-file" type="file" accept=".csv,.xls,.xlsx" class="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white file:transition hover:file:bg-slate-800" />
                                     </div>
                                 </div>
 
                                 <div class="mt-4 flex flex-wrap items-center gap-3">
-                                    <button type="button" id="arc-keyword-analyze-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Analisar planilha</button>
-                                    <button type="button" id="arc-keyword-clear-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Limpar</button>
-                                    <div id="arc-keyword-upload-status" class="text-sm text-slate-500"></div>
+                                    <button type="button" id="content-rank-keyword-analyze-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-indigo-500">Analisar planilha</button>
+                                    <button type="button" id="content-rank-keyword-clear-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Limpar</button>
+                                    <div id="content-rank-keyword-upload-status" class="text-sm text-slate-500"></div>
                                 </div>
 
-                                <div id="arc-keyword-preview-panel" class="hidden mt-6 rounded-2xl border border-slate-200 bg-slate-50">
+                                <div id="content-rank-keyword-preview-panel" class="hidden mt-6 rounded-2xl border border-slate-200 bg-slate-50">
                                     <div class="border-b border-slate-200 px-5 py-4">
                                         <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                                             <div>
                                                 <h3 class="text-base font-semibold text-slate-950">Mapeamento das colunas</h3>
                                                 <p class="mt-1 text-sm text-slate-500">A coluna de palavra-chave é obrigatória. URL, slug e campos extras são opcionais.</p>
                                             </div>
-                                            <div id="arc-keyword-preview-summary" class="text-sm text-slate-500"></div>
+                                            <div id="content-rank-keyword-preview-summary" class="text-sm text-slate-500"></div>
                                         </div>
                                     </div>
 
                                     <div class="grid gap-4 border-b border-slate-200 px-5 py-5 md:grid-cols-2">
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da keyword</label>
-                                            <select id="arc-keyword-column-keyword" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                            <select id="content-rank-keyword-column-keyword" class="content-rank-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Coluna do título</label>
-                                            <select id="arc-keyword-column-title" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                            <select id="content-rank-keyword-column-title" class="content-rank-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da URL (opcional)</label>
-                                            <select id="arc-keyword-column-url" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                            <select id="content-rank-keyword-column-url" class="content-rank-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Coluna da slug final (opcional)</label>
-                                            <select id="arc-keyword-column-slug" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                            <select id="content-rank-keyword-column-slug" class="content-rank-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Coluna de conteúdo</label>
-                                            <select id="arc-keyword-column-content" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                            <select id="content-rank-keyword-column-content" class="content-rank-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Coluna de tags</label>
-                                            <select id="arc-keyword-column-tags" class="arc-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
+                                            <select id="content-rank-keyword-column-tags" class="content-rank-keyword-column-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"></select>
                                         </div>
                                     </div>
 
                                     <div class="px-5 py-4">
                                         <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                             <div class="flex flex-wrap items-center gap-2">
-                                                <button type="button" id="arc-keyword-import-btn" class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">Importar lista</button>
+                                                <button type="button" id="content-rank-keyword-import-btn" class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">Importar lista</button>
                                             </div>
                                         </div>
-                                        <div id="arc-keyword-preview-table" class="overflow-hidden rounded-2xl border border-slate-200 bg-white"></div>
+                                        <div id="content-rank-keyword-preview-table" class="overflow-hidden rounded-2xl border border-slate-200 bg-white"></div>
                                     </div>
                                 </div>
                                 </div>
@@ -2584,7 +2603,7 @@ class Alpha_RSS_AI_Generator_Admin
                             <p class="mt-1 text-sm text-slate-500">Abra uma lista para ajustar colunas ou revisar a prévia das linhas.</p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button type="button" id="arc-keyword-refresh-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Atualizar</button>
+                            <button type="button" id="content-rank-keyword-refresh-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Atualizar</button>
                             <div class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500"><?php echo esc_html(count($keyword_lists)); ?> lista(s)</div>
                         </div>
                     </div>
@@ -2643,21 +2662,21 @@ class Alpha_RSS_AI_Generator_Admin
                 </section>
             </div>
 
-            <div id="arc-keyword-list-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-keyword-list-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-keyword-list-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-keyword-list-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[90vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
                             <div>
-                                <h2 id="arc-keyword-list-modal-title" class="text-xl font-semibold text-slate-950">Detalhe da lista</h2>
-                                <p id="arc-keyword-list-modal-subtitle" class="mt-1 text-sm text-slate-500">Carregando detalhes...</p>
+                                <h2 id="content-rank-keyword-list-modal-title" class="text-xl font-semibold text-slate-950">Detalhe da lista</h2>
+                                <p id="content-rank-keyword-list-modal-subtitle" class="mt-1 text-sm text-slate-500">Carregando detalhes...</p>
                             </div>
                             <button type="button" data-close-keyword-list-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
                         <div class="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
-                            <div id="arc-keyword-list-modal-status" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
+                            <div id="content-rank-keyword-list-modal-status" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
 
-                            <div id="arc-keyword-list-modal-counts" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"></div>
+                            <div id="content-rank-keyword-list-modal-counts" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"></div>
 
                             <div class="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
                                 <div class="space-y-6">
@@ -2665,14 +2684,14 @@ class Alpha_RSS_AI_Generator_Admin
                                         <div class="border-b border-slate-200 px-4 py-3">
                                             <h3 class="text-sm font-semibold text-slate-950">Mapeamento de colunas</h3>
                                         </div>
-                                        <div id="arc-keyword-list-modal-mapping" class="grid gap-4 px-4 py-4 sm:grid-cols-2"></div>
+                                        <div id="content-rank-keyword-list-modal-mapping" class="grid gap-4 px-4 py-4 sm:grid-cols-2"></div>
                                     </div>
 
                                     <div class="rounded-2xl border border-slate-200 bg-slate-50">
                                         <div class="border-b border-slate-200 px-4 py-3">
                                             <h3 class="text-sm font-semibold text-slate-950">Informações do arquivo</h3>
                                         </div>
-                                        <div id="arc-keyword-list-modal-info" class="space-y-2 px-4 py-4 text-sm text-slate-600"></div>
+                                        <div id="content-rank-keyword-list-modal-info" class="space-y-2 px-4 py-4 text-sm text-slate-600"></div>
                                     </div>
                                 </div>
 
@@ -2680,30 +2699,30 @@ class Alpha_RSS_AI_Generator_Admin
                                     <div class="border-b border-slate-200 px-4 py-3">
                                         <h3 class="text-sm font-semibold text-slate-950">Prévia das linhas</h3>
                                     </div>
-                                    <div id="arc-keyword-list-modal-preview" class="overflow-x-auto"></div>
+                                    <div id="content-rank-keyword-list-modal-preview" class="overflow-x-auto"></div>
                                 </div>
                             </div>
                         </div>
                         <div class="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                            <button type="button" id="arc-keyword-delete-current-list" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir lista</button>
+                            <button type="button" id="content-rank-keyword-delete-current-list" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100">Excluir lista</button>
                             <div class="flex items-center gap-3">
-                                <button type="button" id="arc-keyword-open-generate-btn" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500">Gerar em lote</button>
+                                <button type="button" id="content-rank-keyword-open-generate-btn" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500">Gerar em lote</button>
                                 <button type="button" data-close-keyword-list-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Fechar</button>
-                                <button type="button" id="arc-keyword-save-map-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Salvar mapeamento</button>
+                                <button type="button" id="content-rank-keyword-save-map-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Salvar mapeamento</button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div id="arc-keyword-generate-modal" class="fixed inset-0 z-50 hidden">
-                <div id="arc-keyword-generate-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
+            <div id="content-rank-keyword-generate-modal" class="fixed inset-0 z-50 hidden">
+                <div id="content-rank-keyword-generate-backdrop" class="absolute inset-0 bg-slate-950/60"></div>
                 <div class="relative mx-auto flex min-h-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
                     <div class="max-h-[92vh] w-full overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
                         <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
                             <div>
-                                <h2 id="arc-keyword-generate-title" class="text-xl font-semibold text-slate-950">Gerar em lote</h2>
-                                <p id="arc-keyword-generate-subtitle" class="mt-1 text-sm text-slate-500">Escolha a quantidade, aplique filtros e configure a criação do WordPress.</p>
+                                <h2 id="content-rank-keyword-generate-title" class="text-xl font-semibold text-slate-950">Gerar em lote</h2>
+                                <p id="content-rank-keyword-generate-subtitle" class="mt-1 text-sm text-slate-500">Escolha a quantidade, aplique filtros e configure a criação do WordPress.</p>
                             </div>
                             <button type="button" data-close-keyword-generate-modal class="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Fechar modal">&times;</button>
                         </div>
@@ -2715,18 +2734,18 @@ class Alpha_RSS_AI_Generator_Admin
                                         <div class="flex items-center justify-between gap-3">
                                             <div>
                                                 <div class="text-xs uppercase tracking-wide text-slate-400">Lista selecionada</div>
-                                                <div id="arc-keyword-generate-list-name" class="mt-1 text-base font-semibold text-slate-950">-</div>
+                                                <div id="content-rank-keyword-generate-list-name" class="mt-1 text-base font-semibold text-slate-950">-</div>
                                             </div>
-                                            <button type="button" id="arc-keyword-generate-refresh-count" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Atualizar quantidade</button>
+                                            <button type="button" id="content-rank-keyword-generate-refresh-count" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Atualizar quantidade</button>
                                         </div>
                                         <div class="mt-4 grid gap-3 sm:grid-cols-2">
                                             <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                                                 <div class="text-xs uppercase tracking-wide text-slate-400">Disponíveis agora</div>
-                                                <div id="arc-keyword-generate-available-count" class="mt-1 text-2xl font-semibold text-slate-950">0</div>
+                                                <div id="content-rank-keyword-generate-available-count" class="mt-1 text-2xl font-semibold text-slate-950">0</div>
                                             </div>
                                             <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                                                 <div class="text-xs uppercase tracking-wide text-slate-400">Serão gerados</div>
-                                                <div id="arc-keyword-generate-target-count" class="mt-1 text-2xl font-semibold text-slate-950">0</div>
+                                                <div id="content-rank-keyword-generate-target-count" class="mt-1 text-2xl font-semibold text-slate-950">0</div>
                                             </div>
                                         </div>
                                     </div>
@@ -2738,9 +2757,9 @@ class Alpha_RSS_AI_Generator_Admin
                                         </div>
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-slate-700">Gerar quantos?</label>
-                                            <input id="arc-keyword-generate-requested" type="number" min="1" value="1" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                            <input id="content-rank-keyword-generate-requested" type="number" min="1" value="1" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                         </div>
-                                        <p id="arc-keyword-generate-count-msg" class="mt-3 text-sm text-slate-500">Os filtros são aplicados em conjunto. Clique em atualizar para ver quantos itens batem.</p>
+                                        <p id="content-rank-keyword-generate-count-msg" class="mt-3 text-sm text-slate-500">Os filtros são aplicados em conjunto. Clique em atualizar para ver quantos itens batem.</p>
                                     </div>
 
                                     <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
@@ -2749,7 +2768,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-indigo-950">Pronto para gerar</h3>
                                                 <p class="mt-1 text-sm text-indigo-700">Quando a quantidade estiver correta, clique para iniciar a geração dos itens da planilha.</p>
                                             </div>
-                                            <button type="button" id="arc-keyword-generate-run-cta" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Iniciar geração</button>
+                                            <button type="button" id="content-rank-keyword-generate-run-cta" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Iniciar geração</button>
                                         </div>
                                     </div>
 
@@ -2759,9 +2778,9 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-slate-950">Filtros</h3>
                                                 <p class="mt-1 text-xs text-slate-500">Todos os filtros são combinados com AND.</p>
                                             </div>
-                                            <button type="button" id="arc-keyword-add-filter" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar filtro</button>
+                                            <button type="button" id="content-rank-keyword-add-filter" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Adicionar filtro</button>
                                         </div>
-                                        <div id="arc-keyword-generate-filters" class="space-y-3 px-4 py-4"></div>
+                                        <div id="content-rank-keyword-generate-filters" class="space-y-3 px-4 py-4"></div>
                                     </div>
                                 </div>
 
@@ -2773,7 +2792,7 @@ class Alpha_RSS_AI_Generator_Admin
                                         <div class="grid gap-4 px-4 py-4 md:grid-cols-2">
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Tipo de post</label>
-                                                <select id="arc-keyword-generate-post-type" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                <select id="content-rank-keyword-generate-post-type" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                     <?php foreach ($post_types as $pt): ?>
                                                         <option value="<?php echo esc_attr($pt->name); ?>"><?php echo esc_html($pt->labels->singular_name); ?></option>
                                                     <?php endforeach; ?>
@@ -2781,7 +2800,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Status do post</label>
-                                                <select id="arc-keyword-generate-post-status" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                <select id="content-rank-keyword-generate-post-status" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                     <?php foreach (array('draft', 'publish', 'pending', 'private', 'future') as $status): ?>
                                                         <option value="<?php echo esc_attr($status); ?>"><?php echo esc_html(self::get_post_status_label($status)); ?></option>
                                                     <?php endforeach; ?>
@@ -2789,7 +2808,7 @@ class Alpha_RSS_AI_Generator_Admin
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Autor</label>
-                                                <select id="arc-keyword-generate-author" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                <select id="content-rank-keyword-generate-author" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                     <option value="0">Usuário atual</option>
                                                     <?php foreach ($users as $user): ?>
                                                         <option value="<?php echo esc_attr($user->ID); ?>"><?php echo esc_html($user->display_name . ' (' . $user->user_login . ')'); ?></option>
@@ -2798,39 +2817,39 @@ class Alpha_RSS_AI_Generator_Admin
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Linguagem final</label>
-                                                <input id="arc-keyword-generate-language" type="text" value="<?php echo esc_attr(Alpha_RSS_AI_Generator::get_default_generation_language()); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                                <input id="content-rank-keyword-generate-language" type="text" value="<?php echo esc_attr(Content_Rank_Generator::get_default_generation_language()); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Modelo</label>
-                                                <input id="arc-keyword-generate-model" type="text" value="<?php echo esc_attr($global_settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                                <input id="content-rank-keyword-generate-model" type="text" value="<?php echo esc_attr($global_settings['default_model']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Temperatura</label>
-                                                <input id="arc-keyword-generate-temperature" type="number" step="0.1" min="0" max="2" value="<?php echo esc_attr($global_settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                                <input id="content-rank-keyword-generate-temperature" type="number" step="0.1" min="0" max="2" value="<?php echo esc_attr($global_settings['default_temperature']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Máximo de tokens</label>
-                                                <input id="arc-keyword-generate-max-tokens" type="number" min="256" value="<?php echo esc_attr($global_settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                                <input id="content-rank-keyword-generate-max-tokens" type="number" min="256" value="<?php echo esc_attr($global_settings['default_max_tokens']); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div>
                                                 <label class="mb-1 block text-sm font-medium text-slate-700">Consulta no Pexels</label>
-                                                <input id="arc-keyword-generate-pexels-query" type="text" value="<?php echo esc_attr(Alpha_RSS_AI_Generator::get_default_pexels_query()); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
+                                                <input id="content-rank-keyword-generate-pexels-query" type="text" value="<?php echo esc_attr(Content_Rank_Generator::get_default_pexels_query()); ?>" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" />
                                             </div>
                                             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 md:col-span-2">
                                                 <div class="text-sm font-medium text-amber-900">Pexels obrigatório</div>
                                                 <p class="mt-1 text-xs text-amber-700">Listas por planilha sempre usam imagens do Pexels. Imagens do site de origem são ignoradas.</p>
                                             </div>
                                             <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                                                <input id="arc-keyword-generate-source-video-enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                                <input id="content-rank-keyword-generate-source-video-enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                                                 <div>
-                                                    <label for="arc-keyword-generate-source-video-enabled" class="block text-sm font-medium text-slate-700">Usar vídeo da fonte</label>
+                                                    <label for="content-rank-keyword-generate-source-video-enabled" class="block text-sm font-medium text-slate-700">Usar vídeo da fonte</label>
                                                     <p class="text-xs text-slate-500">Se houver vídeo na origem, ele entra no post.</p>
                                                 </div>
                                             </div>
                                             <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                                                <input id="arc-keyword-generate-seo-enabled" type="checkbox" checked class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                                <input id="content-rank-keyword-generate-seo-enabled" type="checkbox" checked class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
                                                 <div>
-                                                    <label for="arc-keyword-generate-seo-enabled" class="block text-sm font-medium text-slate-700">Ativar SEO</label>
+                                                    <label for="content-rank-keyword-generate-seo-enabled" class="block text-sm font-medium text-slate-700">Ativar SEO</label>
                                                     <p class="text-xs text-slate-500">Preenche Yoast, Rank Math, SmartCrawl e AIOSEO quando disponíveis.</p>
                                                 </div>
                                             </div>
@@ -2843,7 +2862,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-slate-950">Categorias</h3>
                                             </div>
                                             <div class="px-4 py-4">
-                                                <select id="arc-keyword-generate-categories" multiple size="8" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                <select id="content-rank-keyword-generate-categories" multiple size="8" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                     <?php foreach ($categories as $category): ?>
                                                         <option value="<?php echo esc_attr($category->term_id); ?>"><?php echo esc_html($category->name); ?></option>
                                                     <?php endforeach; ?>
@@ -2855,7 +2874,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-slate-950">Tags</h3>
                                             </div>
                                             <div class="px-4 py-4">
-                                                <select id="arc-keyword-generate-tags" multiple size="8" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                                                <select id="content-rank-keyword-generate-tags" multiple size="8" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
                                                     <?php foreach ($tags as $tag): ?>
                                                         <option value="<?php echo esc_attr($tag->name); ?>"><?php echo esc_html($tag->name); ?></option>
                                                     <?php endforeach; ?>
@@ -2870,7 +2889,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-slate-950">Taxonomias personalizadas</h3>
                                             </div>
                                             <div class="px-4 py-4">
-                                                <textarea id="arc-keyword-generate-taxonomies" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomia=term1,term2"></textarea>
+                                                <textarea id="content-rank-keyword-generate-taxonomies" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="taxonomia=term1,term2"></textarea>
                                                 <p class="mt-2 text-xs text-slate-500">Use uma linha por taxonomia. Ex.: `series=principal,secundaria`.</p>
                                                 <?php
                                                 $public_taxonomy_labels = array();
@@ -2886,7 +2905,7 @@ class Alpha_RSS_AI_Generator_Admin
                                                 <h3 class="text-sm font-semibold text-slate-950">Metadados personalizados</h3>
                                             </div>
                                             <div class="px-4 py-4">
-                                                <textarea id="arc-keyword-generate-meta" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
+                                                <textarea id="content-rank-keyword-generate-meta" rows="5" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="meta_key=valor"></textarea>
                                                 <p class="mt-2 text-xs text-slate-500">Use uma linha por meta. Ex.: `_seo_title=Meu título`.</p>
                                             </div>
                                         </div>
@@ -2899,7 +2918,7 @@ class Alpha_RSS_AI_Generator_Admin
                             <div class="text-sm text-slate-500">Clique em atualizar quantidade após aplicar filtros para ver o total elegível.</div>
                             <div class="flex items-center gap-3">
                                 <button type="button" data-close-keyword-generate-modal class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Fechar</button>
-                                <button type="button" id="arc-keyword-generate-run-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Iniciar geração</button>
+                                <button type="button" id="content-rank-keyword-generate-run-btn" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500">Iniciar geração</button>
                             </div>
                         </div>
                     </div>
@@ -2916,76 +2935,76 @@ class Alpha_RSS_AI_Generator_Admin
                     var currentDetailList = null;
                     var openModalCount = 0;
 
-                    var fileInput = document.getElementById('arc-keyword-file');
-                    var listNameInput = document.getElementById('arc-keyword-list-name');
-                    var analyzeButton = document.getElementById('arc-keyword-analyze-btn');
-                    var clearButton = document.getElementById('arc-keyword-clear-btn');
-                    var uploadStatus = document.getElementById('arc-keyword-upload-status');
-                    var importModal = document.getElementById('arc-keyword-import-modal');
-                    var importBackdrop = document.getElementById('arc-keyword-import-backdrop');
+                    var fileInput = document.getElementById('content-rank-keyword-file');
+                    var listNameInput = document.getElementById('content-rank-keyword-list-name');
+                    var analyzeButton = document.getElementById('content-rank-keyword-analyze-btn');
+                    var clearButton = document.getElementById('content-rank-keyword-clear-btn');
+                    var uploadStatus = document.getElementById('content-rank-keyword-upload-status');
+                    var importModal = document.getElementById('content-rank-keyword-import-modal');
+                    var importBackdrop = document.getElementById('content-rank-keyword-import-backdrop');
                     var openImportButtons = document.querySelectorAll('[data-open-keyword-import-modal]');
                     var closeImportButtons = document.querySelectorAll('[data-close-keyword-import-modal]');
-                    var importLogsPanel = document.getElementById('arc-keyword-import-logs-panel');
-                    var importLogsTable = document.getElementById('arc-keyword-import-logs');
-                    var clearImportLogsButton = document.getElementById('arc-keyword-clear-import-logs');
-                    var previewPanel = document.getElementById('arc-keyword-preview-panel');
-                    var previewSummary = document.getElementById('arc-keyword-preview-summary');
-                    var previewTable = document.getElementById('arc-keyword-preview-table');
-                    var importButton = document.getElementById('arc-keyword-import-btn');
-                    var manualListNameInput = document.getElementById('arc-manual-keyword-list-name');
-                    var manualListValuesInput = document.getElementById('arc-manual-keyword-list-values');
-                    var manualListButton = document.getElementById('arc-create-manual-keyword-list');
-                    var manualListStatus = document.getElementById('arc-manual-keyword-list-status');
-                    var sourceTitle = document.getElementById('arc-keyword-source-title');
-                    var manualPanel = document.getElementById('arc-keyword-manual-panel');
-                    var spreadsheetPanel = document.getElementById('arc-keyword-spreadsheet-panel');
+                    var importLogsPanel = document.getElementById('content-rank-keyword-import-logs-panel');
+                    var importLogsTable = document.getElementById('content-rank-keyword-import-logs');
+                    var clearImportLogsButton = document.getElementById('content-rank-keyword-clear-import-logs');
+                    var previewPanel = document.getElementById('content-rank-keyword-preview-panel');
+                    var previewSummary = document.getElementById('content-rank-keyword-preview-summary');
+                    var previewTable = document.getElementById('content-rank-keyword-preview-table');
+                    var importButton = document.getElementById('content-rank-keyword-import-btn');
+                    var manualListNameInput = document.getElementById('content-rank-manual-keyword-list-name');
+                    var manualListValuesInput = document.getElementById('content-rank-manual-keyword-list-values');
+                    var manualListButton = document.getElementById('content-rank-create-manual-keyword-list');
+                    var manualListStatus = document.getElementById('content-rank-manual-keyword-list-status');
+                    var sourceTitle = document.getElementById('content-rank-keyword-source-title');
+                    var manualPanel = document.getElementById('content-rank-keyword-manual-panel');
+                    var spreadsheetPanel = document.getElementById('content-rank-keyword-spreadsheet-panel');
                     var sourceTabButtons = document.querySelectorAll('[data-keyword-source-tab]');
                     var manualListEditingId = 0;
-                    var resetPreviewButton = document.getElementById('arc-keyword-reset-preview');
-                    var refreshButton = document.getElementById('arc-keyword-refresh-btn');
+                    var resetPreviewButton = document.getElementById('content-rank-keyword-reset-preview');
+                    var refreshButton = document.getElementById('content-rank-keyword-refresh-btn');
 
-                    var listModal = document.getElementById('arc-keyword-list-modal');
-                    var listBackdrop = document.getElementById('arc-keyword-list-backdrop');
-                    var listModalTitle = document.getElementById('arc-keyword-list-modal-title');
-                    var listModalSubtitle = document.getElementById('arc-keyword-list-modal-subtitle');
-                    var listModalStatus = document.getElementById('arc-keyword-list-modal-status');
-                    var listModalCounts = document.getElementById('arc-keyword-list-modal-counts');
-                    var listModalMapping = document.getElementById('arc-keyword-list-modal-mapping');
-                    var listModalInfo = document.getElementById('arc-keyword-list-modal-info');
-                    var listModalPreview = document.getElementById('arc-keyword-list-modal-preview');
-                    var saveMapButton = document.getElementById('arc-keyword-save-map-btn');
-                    var deleteCurrentListButton = document.getElementById('arc-keyword-delete-current-list');
-                    var openGenerateFromListButton = document.getElementById('arc-keyword-open-generate-btn');
+                    var listModal = document.getElementById('content-rank-keyword-list-modal');
+                    var listBackdrop = document.getElementById('content-rank-keyword-list-backdrop');
+                    var listModalTitle = document.getElementById('content-rank-keyword-list-modal-title');
+                    var listModalSubtitle = document.getElementById('content-rank-keyword-list-modal-subtitle');
+                    var listModalStatus = document.getElementById('content-rank-keyword-list-modal-status');
+                    var listModalCounts = document.getElementById('content-rank-keyword-list-modal-counts');
+                    var listModalMapping = document.getElementById('content-rank-keyword-list-modal-mapping');
+                    var listModalInfo = document.getElementById('content-rank-keyword-list-modal-info');
+                    var listModalPreview = document.getElementById('content-rank-keyword-list-modal-preview');
+                    var saveMapButton = document.getElementById('content-rank-keyword-save-map-btn');
+                    var deleteCurrentListButton = document.getElementById('content-rank-keyword-delete-current-list');
+                    var openGenerateFromListButton = document.getElementById('content-rank-keyword-open-generate-btn');
 
-                    var generateModal = document.getElementById('arc-keyword-generate-modal');
-                    var generateBackdrop = document.getElementById('arc-keyword-generate-backdrop');
-                    var generateModalTitle = document.getElementById('arc-keyword-generate-title');
-                    var generateModalSubtitle = document.getElementById('arc-keyword-generate-subtitle');
-                    var generateListName = document.getElementById('arc-keyword-generate-list-name');
-                    var generateAvailableCount = document.getElementById('arc-keyword-generate-available-count');
-                    var generateTargetCount = document.getElementById('arc-keyword-generate-target-count');
-                    var generateRequestedInput = document.getElementById('arc-keyword-generate-requested');
-                    var generateRefreshCountButton = document.getElementById('arc-keyword-generate-refresh-count');
-                    var generateCountMessage = document.getElementById('arc-keyword-generate-count-msg');
-                    var generateFiltersContainer = document.getElementById('arc-keyword-generate-filters');
-                    var generateAddFilterButton = document.getElementById('arc-keyword-add-filter');
-                    var generateRunButton = document.getElementById('arc-keyword-generate-run-btn');
-                    var generateRunCtaButton = document.getElementById('arc-keyword-generate-run-cta');
+                    var generateModal = document.getElementById('content-rank-keyword-generate-modal');
+                    var generateBackdrop = document.getElementById('content-rank-keyword-generate-backdrop');
+                    var generateModalTitle = document.getElementById('content-rank-keyword-generate-title');
+                    var generateModalSubtitle = document.getElementById('content-rank-keyword-generate-subtitle');
+                    var generateListName = document.getElementById('content-rank-keyword-generate-list-name');
+                    var generateAvailableCount = document.getElementById('content-rank-keyword-generate-available-count');
+                    var generateTargetCount = document.getElementById('content-rank-keyword-generate-target-count');
+                    var generateRequestedInput = document.getElementById('content-rank-keyword-generate-requested');
+                    var generateRefreshCountButton = document.getElementById('content-rank-keyword-generate-refresh-count');
+                    var generateCountMessage = document.getElementById('content-rank-keyword-generate-count-msg');
+                    var generateFiltersContainer = document.getElementById('content-rank-keyword-generate-filters');
+                    var generateAddFilterButton = document.getElementById('content-rank-keyword-add-filter');
+                    var generateRunButton = document.getElementById('content-rank-keyword-generate-run-btn');
+                    var generateRunCtaButton = document.getElementById('content-rank-keyword-generate-run-cta');
                     var generateCancelButtons = document.querySelectorAll('[data-close-keyword-generate-modal]');
-                    var generatePostTypeSelect = document.getElementById('arc-keyword-generate-post-type');
-                    var generatePostStatusSelect = document.getElementById('arc-keyword-generate-post-status');
-                    var generateAuthorSelect = document.getElementById('arc-keyword-generate-author');
-                    var generateLanguageInput = document.getElementById('arc-keyword-generate-language');
-                    var generateModelInput = document.getElementById('arc-keyword-generate-model');
-                    var generateTemperatureInput = document.getElementById('arc-keyword-generate-temperature');
-                    var generateMaxTokensInput = document.getElementById('arc-keyword-generate-max-tokens');
-                    var generatePexelsQueryInput = document.getElementById('arc-keyword-generate-pexels-query');
-                    var generateSourceVideoEnabledInput = document.getElementById('arc-keyword-generate-source-video-enabled');
-                    var generateSeoEnabledInput = document.getElementById('arc-keyword-generate-seo-enabled');
-                    var generateCategoriesSelect = document.getElementById('arc-keyword-generate-categories');
-                    var generateTagsSelect = document.getElementById('arc-keyword-generate-tags');
-                    var generateTaxonomiesTextarea = document.getElementById('arc-keyword-generate-taxonomies');
-                    var generateMetaTextarea = document.getElementById('arc-keyword-generate-meta');
+                    var generatePostTypeSelect = document.getElementById('content-rank-keyword-generate-post-type');
+                    var generatePostStatusSelect = document.getElementById('content-rank-keyword-generate-post-status');
+                    var generateAuthorSelect = document.getElementById('content-rank-keyword-generate-author');
+                    var generateLanguageInput = document.getElementById('content-rank-keyword-generate-language');
+                    var generateModelInput = document.getElementById('content-rank-keyword-generate-model');
+                    var generateTemperatureInput = document.getElementById('content-rank-keyword-generate-temperature');
+                    var generateMaxTokensInput = document.getElementById('content-rank-keyword-generate-max-tokens');
+                    var generatePexelsQueryInput = document.getElementById('content-rank-keyword-generate-pexels-query');
+                    var generateSourceVideoEnabledInput = document.getElementById('content-rank-keyword-generate-source-video-enabled');
+                    var generateSeoEnabledInput = document.getElementById('content-rank-keyword-generate-seo-enabled');
+                    var generateCategoriesSelect = document.getElementById('content-rank-keyword-generate-categories');
+                    var generateTagsSelect = document.getElementById('content-rank-keyword-generate-tags');
+                    var generateTaxonomiesTextarea = document.getElementById('content-rank-keyword-generate-taxonomies');
+                    var generateMetaTextarea = document.getElementById('content-rank-keyword-generate-meta');
 
                     [
                         generateModelInput,
@@ -3697,23 +3716,23 @@ class Alpha_RSS_AI_Generator_Admin
 
                     function getColumnMapValues() {
                         return {
-                            keyword_column: document.getElementById('arc-keyword-column-keyword') ? document.getElementById('arc-keyword-column-keyword').value : '',
-                            source_title_column: document.getElementById('arc-keyword-column-title') ? document.getElementById('arc-keyword-column-title').value : '',
-                            source_url_column: document.getElementById('arc-keyword-column-url') ? document.getElementById('arc-keyword-column-url').value : '',
-                            slug_column: document.getElementById('arc-keyword-column-slug') ? document.getElementById('arc-keyword-column-slug').value : '',
-                            content_column: document.getElementById('arc-keyword-column-content') ? document.getElementById('arc-keyword-column-content').value : '',
-                            tags_column: document.getElementById('arc-keyword-column-tags') ? document.getElementById('arc-keyword-column-tags').value : ''
+                            keyword_column: document.getElementById('content-rank-keyword-column-keyword') ? document.getElementById('content-rank-keyword-column-keyword').value : '',
+                            source_title_column: document.getElementById('content-rank-keyword-column-title') ? document.getElementById('content-rank-keyword-column-title').value : '',
+                            source_url_column: document.getElementById('content-rank-keyword-column-url') ? document.getElementById('content-rank-keyword-column-url').value : '',
+                            slug_column: document.getElementById('content-rank-keyword-column-slug') ? document.getElementById('content-rank-keyword-column-slug').value : '',
+                            content_column: document.getElementById('content-rank-keyword-column-content') ? document.getElementById('content-rank-keyword-column-content').value : '',
+                            tags_column: document.getElementById('content-rank-keyword-column-tags') ? document.getElementById('content-rank-keyword-column-tags').value : ''
                         };
                     }
 
                     function setColumnMapValues(columnMap, headers) {
                         var map = columnMap || {};
-                        document.getElementById('arc-keyword-column-keyword').innerHTML = buildSelectOptions(headers, map.keyword_column || '');
-                        document.getElementById('arc-keyword-column-title').innerHTML = buildSelectOptions(headers, map.source_title_column || '');
-                        document.getElementById('arc-keyword-column-url').innerHTML = buildSelectOptions(headers, map.source_url_column || '');
-                        document.getElementById('arc-keyword-column-slug').innerHTML = buildSelectOptions(headers, map.slug_column || '');
-                        document.getElementById('arc-keyword-column-content').innerHTML = buildSelectOptions(headers, map.content_column || '');
-                        document.getElementById('arc-keyword-column-tags').innerHTML = buildSelectOptions(headers, map.tags_column || '');
+                        document.getElementById('content-rank-keyword-column-keyword').innerHTML = buildSelectOptions(headers, map.keyword_column || '');
+                        document.getElementById('content-rank-keyword-column-title').innerHTML = buildSelectOptions(headers, map.source_title_column || '');
+                        document.getElementById('content-rank-keyword-column-url').innerHTML = buildSelectOptions(headers, map.source_url_column || '');
+                        document.getElementById('content-rank-keyword-column-slug').innerHTML = buildSelectOptions(headers, map.slug_column || '');
+                        document.getElementById('content-rank-keyword-column-content').innerHTML = buildSelectOptions(headers, map.content_column || '');
+                        document.getElementById('content-rank-keyword-column-tags').innerHTML = buildSelectOptions(headers, map.tags_column || '');
                     }
 
                     function getCurrentHeaders() {
@@ -3889,23 +3908,23 @@ class Alpha_RSS_AI_Generator_Admin
                     function renderListMapping(headers, columnMap) {
                         var map = columnMap || {};
                         var parts = [];
-                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Keyword</label><select id="arc-keyword-list-map-keyword" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.keyword_column || '') + '</select></div>');
-                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Título</label><select id="arc-keyword-list-map-title" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.source_title_column || '') + '</select></div>');
-                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">URL</label><select id="arc-keyword-list-map-url" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.source_url_column || '') + '</select></div>');
-                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Slug final</label><select id="arc-keyword-list-map-slug" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.slug_column || '') + '</select></div>');
-                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Conteúdo</label><select id="arc-keyword-list-map-content" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.content_column || '') + '</select></div>');
-                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Tags</label><select id="arc-keyword-list-map-tags" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.tags_column || '') + '</select></div>');
+                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Keyword</label><select id="content-rank-keyword-list-map-keyword" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.keyword_column || '') + '</select></div>');
+                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Título</label><select id="content-rank-keyword-list-map-title" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.source_title_column || '') + '</select></div>');
+                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">URL</label><select id="content-rank-keyword-list-map-url" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.source_url_column || '') + '</select></div>');
+                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Slug final</label><select id="content-rank-keyword-list-map-slug" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.slug_column || '') + '</select></div>');
+                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Conteúdo</label><select id="content-rank-keyword-list-map-content" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.content_column || '') + '</select></div>');
+                        parts.push('<div><label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Tags</label><select id="content-rank-keyword-list-map-tags" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">' + buildSelectOptions(headers, map.tags_column || '') + '</select></div>');
                         return parts.join('');
                     }
 
                     function readListMap() {
                         return {
-                            keyword_column: document.getElementById('arc-keyword-list-map-keyword') ? document.getElementById('arc-keyword-list-map-keyword').value : '',
-                            source_title_column: document.getElementById('arc-keyword-list-map-title') ? document.getElementById('arc-keyword-list-map-title').value : '',
-                            source_url_column: document.getElementById('arc-keyword-list-map-url') ? document.getElementById('arc-keyword-list-map-url').value : '',
-                            slug_column: document.getElementById('arc-keyword-list-map-slug') ? document.getElementById('arc-keyword-list-map-slug').value : '',
-                            content_column: document.getElementById('arc-keyword-list-map-content') ? document.getElementById('arc-keyword-list-map-content').value : '',
-                            tags_column: document.getElementById('arc-keyword-list-map-tags') ? document.getElementById('arc-keyword-list-map-tags').value : ''
+                            keyword_column: document.getElementById('content-rank-keyword-list-map-keyword') ? document.getElementById('content-rank-keyword-list-map-keyword').value : '',
+                            source_title_column: document.getElementById('content-rank-keyword-list-map-title') ? document.getElementById('content-rank-keyword-list-map-title').value : '',
+                            source_url_column: document.getElementById('content-rank-keyword-list-map-url') ? document.getElementById('content-rank-keyword-list-map-url').value : '',
+                            slug_column: document.getElementById('content-rank-keyword-list-map-slug') ? document.getElementById('content-rank-keyword-list-map-slug').value : '',
+                            content_column: document.getElementById('content-rank-keyword-list-map-content') ? document.getElementById('content-rank-keyword-list-map-content').value : '',
+                            tags_column: document.getElementById('content-rank-keyword-list-map-tags') ? document.getElementById('content-rank-keyword-list-map-tags').value : ''
                         };
                     }
 
@@ -4011,8 +4030,8 @@ class Alpha_RSS_AI_Generator_Admin
                         if (!listId) {
                             return;
                         }
-                        if (window.AlphaRssAiGeneratorSwal && typeof window.AlphaRssAiGeneratorSwal.confirm === 'function') {
-                            var confirmed = await window.AlphaRssAiGeneratorSwal.confirm('Excluir esta lista e todas as linhas importadas?', {
+                        if (window.ContentRankGeneratorSwal && typeof window.ContentRankGeneratorSwal.confirm === 'function') {
+                            var confirmed = await window.ContentRankGeneratorSwal.confirm('Excluir esta lista e todas as linhas importadas?', {
                                 title: 'Confirmacao'
                             });
                             if (!confirmed) {
@@ -4038,8 +4057,8 @@ class Alpha_RSS_AI_Generator_Admin
                             if (statusTarget) {
                                 setStatus(statusTarget, error.message || 'Erro ao excluir a lista.', 'error');
                             } else {
-                                if (window.AlphaRssAiGeneratorSwal && typeof window.AlphaRssAiGeneratorSwal.error === 'function') {
-                                    window.AlphaRssAiGeneratorSwal.error(error.message || 'Erro ao excluir a lista.', 'Erro');
+                                if (window.ContentRankGeneratorSwal && typeof window.ContentRankGeneratorSwal.error === 'function') {
+                                    window.ContentRankGeneratorSwal.error(error.message || 'Erro ao excluir a lista.', 'Erro');
                                 } else {
                                     window.alert(error.message || 'Erro ao excluir a lista.');
                                 }
@@ -4278,19 +4297,19 @@ class Alpha_RSS_AI_Generator_Admin
 
     public static function render_notice()
     {
-        if (empty($_GET['arc_notice'])) {
+        if (empty($_GET['content_rank_notice'])) {
             return;
         }
 
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (in_array($page, array('alpha-rss-ai-generated-posts', 'alpha-rss-ai-link-suggestions', 'alpha-rss-ai-content-plans'), true)) {
+        if (in_array($page, array('content-rank-generated-posts', 'content-rank-link-suggestions', 'content-rank-content-plans'), true)) {
             return;
         }
 
-        $type = isset($_GET['arc_notice_type']) ? sanitize_key(wp_unslash($_GET['arc_notice_type'])) : 'success';
+        $type = isset($_GET['content_rank_notice_type']) ? sanitize_key(wp_unslash($_GET['content_rank_notice_type'])) : 'success';
         $class = 'notice notice-' . ($type === 'error' ? 'error' : 'success');
-        $message = sanitize_text_field(wp_unslash($_GET['arc_notice']));
-        $link = isset($_GET['arc_notice_link']) ? esc_url_raw(wp_unslash($_GET['arc_notice_link'])) : '';
+        $message = sanitize_text_field(wp_unslash($_GET['content_rank_notice']));
+        $link = isset($_GET['content_rank_notice_link']) ? esc_url_raw(wp_unslash($_GET['content_rank_notice_link'])) : '';
 
         echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($message);
         if ($link !== '' && $type !== 'error') {
@@ -4311,4 +4330,3 @@ class Alpha_RSS_AI_Generator_Admin
         return isset($map[$status]) ? $map[$status] : ucfirst((string) $status);
     }
 }
-

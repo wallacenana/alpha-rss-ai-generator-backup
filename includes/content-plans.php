@@ -4,35 +4,35 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
-    final class Alpha_RSS_AI_Content_Plans
+if (!class_exists('Content_Rank_Content_Plans')) {
+    final class Content_Rank_Content_Plans
     {
-        public const PAGE_SLUG = 'alpha-rss-ai-content-plans';
-        private const META_PLAN_JSON = '_arc_content_plan_json';
-        private const META_PLAN_GENERATED_AT = '_arc_content_plan_generated_at';
-        private const META_PLAN_GENERATOR_ID = '_arc_content_plan_generator_id';
-        private const META_PLAN_PILLAR_POST_ID = '_arc_content_plan_pillar_post_id';
-        private const META_PLAN_SATELLITE_COUNT = '_arc_content_plan_satellite_count';
-        private const META_PLAN_CONTENT_MODEL_TYPE = '_arc_content_plan_content_model_type';
-        private const META_PLAN_PROMPT_MODEL_KEY = '_arc_content_plan_prompt_model_key';
-        private const META_PLAN_OUTLINE_MODEL_KEY = '_arc_content_plan_outline_model_key';
-        private const META_PLAN_TAVILY_JSON = '_arc_content_plan_tavily_json';
-        private const META_PLAN_PLANNING_CUSTOM_PROMPT = '_arc_content_plan_planning_custom_prompt';
+        public const PAGE_SLUG = 'content-rank-content-plans';
+        private const META_PLAN_JSON = '_content_rank_content_plan_json';
+        private const META_PLAN_GENERATED_AT = '_content_rank_content_plan_generated_at';
+        private const META_PLAN_GENERATOR_ID = '_content_rank_content_plan_generator_id';
+        private const META_PLAN_PILLAR_POST_ID = '_content_rank_content_plan_pillar_post_id';
+        private const META_PLAN_SATELLITE_COUNT = '_content_rank_content_plan_satellite_count';
+        private const META_PLAN_CONTENT_MODEL_TYPE = '_content_rank_content_plan_content_model_type';
+        private const META_PLAN_PROMPT_MODEL_KEY = '_content_rank_content_plan_prompt_model_key';
+        private const META_PLAN_OUTLINE_MODEL_KEY = '_content_rank_content_plan_outline_model_key';
+        private const META_PLAN_TAVILY_JSON = '_content_rank_content_plan_tavily_json';
+        private const META_PLAN_PLANNING_CUSTOM_PROMPT = '_content_rank_content_plan_planning_custom_prompt';
         private const MAX_PLANNING_SOURCE_WORDS = 1000;
 
         public function __construct()
         {
             add_action('admin_menu', array($this, 'admin_menu'), 22);
-            add_action('wp_ajax_arc_content_plan_search_posts', array($this, 'ajax_search_posts'));
-            add_action('admin_post_arc_generate_content_plan', array($this, 'handle_generate_plan'));
-            add_action('admin_post_arc_generate_content_satellites', array($this, 'handle_generate_satellites'));
-            add_action('admin_post_arc_clear_content_plan', array($this, 'handle_clear_plan'));
+            add_action('wp_ajax_content_rank_content_plan_search_posts', array($this, 'ajax_search_posts'));
+            add_action('admin_post_content_rank_generate_content_plan', array($this, 'handle_generate_plan'));
+            add_action('admin_post_content_rank_generate_content_satellites', array($this, 'handle_generate_satellites'));
+            add_action('admin_post_content_rank_clear_content_plan', array($this, 'handle_clear_plan'));
         }
 
         public function admin_menu()
         {
             add_submenu_page(
-                'alpha-rss-ai-generator',
+                'content-rank',
                 'Planejamento',
                 'Planejamento',
                 'manage_options',
@@ -60,8 +60,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         private static function get_generated_posts($limit = 30, $content_model_type = 'pillar')
         {
             $limit = max(1, intval($limit));
-            $content_model_type = class_exists('Alpha_RSS_AI_Generator')
-                ? Alpha_RSS_AI_Generator::normalize_content_model_type($content_model_type)
+            $content_model_type = class_exists('Content_Rank_Generator')
+                ? Content_Rank_Generator::normalize_content_model_type($content_model_type)
                 : sanitize_key((string) $content_model_type);
             if ($content_model_type !== 'pillar' && $content_model_type !== 'satellite') {
                 $content_model_type = 'pillar';
@@ -75,7 +75,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'order' => 'DESC',
                 'meta_query' => array(
                     array(
-                        'key' => '_arc_generator_id',
+                        'key' => '_content_rank_generator_id',
                         'compare' => 'EXISTS',
                     ),
                 ),
@@ -91,13 +91,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     continue;
                 }
 
-                $stored_content_model_type = (string) get_post_meta($post->ID, '_arc_content_model_type', true);
+                $stored_content_model_type = (string) get_post_meta($post->ID, '_content_rank_content_model_type', true);
                 if ($stored_content_model_type === '') {
-                    $has_satellite_plan_marker = get_post_meta($post->ID, '_arc_content_plan_satellite_index', true) !== '';
+                    $has_satellite_plan_marker = get_post_meta($post->ID, '_content_rank_content_plan_satellite_index', true) !== '';
                     $stored_content_model_type = $has_satellite_plan_marker ? 'satellite' : 'pillar';
                 }
-                if (class_exists('Alpha_RSS_AI_Generator')) {
-                    $stored_content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($stored_content_model_type);
+                if (class_exists('Content_Rank_Generator')) {
+                    $stored_content_model_type = Content_Rank_Generator::normalize_content_model_type($stored_content_model_type);
                 }
                 if ($stored_content_model_type !== $content_model_type) {
                     continue;
@@ -152,7 +152,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 return $actions;
             }
 
-            $actions['alpha_rss_ai_plan'] = '<a href="' . esc_url($plan_url) . '" aria-label="Lincagem automática" title="Lincagem automática">Lincagem automática</a>';
+            $actions['content_rank_plan'] = '<a href="' . esc_url($plan_url) . '" aria-label="Lincagem automática" title="Lincagem automática">Lincagem automática</a>';
             return $actions;
         }
 
@@ -162,10 +162,10 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 return array();
             }
 
-            $generator_id = intval(get_post_meta($post->ID, '_arc_generator_id', true));
+            $generator_id = intval(get_post_meta($post->ID, '_content_rank_generator_id', true));
             $generator_name = '';
-            if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
-                $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
+            if ($generator_id > 0 && class_exists('Content_Rank_Generator')) {
+                $generator = Content_Rank_Generator::get_generator($generator_id);
                 if (!empty($generator['name'])) {
                     $generator_name = (string) $generator['name'];
                 }
@@ -203,7 +203,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'order' => 'DESC',
                 'meta_query' => array(
                     array(
-                        'key' => '_arc_generator_id',
+                        'key' => '_content_rank_generator_id',
                         'compare' => 'EXISTS',
                     ),
                 ),
@@ -227,13 +227,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     continue;
                 }
 
-                $stored_content_model_type = (string) get_post_meta($post->ID, '_arc_content_model_type', true);
+                $stored_content_model_type = (string) get_post_meta($post->ID, '_content_rank_content_model_type', true);
                 if ($stored_content_model_type === '') {
-                    $has_satellite_plan_marker = get_post_meta($post->ID, '_arc_content_plan_satellite_index', true) !== '';
+                    $has_satellite_plan_marker = get_post_meta($post->ID, '_content_rank_content_plan_satellite_index', true) !== '';
                     $stored_content_model_type = $has_satellite_plan_marker ? 'satellite' : 'pillar';
                 }
-                if (class_exists('Alpha_RSS_AI_Generator')) {
-                    $stored_content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($stored_content_model_type);
+                if (class_exists('Content_Rank_Generator')) {
+                    $stored_content_model_type = Content_Rank_Generator::normalize_content_model_type($stored_content_model_type);
                 }
                 if ($stored_content_model_type !== 'pillar') {
                     continue;
@@ -257,7 +257,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 wp_send_json_error(array('message' => 'Permissão negada.'), 403);
             }
 
-            check_ajax_referer('arc_content_plan_posts_search', 'nonce');
+            check_ajax_referer('content_rank_content_plan_posts_search', 'nonce');
 
             $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
             $page = isset($_POST['page']) ? intval($_POST['page']) : 1;
@@ -309,19 +309,19 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'id' => $synthetic_generator_id,
                 'name' => $post_id > 0 ? 'Lincagem manual' : get_bloginfo('name'),
                 'source_type' => 'post',
-                'generation_language' => class_exists('Alpha_RSS_AI_Generator')
-                    ? Alpha_RSS_AI_Generator::get_default_generation_language()
+                'generation_language' => class_exists('Content_Rank_Generator')
+                    ? Content_Rank_Generator::get_default_generation_language()
                     : get_bloginfo('language'),
-                'content_length_class' => class_exists('Alpha_RSS_AI_Generator')
-                    ? Alpha_RSS_AI_Generator::get_default_content_length_class()
+                'content_length_class' => class_exists('Content_Rank_Generator')
+                    ? Content_Rank_Generator::get_default_content_length_class()
                     : 'medium',
                 'prompt_model_key' => '',
                 'outline_model_key' => '',
-                'prompt_models' => class_exists('Alpha_RSS_AI_Generator')
-                    ? Alpha_RSS_AI_Generator::get_default_prompt_models()
+                'prompt_models' => class_exists('Content_Rank_Generator')
+                    ? Content_Rank_Generator::get_default_prompt_models()
                     : array(),
-                'prompt_models_json' => class_exists('Alpha_RSS_AI_Generator')
-                    ? wp_json_encode(Alpha_RSS_AI_Generator::get_default_prompt_models(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                'prompt_models_json' => class_exists('Content_Rank_Generator')
+                    ? wp_json_encode(Content_Rank_Generator::get_default_prompt_models(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                     : '',
                 'seo_enabled' => 1,
                 'post_type' => 'post',
@@ -374,12 +374,12 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         private static function fetch_tavily_research($query, $max_results = 3)
         {
             $query = self::normalize_plain_text($query);
-            if ($query === '' || !class_exists('Alpha_RSS_AI_Generator_Helper')) {
+            if ($query === '' || !class_exists('Content_Rank_Generator_Helper')) {
                 return array();
             }
 
-            $settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
-            $context = Alpha_RSS_AI_Generator_Helper::fetch_tavily_search_context(
+            $settings = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_settings() : array();
+            $context = Content_Rank_Generator_Helper::fetch_tavily_search_context(
                 $query,
                 $max_results,
                 !empty($settings['tavily_include_answer']),
@@ -468,27 +468,27 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         {
             $post = get_post($post_id);
             if (!$post) {
-                return new WP_Error('arc_content_plan_post_missing', 'Post pilar nao encontrado.');
+                return new WP_Error('content_rank_content_plan_post_missing', 'Post pilar nao encontrado.');
             }
 
-            $generator_id = intval(get_post_meta($post_id, '_arc_generator_id', true));
+            $generator_id = intval(get_post_meta($post_id, '_content_rank_generator_id', true));
             $generator = array();
-            if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
-                $generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
+            if ($generator_id > 0 && class_exists('Content_Rank_Generator')) {
+                $generator = Content_Rank_Generator::get_generator($generator_id);
             }
             if (empty($generator) || !is_array($generator)) {
                 $generator = self::build_default_generator_context($post_id);
             }
 
-            $source_title = (string) get_post_meta($post_id, '_arc_source_title', true);
-            $source_url = (string) get_post_meta($post_id, '_arc_source_url', true);
-            $source_page_title = (string) get_post_meta($post_id, '_arc_source_page_title', true);
-            $source_page_excerpt = (string) get_post_meta($post_id, '_arc_source_page_excerpt', true);
-            $source_page_content = (string) get_post_meta($post_id, '_arc_source_page_content', true);
-            $source_page_outline = (string) get_post_meta($post_id, '_arc_source_page_outline', true);
-            $content_model_type = (string) get_post_meta($post_id, '_arc_content_model_type', true);
-            if ($content_model_type === '' && isset($generator['content_model_type']) && class_exists('Alpha_RSS_AI_Generator')) {
-                $content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($generator['content_model_type']);
+            $source_title = (string) get_post_meta($post_id, '_content_rank_source_title', true);
+            $source_url = (string) get_post_meta($post_id, '_content_rank_source_url', true);
+            $source_page_title = (string) get_post_meta($post_id, '_content_rank_source_page_title', true);
+            $source_page_excerpt = (string) get_post_meta($post_id, '_content_rank_source_page_excerpt', true);
+            $source_page_content = (string) get_post_meta($post_id, '_content_rank_source_page_content', true);
+            $source_page_outline = (string) get_post_meta($post_id, '_content_rank_source_page_outline', true);
+            $content_model_type = (string) get_post_meta($post_id, '_content_rank_content_model_type', true);
+            if ($content_model_type === '' && isset($generator['content_model_type']) && class_exists('Content_Rank_Generator')) {
+                $content_model_type = Content_Rank_Generator::normalize_content_model_type($generator['content_model_type']);
             }
             if ($content_model_type === '') {
                 $content_model_type = 'pillar';
@@ -500,7 +500,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $source_page_outline = $source_page_outline !== '' ? $source_page_outline : '';
 
             $item = array(
-                'guid' => (string) get_post_meta($post_id, '_arc_source_item_guid', true),
+                'guid' => (string) get_post_meta($post_id, '_content_rank_source_item_guid', true),
                 'title' => (string) $post->post_title,
                 'source_title' => $source_title !== '' ? $source_title : (string) $post->post_title,
                 'permalink' => get_permalink($post_id),
@@ -508,28 +508,28 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'excerpt' => self::get_post_excerpt_text($post),
                 'content' => self::normalize_plain_text($post->post_content),
                 'feed_title' => !empty($generator['name']) ? (string) $generator['name'] : get_bloginfo('name'),
-                'date' => (string) get_post_meta($post_id, '_arc_source_timestamp', true),
+                'date' => (string) get_post_meta($post_id, '_content_rank_source_timestamp', true),
                 'categories' => wp_get_post_terms($post_id, 'category', array('fields' => 'names')),
                 'tags' => wp_get_post_terms($post_id, 'post_tag', array('fields' => 'names')),
-                'source_image_url' => (string) get_post_meta($post_id, '_arc_source_image_url', true),
-                'source_link_url' => (string) get_post_meta($post_id, '_arc_source_link_url', true),
-                'source_link_text' => (string) get_post_meta($post_id, '_arc_source_link_text', true),
+                'source_image_url' => (string) get_post_meta($post_id, '_content_rank_source_image_url', true),
+                'source_link_url' => (string) get_post_meta($post_id, '_content_rank_source_link_url', true),
+                'source_link_text' => (string) get_post_meta($post_id, '_content_rank_source_link_text', true),
                 'source_page_title' => $source_page_title,
                 'source_page_excerpt' => $source_page_excerpt,
                 'source_page_content' => $source_page_content,
                 'source_page_outline' => $source_page_outline,
                 'source_page_outline_sections' => array(),
-                'source_video_url' => (string) get_post_meta($post_id, '_arc_source_video_url', true),
-                'source_video_embed_html' => (string) get_post_meta($post_id, '_arc_source_video_embed_html', true),
-                'source_video_source' => (string) get_post_meta($post_id, '_arc_source_video_source', true),
-                'source_image_selector_class' => (string) get_post_meta($post_id, '_arc_source_image_selector_class', true),
-                'source_link_selector_class' => (string) get_post_meta($post_id, '_arc_source_link_selector_class', true),
+                'source_video_url' => (string) get_post_meta($post_id, '_content_rank_source_video_url', true),
+                'source_video_embed_html' => (string) get_post_meta($post_id, '_content_rank_source_video_embed_html', true),
+                'source_video_source' => (string) get_post_meta($post_id, '_content_rank_source_video_source', true),
+                'source_image_selector_class' => (string) get_post_meta($post_id, '_content_rank_source_image_selector_class', true),
+                'source_link_selector_class' => (string) get_post_meta($post_id, '_content_rank_source_link_selector_class', true),
                 'source_context_enriched' => 1,
                 'pillar_post_id' => intval($post_id),
                 'content_model_type' => $content_model_type,
             );
 
-            $outline_sections_raw = (string) get_post_meta($post_id, '_arc_source_page_outline_sections', true);
+            $outline_sections_raw = (string) get_post_meta($post_id, '_content_rank_source_page_outline_sections', true);
             if ($outline_sections_raw !== '') {
                 $outline_sections = json_decode($outline_sections_raw, true);
                 if (is_array($outline_sections)) {
@@ -592,8 +592,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $base = new DateTimeImmutable('now', $timezone);
                 $window_start = 0;
                 $window_end = 0;
-                if (class_exists('Alpha_RSS_AI_Generator') && method_exists('Alpha_RSS_AI_Generator', 'get_generator_daily_window')) {
-                    $window = Alpha_RSS_AI_Generator::get_generator_daily_window($generator, $base->getTimestamp());
+                if (class_exists('Content_Rank_Generator') && method_exists('Content_Rank_Generator', 'get_generator_daily_window')) {
+                    $window = Content_Rank_Generator::get_generator_daily_window($generator, $base->getTimestamp());
                     $window_start = !empty($window[0]) ? intval($window[0]) : 0;
                     $window_end = !empty($window[1]) ? intval($window[1]) : 0;
                 }
@@ -605,8 +605,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
                 $start_timestamp = max($base->getTimestamp(), $window_start);
                 if ($base->getTimestamp() > $window_end) {
-                    if (class_exists('Alpha_RSS_AI_Generator') && method_exists('Alpha_RSS_AI_Generator', 'get_generator_daily_window')) {
-                        $next_window = Alpha_RSS_AI_Generator::get_generator_daily_window($generator, $base->getTimestamp() + DAY_IN_SECONDS);
+                    if (class_exists('Content_Rank_Generator') && method_exists('Content_Rank_Generator', 'get_generator_daily_window')) {
+                        $next_window = Content_Rank_Generator::get_generator_daily_window($generator, $base->getTimestamp() + DAY_IN_SECONDS);
                         $window_start = !empty($next_window[0]) ? intval($next_window[0]) : $window_start;
                         $window_end = !empty($next_window[1]) ? intval($next_window[1]) : $window_end;
                     } else {
@@ -671,7 +671,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $satellite_count = max(1, intval($satellite_count));
             $outline_context = is_array($outline_context) && !empty($outline_context)
                 ? $outline_context
-                : Alpha_RSS_AI_Generator_Helper::build_outline_context_base($generator);
+                : Content_Rank_Generator_Helper::build_outline_context_base($generator);
             $outline_text = !empty($outline_context['outline_model_text']) ? (string) $outline_context['outline_model_text'] : '';
 
             $pillar_title = !empty($item['title']) ? self::normalize_plain_text($item['title']) : '';
@@ -679,19 +679,19 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $pillar_content = !empty($item['content']) ? self::limit_plain_text_words((string) $item['content'], self::MAX_PLANNING_SOURCE_WORDS) : '';
             $pillar_categories = !empty($item['categories']) && is_array($item['categories']) ? implode(', ', array_map('sanitize_text_field', $item['categories'])) : '';
             $pillar_tags = !empty($item['tags']) && is_array($item['tags']) ? implode(', ', array_map('sanitize_text_field', $item['tags'])) : '';
-            $generation_language = !empty($generator['generation_language']) ? Alpha_RSS_AI_Generator::normalize_generation_language_value($generator['generation_language']) : Alpha_RSS_AI_Generator::get_default_generation_language();
-            $available_prompt_models = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_prompt_models($generator) : array();
+            $generation_language = !empty($generator['generation_language']) ? Content_Rank_Generator::normalize_generation_language_value($generator['generation_language']) : Content_Rank_Generator::get_default_generation_language();
+            $available_prompt_models = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_prompt_models($generator) : array();
             $available_prompt_models_text = array();
             foreach ($available_prompt_models as $available_prompt_model) {
                 if (!is_array($available_prompt_model)) {
                     continue;
                 }
-                $available_prompt_models_text[] = Alpha_RSS_AI_Generator::format_prompt_model_for_prompt($available_prompt_model);
+                $available_prompt_models_text[] = Content_Rank_Generator::format_prompt_model_for_prompt($available_prompt_model);
             }
             $available_prompt_models_text = !empty($available_prompt_models_text) ? implode("\n\n---\n\n", $available_prompt_models_text) : '';
             $recommended_prompt_model_key = !empty($outline_context['recommended_prompt_model_key']) ? sanitize_key((string) $outline_context['recommended_prompt_model_key']) : '';
             $recommended_outline_model_key = !empty($outline_context['recommended_outline_model_key']) ? sanitize_key((string) $outline_context['recommended_outline_model_key']) : '';
-            $recommended_prompt_model = !empty($recommended_prompt_model_key) ? Alpha_RSS_AI_Generator::get_prompt_model($recommended_prompt_model_key, $generator) : array();
+            $recommended_prompt_model = !empty($recommended_prompt_model_key) ? Content_Rank_Generator::get_prompt_model($recommended_prompt_model_key, $generator) : array();
             $recommended_prompt_model_name = !empty($recommended_prompt_model['name']) ? (string) $recommended_prompt_model['name'] : '';
             $planning_custom_prompt = self::normalize_plain_text($planning_custom_prompt);
             $tavily_text = '';
@@ -736,7 +736,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
         private static function render_notice()
         {
-            $notice = self::get_request_param('arc_notice', '');
+            $notice = self::get_request_param('content_rank_notice', '');
             if ($notice === '') {
                 return;
             }
@@ -749,15 +749,15 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             } elseif ($notice === 'plan_cleared') {
                 $message = 'Plano editorial removido.';
             } elseif ($notice === 'satellites_generated') {
-                $count = intval(self::get_request_param('arc_count', 0));
+                $count = intval(self::get_request_param('content_rank_count', 0));
                 $message = $count > 0
                     ? sprintf('Satélites gerados com sucesso. %d post(s) criado(s) e linkados ao pilar.', $count)
                     : 'Satélites gerados com sucesso.';
             } elseif ($notice === 'satellite_error') {
-                $message = self::get_request_param('arc_message', 'Não foi possível gerar os satélites.');
+                $message = self::get_request_param('content_rank_message', 'Não foi possível gerar os satélites.');
                 $class = 'notice-error';
             } elseif ($notice === 'plan_error') {
-                $message = self::get_request_param('arc_message', 'Não foi possível gerar o plano editorial.');
+                $message = self::get_request_param('content_rank_message', 'Não foi possível gerar o plano editorial.');
                 $class = 'notice-error';
             }
 
@@ -774,7 +774,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 wp_die('Permissão negada.');
             }
 
-            check_admin_referer('arc_generate_content_plan', 'arc_content_plan_nonce');
+            check_admin_referer('content_rank_generate_content_plan', 'content_rank_content_plan_nonce');
             self::lift_execution_time_limit(300);
 
             $post_id = isset($_POST['pillar_post_id']) ? intval($_POST['pillar_post_id']) : 0;
@@ -788,8 +788,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $redirect = add_query_arg(array(
                     'page' => self::PAGE_SLUG,
                     'post_id' => $post_id,
-                    'arc_notice' => 'plan_error',
-                    'arc_message' => $context->get_error_message(),
+                    'content_rank_notice' => 'plan_error',
+                    'content_rank_message' => $context->get_error_message(),
                 ), admin_url('admin.php'));
                 wp_safe_redirect($redirect);
                 exit;
@@ -798,7 +798,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $generator = $context['generator'];
             $item = $context['item'];
             $item = self::limit_item_for_planning($item, self::MAX_PLANNING_SOURCE_WORDS);
-            $global_settings = class_exists('Alpha_RSS_AI_Generator') ? Alpha_RSS_AI_Generator::get_settings() : array();
+            $global_settings = class_exists('Content_Rank_Generator') ? Content_Rank_Generator::get_settings() : array();
             $tavily_query = '';
             $tavily_context = array();
             if (!empty($global_settings['tavily_enabled'])) {
@@ -809,10 +809,10 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             if (!empty($tavily_context)) {
                 $item = self::attach_tavily_context_to_item($item, $tavily_context);
             }
-            $outline_base_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_base($generator);
-            $outline_context = Alpha_RSS_AI_Generator_Helper::build_outline_context_from_source($generator, $item, array(), $outline_base_context);
+            $outline_base_context = Content_Rank_Generator_Helper::build_outline_context_base($generator);
+            $outline_context = Content_Rank_Generator_Helper::build_outline_context_from_source($generator, $item, array(), $outline_base_context);
             $prompt = self::build_plan_prompt($generator, $item, $satellite_count, $outline_context, $planning_custom_prompt);
-            $plan = Alpha_RSS_AI_Generator::request_openai_json($generator, $prompt, array(
+            $plan = Content_Rank_Generator::request_openai_json($generator, $prompt, array(
                 'stage' => 'content_plan',
                 'source_type' => !empty($generator['source_type']) ? $generator['source_type'] : 'rss',
                 'item_guid' => !empty($item['guid']) ? $item['guid'] : '',
@@ -827,8 +827,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $redirect = add_query_arg(array(
                     'page' => self::PAGE_SLUG,
                     'post_id' => $post_id,
-                    'arc_notice' => 'plan_error',
-                    'arc_message' => $plan->get_error_message(),
+                    'content_rank_notice' => 'plan_error',
+                    'content_rank_message' => $plan->get_error_message(),
                 ), admin_url('admin.php'));
                 wp_safe_redirect($redirect);
                 exit;
@@ -843,8 +843,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             $normalized_plan['pillar_url'] = !empty($item['permalink']) ? $item['permalink'] : '';
             $normalized_plan['pillar_categories'] = !empty($item['categories']) && is_array($item['categories']) ? array_values($item['categories']) : array();
             $normalized_plan['pillar_tags'] = !empty($item['tags']) && is_array($item['tags']) ? array_values($item['tags']) : array();
-            $normalized_plan['content_model_type'] = !empty($item['content_model_type']) ? Alpha_RSS_AI_Generator::normalize_content_model_type($item['content_model_type']) : 'pillar';
-            $normalized_plan['content_model_label'] = Alpha_RSS_AI_Generator::get_content_model_label($normalized_plan['content_model_type']);
+            $normalized_plan['content_model_type'] = !empty($item['content_model_type']) ? Content_Rank_Generator::normalize_content_model_type($item['content_model_type']) : 'pillar';
+            $normalized_plan['content_model_label'] = Content_Rank_Generator::get_content_model_label($normalized_plan['content_model_type']);
             $normalized_plan['planning_custom_prompt'] = $planning_custom_prompt;
             $normalized_plan['tavily_query'] = $tavily_query;
             $normalized_plan['tavily_context'] = !empty($tavily_context) ? $tavily_context : array();
@@ -866,13 +866,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             update_post_meta($post_id, self::META_PLAN_CONTENT_MODEL_TYPE, $normalized_plan['content_model_type']);
             update_post_meta($post_id, self::META_PLAN_PROMPT_MODEL_KEY, $normalized_plan['recommended_prompt_model_key']);
             update_post_meta($post_id, self::META_PLAN_OUTLINE_MODEL_KEY, $normalized_plan['recommended_outline_model_key']);
-            delete_post_meta($post_id, '_arc_content_plan_satellite_post_ids');
-            delete_post_meta($post_id, '_arc_content_plan_generated_satellites');
+            delete_post_meta($post_id, '_content_rank_content_plan_satellite_post_ids');
+            delete_post_meta($post_id, '_content_rank_content_plan_generated_satellites');
 
             $redirect = add_query_arg(array(
                 'page' => self::PAGE_SLUG,
                 'post_id' => $post_id,
-                'arc_notice' => 'plan_saved',
+                'content_rank_notice' => 'plan_saved',
             ), admin_url('admin.php'));
             wp_safe_redirect($redirect);
             exit;
@@ -884,7 +884,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 wp_die('Permissão negada.');
             }
 
-            check_admin_referer('arc_clear_content_plan', 'arc_content_plan_nonce');
+            check_admin_referer('content_rank_clear_content_plan', 'content_rank_content_plan_nonce');
 
             $post_id = isset($_POST['pillar_post_id']) ? intval($_POST['pillar_post_id']) : 0;
             if ($post_id > 0) {
@@ -898,14 +898,14 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 delete_post_meta($post_id, self::META_PLAN_OUTLINE_MODEL_KEY);
                 delete_post_meta($post_id, self::META_PLAN_PLANNING_CUSTOM_PROMPT);
                 delete_post_meta($post_id, self::META_PLAN_TAVILY_JSON);
-                delete_post_meta($post_id, '_arc_content_plan_satellite_post_ids');
-                delete_post_meta($post_id, '_arc_content_plan_generated_satellites');
+                delete_post_meta($post_id, '_content_rank_content_plan_satellite_post_ids');
+                delete_post_meta($post_id, '_content_rank_content_plan_generated_satellites');
             }
 
             $redirect = add_query_arg(array(
                 'page' => self::PAGE_SLUG,
                 'post_id' => $post_id,
-                'arc_notice' => 'plan_cleared',
+                'content_rank_notice' => 'plan_cleared',
             ), admin_url('admin.php'));
             wp_safe_redirect($redirect);
             exit;
@@ -1036,7 +1036,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
 
             if (!empty($pillar_links)) {
-                $current_content = Alpha_RSS_AI_Generator_Helper::inject_content_plan_links_into_content(
+                $current_content = Content_Rank_Generator_Helper::inject_content_plan_links_into_content(
                     $current_content,
                     $pillar_links,
                     'pillar',
@@ -1048,8 +1048,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 ));
             }
 
-            update_post_meta($pillar_post_id, '_arc_content_plan_satellite_post_ids', wp_json_encode($satellite_ids, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            update_post_meta($pillar_post_id, '_arc_content_plan_generated_satellites', wp_json_encode($generated_satellite_posts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            update_post_meta($pillar_post_id, '_content_rank_content_plan_satellite_post_ids', wp_json_encode($satellite_ids, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            update_post_meta($pillar_post_id, '_content_rank_content_plan_generated_satellites', wp_json_encode($generated_satellite_posts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             if (is_array($plan) && !empty($plan)) {
                 $plan['generated_satellite_post_ids'] = $satellite_ids;
                 $plan['generated_satellite_posts'] = $generated_satellite_posts;
@@ -1065,7 +1065,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 wp_die('Permissão negada.');
             }
 
-            check_admin_referer('arc_generate_content_satellites', 'arc_content_satellites_nonce');
+            check_admin_referer('content_rank_generate_content_satellites', 'content_rank_content_satellites_nonce');
             self::lift_execution_time_limit(300);
 
             $post_id = isset($_POST['pillar_post_id']) ? intval($_POST['pillar_post_id']) : 0;
@@ -1074,8 +1074,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $redirect = add_query_arg(array(
                     'page' => self::PAGE_SLUG,
                     'post_id' => $post_id,
-                    'arc_notice' => 'plan_error',
-                    'arc_message' => $context->get_error_message(),
+                    'content_rank_notice' => 'plan_error',
+                    'content_rank_message' => $context->get_error_message(),
                 ), admin_url('admin.php'));
                 wp_safe_redirect($redirect);
                 exit;
@@ -1087,8 +1087,8 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 $redirect = add_query_arg(array(
                     'page' => self::PAGE_SLUG,
                     'post_id' => $post_id,
-                    'arc_notice' => 'satellite_error',
-                    'arc_message' => 'Não existe plano salvo com satélites para gerar.',
+                    'content_rank_notice' => 'satellite_error',
+                    'content_rank_message' => 'Não existe plano salvo com satélites para gerar.',
                 ), admin_url('admin.php'));
                 wp_safe_redirect($redirect);
                 exit;
@@ -1107,13 +1107,13 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             foreach ($satellites as $satellite) {
                 $normalized_satellite = self::normalize_satellite_item($satellite, isset($satellite['index']) ? intval($satellite['index']) : (count($generated_posts) + 1));
                 $item = self::build_satellite_generation_item($context, $plan, $normalized_satellite);
-                if (!Alpha_RSS_AI_Generator::claim_item_processing_slot($satellite_generator['id'], $item)) {
+                if (!Content_Rank_Generator::claim_item_processing_slot($satellite_generator['id'], $item)) {
                     $errors[] = 'Item já estava em processamento.';
                     continue;
                 }
-                $post_result = Alpha_RSS_AI_Generator::create_post_from_generator_item($satellite_generator, $item);
+                $post_result = Content_Rank_Generator::create_post_from_generator_item($satellite_generator, $item);
                 if (is_wp_error($post_result)) {
-                    Alpha_RSS_AI_Generator::mark_item_failed($satellite_generator['id'], $item, $post_result->get_error_code(), $post_result->get_error_message());
+                    Content_Rank_Generator::mark_item_failed($satellite_generator['id'], $item, $post_result->get_error_code(), $post_result->get_error_message());
                     $errors[] = $post_result->get_error_message();
                     continue;
                 }
@@ -1134,11 +1134,11 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                 'post_id' => $post_id,
             );
             if (!empty($generated_posts)) {
-                $redirect_args['arc_notice'] = 'satellites_generated';
-                $redirect_args['arc_count'] = count($generated_posts);
+                $redirect_args['content_rank_notice'] = 'satellites_generated';
+                $redirect_args['content_rank_count'] = count($generated_posts);
             } else {
-                $redirect_args['arc_notice'] = 'satellite_error';
-                $redirect_args['arc_message'] = !empty($errors) ? implode(' | ', array_slice($errors, 0, 3)) : 'Não foi possível gerar os satélites.';
+                $redirect_args['content_rank_notice'] = 'satellite_error';
+                $redirect_args['content_rank_message'] = !empty($errors) ? implode(' | ', array_slice($errors, 0, 3)) : 'Não foi possível gerar os satélites.';
             }
 
             $redirect = add_query_arg($redirect_args, admin_url('admin.php'));
@@ -1156,7 +1156,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
             $is_selected = $selected_post_id > 0 && $selected_post_id === $item_id;
             $classes = array(
-                'arc-plan-picker-item',
+                'content-rank-plan-picker-item',
                 'w-full',
                 'rounded-xl',
                 'border',
@@ -1187,27 +1187,27 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
         {
             $selected_post_id = intval($selected_post_id);
             $selected_post = $selected_post_id > 0 ? get_post($selected_post_id) : null;
-            $search_nonce = wp_create_nonce('arc_content_plan_posts_search');
+            $search_nonce = wp_create_nonce('content_rank_content_plan_posts_search');
             $initial_results = self::query_picker_posts('', 1, 10);
             $items = !empty($initial_results['items']) && is_array($initial_results['items']) ? $initial_results['items'] : array();
             $has_more = !empty($initial_results['has_more']);
             $button_label = $selected_post instanceof WP_Post ? self::normalize_plain_text(get_the_title($selected_post)) : 'Selecionar post';
 
-            echo '<div id="arc-plan-picker" class="relative space-y-3" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr($search_nonce) . '" data-per-page="10" data-current-page="1" data-has-more="' . ($has_more ? '1' : '0') . '">';
-            echo '<input type="hidden" name="pillar_post_id" id="arc-plan-picker-value" value="' . esc_attr($selected_post_id) . '" />';
-            echo '<button type="button" id="arc-plan-picker-toggle" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false">';
-            echo '<span id="arc-plan-picker-label">' . esc_html($button_label) . '</span>';
+            echo '<div id="content-rank-plan-picker" class="relative space-y-3" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr($search_nonce) . '" data-per-page="10" data-current-page="1" data-has-more="' . ($has_more ? '1' : '0') . '">';
+            echo '<input type="hidden" name="pillar_post_id" id="content-rank-plan-picker-value" value="' . esc_attr($selected_post_id) . '" />';
+            echo '<button type="button" id="content-rank-plan-picker-toggle" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false">';
+            echo '<span id="content-rank-plan-picker-label">' . esc_html($button_label) . '</span>';
             echo '<span class="text-slate-400">⌄</span>';
             echo '</button>';
 
-            echo '<div id="arc-plan-picker-menu" class="absolute left-0 right-0 top-full z-20 mt-2 hidden rounded-2xl border border-slate-200 bg-white shadow-soft">';
+            echo '<div id="content-rank-plan-picker-menu" class="absolute left-0 right-0 top-full z-20 mt-2 hidden rounded-2xl border border-slate-200 bg-white shadow-soft">';
             echo '<div class="border-b border-slate-200 p-3">';
             echo '<div class="flex gap-2">';
-            echo '<input id="arc-plan-picker-search" type="search" class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Pesquisar..." autocomplete="off" />';
-            echo '<button type="button" id="arc-plan-picker-search-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Buscar</button>';
+            echo '<input id="content-rank-plan-picker-search" type="search" class="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Pesquisar..." autocomplete="off" />';
+            echo '<button type="button" id="content-rank-plan-picker-search-btn" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Buscar</button>';
             echo '</div>';
             echo '</div>';
-            echo '<div id="arc-plan-picker-results" class="max-h-80 space-y-2 overflow-y-auto p-3 pr-1">';
+            echo '<div id="content-rank-plan-picker-results" class="max-h-80 space-y-2 overflow-y-auto p-3 pr-1">';
             if (!empty($items)) {
                 foreach ($items as $item) {
                     self::render_picker_post_button($item, $selected_post_id);
@@ -1217,9 +1217,9 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             }
             echo '</div>';
             echo '<div class="mt-3 flex justify-center">';
-            echo '<button type="button" id="arc-plan-picker-load-more" class="' . ($has_more ? '' : 'hidden ') . 'inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Carregar mais</button>';
+            echo '<button type="button" id="content-rank-plan-picker-load-more" class="' . ($has_more ? '' : 'hidden ') . 'inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Carregar mais</button>';
             echo '</div>';
-            echo '<p id="arc-plan-picker-empty" class="hidden px-3 pb-3 text-sm text-slate-500">Nenhum resultado encontrado.</p>';
+            echo '<p id="content-rank-plan-picker-empty" class="hidden px-3 pb-3 text-sm text-slate-500">Nenhum resultado encontrado.</p>';
             echo '</div>';
             echo '</div>';
         }
@@ -1317,9 +1317,9 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
             $current_generator = null;
             if ($selected_post_id > 0) {
-                $generator_id = intval(get_post_meta($selected_post_id, '_arc_generator_id', true));
-                if ($generator_id > 0 && class_exists('Alpha_RSS_AI_Generator')) {
-                    $current_generator = Alpha_RSS_AI_Generator::get_generator($generator_id);
+                $generator_id = intval(get_post_meta($selected_post_id, '_content_rank_generator_id', true));
+                if ($generator_id > 0 && class_exists('Content_Rank_Generator')) {
+                    $current_generator = Content_Rank_Generator::get_generator($generator_id);
                 }
             }
             if (!$current_generator && $selected_post_id > 0) {
@@ -1328,19 +1328,19 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
             $selected_content_model_type = '';
             if (!empty($plan['content_model_type'])) {
-                $selected_content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($plan['content_model_type']);
+                $selected_content_model_type = Content_Rank_Generator::normalize_content_model_type($plan['content_model_type']);
             }
             if ($selected_content_model_type === '' && $selected_post_id > 0) {
-                $stored_content_model_type = (string) get_post_meta($selected_post_id, '_arc_content_model_type', true);
+                $stored_content_model_type = (string) get_post_meta($selected_post_id, '_content_rank_content_model_type', true);
                 if ($stored_content_model_type !== '') {
-                    $selected_content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($stored_content_model_type);
+                    $selected_content_model_type = Content_Rank_Generator::normalize_content_model_type($stored_content_model_type);
                 }
             }
             if ($selected_content_model_type === '' && $current_generator && !empty($current_generator['content_model_type'])) {
-                $selected_content_model_type = Alpha_RSS_AI_Generator::normalize_content_model_type($current_generator['content_model_type']);
+                $selected_content_model_type = Content_Rank_Generator::normalize_content_model_type($current_generator['content_model_type']);
             }
             if ($selected_content_model_type === '') {
-                $selected_content_model_type = Alpha_RSS_AI_Generator::get_default_content_model_type();
+                $selected_content_model_type = Content_Rank_Generator::get_default_content_model_type();
             }
 
 ?>
@@ -1359,7 +1359,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             <script src="https://cdn.tailwindcss.com"></script>
             <div class="wrap">
                 <div class="mb-6">
-                    <p class="text-xs font-semibold text-indigo-500">Alpha RSS AI</p>
+                    <p class="text-xs font-semibold text-indigo-500">Content Rank</p>
                     <h1 class="text-3xl font-semibold tracking-tight text-slate-950">Lincagem automática</h1>
                 </div>
 
@@ -1375,11 +1375,11 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                             </div>
                             <div class="mt-5"><?php self::render_posts_selector($selected_post_id); ?></div>
 
-                            <div id="arc-plan-options" class="mt-5 space-y-4 <?php echo $selected_post instanceof WP_Post ? '' : 'hidden'; ?>">
-                                <form id="arc-content-plan-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="space-y-4">
-                                    <?php wp_nonce_field('arc_generate_content_plan', 'arc_content_plan_nonce'); ?>
-                                    <input type="hidden" name="action" value="arc_generate_content_plan" />
-                                    <input type="hidden" name="pillar_post_id" id="arc-content-plan-post-id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
+                            <div id="content-rank-plan-options" class="mt-5 space-y-4 <?php echo $selected_post instanceof WP_Post ? '' : 'hidden'; ?>">
+                                <form id="content-rank-content-plan-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="space-y-4">
+                                    <?php wp_nonce_field('content_rank_generate_content_plan', 'content_rank_content_plan_nonce'); ?>
+                                    <input type="hidden" name="action" value="content_rank_generate_content_plan" />
+                                    <input type="hidden" name="pillar_post_id" id="content-rank-content-plan-post-id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
 
                                     <div class="grid gap-4 sm:grid-cols-2">
                                         <div>
@@ -1403,15 +1403,15 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
                                 <?php if (!empty($plan)): ?>
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                                        <?php wp_nonce_field('arc_generate_content_satellites', 'arc_content_satellites_nonce'); ?>
-                                        <input type="hidden" name="action" value="arc_generate_content_satellites" />
+                                        <?php wp_nonce_field('content_rank_generate_content_satellites', 'content_rank_content_satellites_nonce'); ?>
+                                        <input type="hidden" name="action" value="content_rank_generate_content_satellites" />
                                         <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
                                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-slate-800">Gerar satélites</button>
                                     </form>
 
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="mt-3" data-swal-confirm="Remover o plano salvo deste post pilar?">
-                                        <?php wp_nonce_field('arc_clear_content_plan', 'arc_content_plan_nonce'); ?>
-                                        <input type="hidden" name="action" value="arc_clear_content_plan" />
+                                        <?php wp_nonce_field('content_rank_clear_content_plan', 'content_rank_content_plan_nonce'); ?>
+                                        <input type="hidden" name="action" value="content_rank_clear_content_plan" />
                                         <input type="hidden" name="pillar_post_id" value="<?php echo esc_attr($selected_post instanceof WP_Post ? $selected_post->ID : 0); ?>" />
                                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100">Limpar plano</button>
                                     </form>
@@ -1427,16 +1427,16 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
             </div>
             <script>
                 (function () {
-                    const picker = document.getElementById('arc-plan-picker');
-                    const optionsWrap = document.getElementById('arc-plan-options');
-                    const toggleButton = document.getElementById('arc-plan-picker-toggle');
-                    const labelNode = document.getElementById('arc-plan-picker-label');
-                    const menu = document.getElementById('arc-plan-picker-menu');
-                    const searchInput = document.getElementById('arc-plan-picker-search');
-                    const searchButton = document.getElementById('arc-plan-picker-search-btn');
-                    const results = document.getElementById('arc-plan-picker-results');
-                    const loadMoreButton = document.getElementById('arc-plan-picker-load-more');
-                    const emptyState = document.getElementById('arc-plan-picker-empty');
+                    const picker = document.getElementById('content-rank-plan-picker');
+                    const optionsWrap = document.getElementById('content-rank-plan-options');
+                    const toggleButton = document.getElementById('content-rank-plan-picker-toggle');
+                    const labelNode = document.getElementById('content-rank-plan-picker-label');
+                    const menu = document.getElementById('content-rank-plan-picker-menu');
+                    const searchInput = document.getElementById('content-rank-plan-picker-search');
+                    const searchButton = document.getElementById('content-rank-plan-picker-search-btn');
+                    const results = document.getElementById('content-rank-plan-picker-results');
+                    const loadMoreButton = document.getElementById('content-rank-plan-picker-load-more');
+                    const emptyState = document.getElementById('content-rank-plan-picker-empty');
                     const valueInputs = document.querySelectorAll('input[name="pillar_post_id"]');
                     const ajaxUrl = picker ? picker.dataset.ajaxUrl : '';
                     const nonce = picker ? picker.dataset.nonce : '';
@@ -1478,7 +1478,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     };
 
                     const syncActiveButtons = () => {
-                        const buttons = results.querySelectorAll('.arc-plan-picker-item');
+                        const buttons = results.querySelectorAll('.content-rank-plan-picker-item');
                         buttons.forEach((button) => {
                             const buttonId = parseInt(button.dataset.postId || '0', 10) || 0;
                             const active = selectedPostId > 0 && buttonId === selectedPostId;
@@ -1492,7 +1492,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
 
                     if (results) {
                         results.addEventListener('click', (event) => {
-                            const button = event.target.closest('.arc-plan-picker-item');
+                            const button = event.target.closest('.content-rank-plan-picker-item');
                             if (!button || !results.contains(button)) {
                                 return;
                             }
@@ -1523,7 +1523,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     const renderButton = (item) => {
                         const button = document.createElement('button');
                         button.type = 'button';
-                        button.className = 'arc-plan-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
+                        button.className = 'content-rank-plan-picker-item w-full rounded-xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-200';
                         button.dataset.postId = item.id;
                         button.dataset.postType = item.post_type || 'post';
                         button.dataset.postTitle = item.title || '';
@@ -1572,7 +1572,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
                                 },
                                 body: new URLSearchParams({
-                                    action: 'arc_content_plan_search_posts',
+                                    action: 'content_rank_content_plan_search_posts',
                                     nonce: nonce,
                                     search: search,
                                     page: String(page),
@@ -1639,7 +1639,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     }
 
                     setLoadMoreState();
-                    setEmptyState(results.querySelectorAll('.arc-plan-picker-item').length === 0);
+                    setEmptyState(results.querySelectorAll('.content-rank-plan-picker-item').length === 0);
                     syncActiveButtons();
 
                     if (toggleButton) {
@@ -1688,7 +1688,7 @@ if (!class_exists('Alpha_RSS_AI_Content_Plans')) {
                     }
 
                     if (selectedPostId > 0) {
-                        const selectedButton = results.querySelector('.arc-plan-picker-item[aria-pressed="true"]');
+                        const selectedButton = results.querySelector('.content-rank-plan-picker-item[aria-pressed="true"]');
                         if (selectedButton) {
                             updateLabel(selectedButton.textContent.trim());
                         }

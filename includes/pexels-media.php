@@ -4,18 +4,18 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!class_exists('Alpha_RSS_AI_Pexels_Media')) {
-    final class Alpha_RSS_AI_Pexels_Media
+if (!class_exists('Content_Rank_Pexels_Media')) {
+    final class Content_Rank_Pexels_Media
     {
         public function __construct()
         {
-            add_action('wp_ajax_alpha_rss_ai_pexels_search', array($this, 'search'));
-            add_action('wp_ajax_alpha_rss_ai_pexels_set_featured', array($this, 'set_featured'));
+            add_action('wp_ajax_content_rank_pexels_search', array($this, 'search'));
+            add_action('wp_ajax_content_rank_pexels_set_featured', array($this, 'set_featured'));
         }
 
         public function search()
         {
-            check_ajax_referer('alpha_rss_ai_pexels_media', 'nonce');
+            check_ajax_referer('content_rank_pexels_media', 'nonce');
 
             $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
             if ($post_id > 0 && !current_user_can('edit_post', $post_id)) {
@@ -25,7 +25,7 @@ if (!class_exists('Alpha_RSS_AI_Pexels_Media')) {
                 wp_send_json_error(array('message' => 'Permissao negada.'), 403);
             }
 
-            $settings = Alpha_RSS_AI_Generator::get_settings();
+            $settings = Content_Rank_Generator::get_settings();
             $api_key = !empty($settings['pexels_api_key']) ? trim((string) $settings['pexels_api_key']) : '';
             if ($api_key === '') {
                 wp_send_json_error(array('message' => 'Configure a chave do Pexels antes de pesquisar.'), 400);
@@ -96,7 +96,7 @@ if (!class_exists('Alpha_RSS_AI_Pexels_Media')) {
 
         public function set_featured()
         {
-            check_ajax_referer('alpha_rss_ai_pexels_media', 'nonce');
+            check_ajax_referer('content_rank_pexels_media', 'nonce');
 
             $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
             if ($post_id <= 0 || !current_user_can('edit_post', $post_id)) {
@@ -116,7 +116,7 @@ if (!class_exists('Alpha_RSS_AI_Pexels_Media')) {
                 $title = 'Imagem do Pexels';
             }
 
-            $attachment_id = Alpha_RSS_AI_Generator::download_and_set_featured_image_from_url(
+            $attachment_id = Content_Rank_Generator::download_and_set_featured_image_from_url(
                 $post_id,
                 $image_url,
                 $title,
